@@ -97,12 +97,6 @@ const config: Config = {
             {label: 'Languages', to: '/languages/overview'},
           ],
         },
-        {
-          title: 'More',
-          items: [
-            {label: 'GitHub', href: 'https://github.com/andrebassi/runner-codes'},
-          ],
-        },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} Runner Codes. Developed and maintained by <a href="https://andrebassi.com.br" target="_blank" rel="noopener noreferrer">André Bassi</a>`,
     },
