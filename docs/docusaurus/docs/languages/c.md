@@ -196,15 +196,11 @@ int main() {
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always include stdio.h, stdlib.h, string.h as needed.
+- **Include standard headers** — Always include stdio.h, stdlib.h, string.h as needed.
+- **Return proper exit codes** — Always return 0 from main() for success.
+- **Check memory allocations** — Always check if malloc/calloc returns NULL.
+- **Free allocated memory** — Avoid memory leaks by freeing allocated memory.
 
-
-
-    Always return 0 from main() for success.
-
-
-
-    Always initialize variables to avoid undefined behavior.
-
-
+:::

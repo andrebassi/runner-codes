@@ -158,11 +158,13 @@ sudo infra.operator host --lang nim --code "echo 42 + 8" --mem 512 --vcpus 1 --s
 
 ## Best Practices
 
+:::info Best Practices
 
-    Prefer `let` over `var` when values don't change.
+- **Prefer immutability** — Prefer `let` over `var` when values don't change.
+- **Use type inference** — Nim has powerful type inference - use it for cleaner code.
+- **Use result variable** — Nim procedures can use implicit `result` variable for returns.
+- **Account for compilation** — Set timeout to at least 60 seconds for compilation time.
 
-
-
-    Nim has powerful type inference - use it for cleaner code.
+:::
 
 

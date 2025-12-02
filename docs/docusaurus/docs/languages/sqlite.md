@@ -158,11 +158,11 @@ sudo infra.operator host --lang sqlite --code "SELECT 1+1 AS result; SELECT 42 A
 
 ## Best Practices
 
+:::info Best Practices
 
-    Wrap multiple INSERT/UPDATE in BEGIN/COMMIT for performance.
+- **Use transactions** — Wrap multiple INSERT/UPDATE in BEGIN/COMMIT for performance.
+- **Create indexes** — Use CREATE INDEX for frequently queried columns.
+- **Create tables first** — Each execution is a fresh database, create tables before queries.
+- **Use standard SQL** — SQLite supports most standard SQL syntax.
 
-
-
-    Use CREATE INDEX for frequently queried columns.
-
-
+:::

@@ -549,23 +549,12 @@ infra.operator snapshot create --lang nodejs --mem 512 --vcpus 1
 
 ## Best Practices
 
-**Prefer async/await:**
+:::info Best Practices
 
-Prefer async/await over callbacks or raw promises for cleaner code.
+- **Prefer async/await** — Prefer async/await over callbacks or raw promises for cleaner code.
+- **Output to stdout/stderr** — Use `console.log()` for stdout and `console.error()` for stderr.
+- **Let scripts complete naturally** — Use process.exit() only when needed.
+- **Keep it simple** — For simple operations, synchronous code is easier to reason about.
 
-**Output to stdout/stderr:**
-
-All output must go to stdout/stderr. Use `console.log()` for stdout and `console.error()` for stderr.
-
-**Let scripts complete naturally:**
-
-Let the script complete naturally. Use process.exit() only when needed.
-
-**Keep it simple:**
-
-For simple operations, synchronous code is easier to reason about.
-
-**Use kernel 5.10+:**
-
-Run `sudo infra.operator setup` on new machines to download the correct kernel version.
+:::
 

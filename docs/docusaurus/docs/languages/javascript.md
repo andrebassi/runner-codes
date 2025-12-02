@@ -105,6 +105,11 @@ console.log(`${user.name} is ${user.age} years old`);
 
 ## Best Practices
 
-1. **Evite dependencias externas** - Use apenas modulos built-in
-2. **Gerencie promessas** - Use async/await com try/catch
-3. **Prefira operacoes sincronas** - Para codigo mais previsivel
+:::info Best Practices
+
+- **Avoid external dependencies** — Use only built-in modules available in Node.js
+- **Handle promises properly** — Use async/await with try/catch for error handling
+- **Prefer synchronous operations** — For more predictable code execution
+- **Output to stdout/stderr** — Use console.log() and console.error() for output
+
+:::

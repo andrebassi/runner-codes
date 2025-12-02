@@ -196,15 +196,11 @@ int main() {
 
 ## Best Practices
 
+:::info Best Practices
 
-    Prefer smart pointers, range-based for loops, and auto keyword.
+- **Use modern C++ features** — Prefer smart pointers, range-based for loops, and auto keyword.
+- **Include standard headers** — Include iostream, vector, string, algorithm as needed.
+- **Use proper namespacing** — Either use std:: prefix or selective using declarations.
+- **Handle exceptions** — Use try-catch for error handling in production code.
 
-
-
-    Include iostream, vector, string, algorithm as needed.
-
-
-
-    Either use std:: prefix or selective using declarations.
-
-
+:::

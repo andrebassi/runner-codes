@@ -160,15 +160,11 @@ sudo infra.operator host --lang scala --code "object Main { def main(args: Array
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always name your main object `Main` for proper execution.
+- **Name your object Main** — Always name your main object `Main` for proper execution.
+- **Use case classes** — Case classes provide equals, hashCode, toString automatically.
+- **Use pattern matching** — Scala's pattern matching is powerful for handling data.
+- **Account for compilation** — Set timeout to at least 60 seconds for JVM startup.
 
-
-
-    Case classes provide equals, hashCode, toString automatically.
-
-
-
-    Scala compilation is slow; use 45+ second timeouts.
-
-
+:::

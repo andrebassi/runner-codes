@@ -179,15 +179,11 @@ sudo infra.operator host --lang kotlin --code "fun main() { println(\"Hello from
 
 ## Best Practices
 
+:::info Best Practices
 
-    Data classes provide equals, hashCode, toString automatically.
+- **Use data classes** — Data classes provide equals, hashCode, toString automatically.
+- **Handle nullability** — Use nullable types (?) and safe calls (?.) properly.
+- **Use Kotlin idioms** — Prefer when expressions over switch, use let/apply/run for scoping.
+- **Account for compilation** — Set timeout to at least 60 seconds for JVM startup.
 
-
-
-    Use nullable types (?) and safe calls (?.) properly.
-
-
-
-    Kotlin compilation is slow; use 45+ second timeouts.
-
-
+:::
