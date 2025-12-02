@@ -70,3 +70,6 @@ CLAUDE.md
 
 # Scripts with credentials
 scripts/benchmark-on-demand.sh
+
+# Release artifacts
+dist/

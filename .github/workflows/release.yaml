@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+            -o dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }} \
+            ./cmd/infra.operator/...
+          chmod +x dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum infra.operator-* > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/infra.operator-linux-amd64
+            dist/infra.operator-linux-arm64
+            dist/checksums.txt
+          body: |
+            ## Runner Codes ${{ github.ref_name }}
+
+            Secure code execution environment for AI-generated code using Firecracker microVMs.
+
+            ### Downloads
+
+            | Platform | Architecture | Download |
+            |----------|--------------|----------|
+            | Linux | x86_64 (amd64) | `infra.operator-linux-amd64` |
+            | Linux | ARM64 | `infra.operator-linux-arm64` |
+
+            ### Installation
+
+            ```bash
+            # Download (Linux amd64)
+            curl -L -o infra.operator https://github.com/andrebassi/runner-codes/releases/download/${{ github.ref_name }}/infra.operator-linux-amd64
+            chmod +x infra.operator
+            sudo mv infra.operator /usr/local/bin/
+            ```
+
+            ### Links
+
+            - **Website:** https://runner.codes
+            - **Documentation:** https://docs.runner.codes
+
+            ### Verify checksums
+
+            ```bash
+            sha256sum -c checksums.txt
+            ```
