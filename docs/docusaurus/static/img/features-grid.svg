@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 280">
+  <defs>
+    <linearGradient id="bgGradFeatures" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6"/>
+      <stop offset="100%" style="stop-color:#2563EB"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6"/>
+      <stop offset="100%" style="stop-color:#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4"/>
+      <stop offset="100%" style="stop-color:#0891B2"/>
+    </linearGradient>
+    <filter id="cardShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="280" rx="12" fill="url(#bgGradFeatures)"/>
+
+  <!-- Feature 1: Secure Isolation -->
+  <g transform="translate(25, 25)" filter="url(#cardShadow)">
+    <rect width="200" height="230" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <rect width="200" height="6" rx="3" fill="url(#blueGrad)" y="0"/>
+    <circle cx="100" cy="60" r="28" fill="url(#blueGrad)" opacity="0.15"/>
+    <text x="100" y="68" font-family="system-ui" font-size="28" fill="#3B82F6" text-anchor="middle">🛡️</text>
+    <text x="100" y="110" font-family="system-ui" font-size="14" font-weight="600" fill="#f8fafc" text-anchor="middle">Secure Isolation</text>
+    <text x="100" y="135" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">Each execution runs in</text>
+    <text x="100" y="150" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">its own isolated microVM</text>
+    <text x="100" y="175" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• No network by default</text>
+    <text x="100" y="190" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• VM destroyed after use</text>
+    <text x="100" y="205" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Optional jailer hardening</text>
+  </g>
+
+  <!-- Feature 2: Fast Boot -->
+  <g transform="translate(240, 25)" filter="url(#cardShadow)">
+    <rect width="200" height="230" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <rect width="200" height="6" rx="3" fill="url(#greenGrad)" y="0"/>
+    <circle cx="100" cy="60" r="28" fill="url(#greenGrad)" opacity="0.15"/>
+    <text x="100" y="68" font-family="system-ui" font-size="28" fill="#10B981" text-anchor="middle">⚡</text>
+    <text x="100" y="110" font-family="system-ui" font-size="14" font-weight="600" fill="#f8fafc" text-anchor="middle">Fast Boot Times</text>
+    <text x="100" y="135" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">Sub-4s cold starts</text>
+    <text x="100" y="150" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">Sub-100ms with snapshots</text>
+    <text x="100" y="175" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• ~125ms VM boot</text>
+    <text x="100" y="190" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• ~5MB memory overhead</text>
+    <text x="100" y="205" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Snapshot restore</text>
+  </g>
+
+  <!-- Feature 3: Multi-Language -->
+  <g transform="translate(455, 25)" filter="url(#cardShadow)">
+    <rect width="200" height="230" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <rect width="200" height="6" rx="3" fill="url(#purpleGrad)" y="0"/>
+    <circle cx="100" cy="60" r="28" fill="url(#purpleGrad)" opacity="0.15"/>
+    <text x="100" y="68" font-family="system-ui" font-size="28" fill="#8B5CF6" text-anchor="middle">🌐</text>
+    <text x="100" y="110" font-family="system-ui" font-size="14" font-weight="600" fill="#f8fafc" text-anchor="middle">45+ Languages</text>
+    <text x="100" y="135" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">Optimized rootfs per</text>
+    <text x="100" y="150" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">language runtime</text>
+    <text x="100" y="175" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Python, Node, Go, Rust</text>
+    <text x="100" y="190" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Java, C#, PHP, Ruby</text>
+    <text x="100" y="205" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• And 35+ more...</text>
+  </g>
+
+  <!-- Feature 4: S3 Storage -->
+  <g transform="translate(670, 25)" filter="url(#cardShadow)">
+    <rect width="200" height="230" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <rect width="200" height="6" rx="3" fill="url(#cyanGrad)" y="0"/>
+    <circle cx="100" cy="60" r="28" fill="url(#cyanGrad)" opacity="0.15"/>
+    <text x="100" y="68" font-family="system-ui" font-size="28" fill="#06B6D4" text-anchor="middle">☁️</text>
+    <text x="100" y="110" font-family="system-ui" font-size="14" font-weight="600" fill="#f8fafc" text-anchor="middle">S3-Backed Storage</text>
+    <text x="100" y="135" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">Rootfs images stored</text>
+    <text x="100" y="150" font-family="system-ui" font-size="11" fill="#94a3b8" text-anchor="middle">in S3 for fast deploy</text>
+    <text x="100" y="175" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Version control</text>
+    <text x="100" y="190" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Multi-region distribution</text>
+    <text x="100" y="205" font-family="system-ui" font-size="10" fill="#64748b" text-anchor="middle">• Fast EC2 deployment</text>
+  </g>
+</svg>

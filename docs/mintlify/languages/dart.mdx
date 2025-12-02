@@ -1,0 +1,122 @@
+---
+title: 'Dart'
+description: 'Dart code execution with Dart SDK'
+---
+
+## Overview
+
+Dart is a programming language developed by Google, optimized for building user interfaces. It's the official language for the Flutter framework.
+
+<Card title="Dart SDK" icon="code">
+  Full Dart SDK with JIT/AOT compilation support.
+</Card>
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Docker Image | `dart:stable` |
+| Version | Dart 3.10.2 |
+| Rootfs Size | 1000 MB |
+| Execution | JIT compiled |
+| File Extension | `.dart` |
+| Run Command | `dart run {file}` |
+| Execution Time | ~433ms |
+
+## Infrastructure
+
+```bash
+# 1. Create Rootfs from Docker
+sudo infra.operator rootfs from-docker --name dart --image dart:stable --size 1000
+
+# 2. Create Snapshot
+sudo infra.operator snapshot create --lang dart --mem 512 --vcpus 1
+
+# 3. Upload to S3
+sudo infra.operator rootfs upload --lang dart --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang dart --bucket llm-firecracker
+
+# 4. Test Execution
+sudo infra.operator host --lang dart --code 'import "dart:io"; void main() { print("Hello from Dart ${Platform.version}"); }' --mem 512 --vcpus 1 --snapshot
+
+# Output:
+# {
+#   "status": "success",
+#   "stdout": "Hello from Dart 3.10.2 (stable)\n",
+#   "executionTime": "~433ms"
+# }
+```
+
+## Examples
+
+### Hello World
+```dart
+void main() {
+  print("Hello World");
+}
+```
+
+### Variaveis
+```dart
+void main() {
+  var name = "Dart";  // Tipo inferido
+  String language = "Dart";  // Tipo explicito
+  final version = 3.2;  // Constante runtime
+  const pi = 3.14159;  // Constante compile-time
+
+  print("$name version $version");
+}
+```
+
+### Funcoes
+```dart
+int add(int a, int b) => a + b;
+
+String greet({required String name, int age = 0}) {
+  return "Hello $name, age $age";
+}
+
+void main() {
+  print(add(2, 3));
+  print(greet(name: "Alice", age: 30));
+}
+```
+
+### Classes
+```dart
+class Person {
+  String name;
+  int age;
+
+  Person(this.name, this.age);
+
+  void introduce() {
+    print("Hi, I'm $name and I'm $age years old");
+  }
+}
+
+void main() {
+  var person = Person("Bob", 25);
+  person.introduce();
+}
+```
+
+### Async/Await
+```dart
+Future<String> fetchData() async {
+  await Future.delayed(Duration(milliseconds: 100));
+  return "Data loaded!";
+}
+
+void main() async {
+  var data = await fetchData();
+  print(data);
+}
+```
+
+## Limitacoes
+
+- Sem Flutter/UI frameworks
+- Sem acesso a rede (http package bloqueado)
+- Timeout padrao de 10 segundos
+- Memoria limitada a 512MB

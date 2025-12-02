@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 280">
+  <defs>
+    <linearGradient id="hostGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="vmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ea580c;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowN" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="500" height="280" fill="#f8fafc" rx="12"/>
+
+  <!-- Title -->
+  <text x="250" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="600" fill="#1e293b" text-anchor="middle">Network Isolation</text>
+
+  <!-- Host -->
+  <rect x="40" y="60" width="180" height="180" rx="10" fill="url(#hostGrad)" filter="url(#shadowN)"/>
+  <text x="130" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="white" text-anchor="middle">Host</text>
+
+  <!-- Internet icon -->
+  <circle cx="130" cy="130" r="25" fill="white" fill-opacity="0.2"/>
+  <text x="130" y="135" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="white" text-anchor="middle">&#127760;</text>
+  <text x="130" y="165" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="white" text-anchor="middle">Internet</text>
+
+  <!-- vsock -->
+  <rect x="70" y="185" width="120" height="35" rx="4" fill="white" fill-opacity="0.9"/>
+  <text x="130" y="207" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#1e293b" text-anchor="middle">vsock</text>
+
+  <!-- VM -->
+  <rect x="280" y="60" width="180" height="180" rx="10" fill="url(#vmGrad)" filter="url(#shadowN)"/>
+  <text x="370" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="white" text-anchor="middle">VM (microVM)</text>
+
+  <!-- Connection lines -->
+  <!-- Internet blocked -->
+  <path d="M220 130 L280 130" stroke="#ef4444" stroke-width="3" stroke-dasharray="8,4" fill="none"/>
+  <text x="250" y="120" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#ef4444" text-anchor="middle">X</text>
+  <text x="250" y="155" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444" text-anchor="middle">(blocked)</text>
+
+  <!-- vsock OK -->
+  <path d="M190 202 L280 202" stroke="#22c55e" stroke-width="3" fill="none" marker-end="url(#arrowN)"/>
+  <defs>
+    <marker id="arrowN" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <!-- OK label -->
+  <rect x="215" y="185" width="50" height="20" rx="10" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="240" y="199" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="500" fill="#166534" text-anchor="middle">OK</text>
+
+  <!-- VM internal -->
+  <rect x="300" y="115" width="140" height="35" rx="4" fill="white" fill-opacity="0.9"/>
+  <text x="370" y="137" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#ef4444" text-anchor="middle">No Internet Access</text>
+
+  <rect x="300" y="160" width="140" height="60" rx="4" fill="white" fill-opacity="0.9"/>
+  <text x="370" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#1e293b" text-anchor="middle">vsock only</text>
+  <text x="370" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">Host-initiated</text>
+  <text x="370" y="215" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">communication</text>
+
+  <!-- Benefits -->
+  <text x="250" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">No data exfiltration | No malware download | No C2 communication | No lateral movement</text>
+</svg>

@@ -1,0 +1,226 @@
+---
+title: 'TypeScript'
+description: 'TypeScript code execution with Bun'
+---
+
+## Overview
+
+TypeScript adds static typing to JavaScript. LLM-Firecracker provides Bun runtime for executing TypeScript code directly with native TypeScript support.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Docker Image | `oven/bun:alpine` |
+| Runtime | Bun 1.3.3 |
+| Rootfs Size | 200 MB |
+| Execution | Native TypeScript |
+| File Extension | `.ts` |
+| Run Command | `bun run {file}` |
+| Execution Time | ~48ms |
+
+```bash title="1. Create Rootfs from Docker"
+sudo infra.operator rootfs from-docker --name typescript --image oven/bun:alpine --size 200
+```
+
+```bash title="2. Create Snapshot"
+sudo infra.operator snapshot create --lang typescript --mem 512 --vcpus 1
+```
+
+```bash title="3. Upload rootfs to S3"
+sudo infra.operator rootfs upload --lang typescript --bucket llm-firecracker
+```
+
+```bash title="3. Upload snapshot to S3"
+sudo infra.operator snapshot upload --lang typescript --bucket llm-firecracker
+```
+
+```bash title="4. Test Execution"
+sudo infra.operator host --lang typescript --code 'console.log(`Hello from TypeScript (Bun ${Bun.version})`)' --mem 512 --vcpus 1 --snapshot
+```
+
+
+
+## Execution Flow
+
+![TypeScript Execution Flow](/img/language-execution-flow.svg)
+
+## Examples
+
+### Hello World
+
+```json title="Request"
+{
+  "trace_id": "ts-hello-001",
+  "lang": "typescript",
+  "code": "const message: string = 'Hello from TypeScript!';\nconsole.log(message);",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-hello-001",
+  "stdout": "Hello from TypeScript!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Type Annotations
+
+```json title="Request"
+{
+  "trace_id": "ts-types-001",
+  "lang": "typescript",
+  "code": "interface User {\n  name: string;\n  age: number;\n  email?: string;\n}\n\nfunction greet(user: User): string {\n  return `Hello, ${user.name}! You are ${user.age} years old.`;\n}\n\nconst alice: User = { name: 'Alice', age: 30 };\nconsole.log(greet(alice));",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-types-001",
+  "stdout": "Hello, Alice! You are 30 years old.\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Classes
+
+```json title="Request"
+{
+  "trace_id": "ts-class-001",
+  "lang": "typescript",
+  "code": "class Calculator {\n  private result: number = 0;\n\n  add(x: number): this {\n    this.result += x;\n    return this;\n  }\n\n  multiply(x: number): this {\n    this.result *= x;\n    return this;\n  }\n\n  getResult(): number {\n    return this.result;\n  }\n}\n\nconst calc = new Calculator();\nconst result = calc.add(5).multiply(3).add(10).getResult();\nconsole.log(`Result: ${result}`);",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-class-001",
+  "stdout": "Result: 25\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Generics
+
+```json title="Request"
+{
+  "trace_id": "ts-generics-001",
+  "lang": "typescript",
+  "code": "function identity<T>(arg: T): T {\n  return arg;\n}\n\nfunction printArray<T>(arr: T[]): void {\n  arr.forEach(item => console.log(item));\n}\n\nconsole.log(identity<string>('Hello'));\nconsole.log(identity<number>(42));\nprintArray<string>(['a', 'b', 'c']);",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-generics-001",
+  "stdout": "Hello\n42\na\nb\nc\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Async/Await
+
+```json title="Request"
+{
+  "trace_id": "ts-async-001",
+  "lang": "typescript",
+  "code": "async function delay(ms: number): Promise<void> {\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\nasync function main(): Promise<void> {\n  console.log('Start');\n  await delay(100);\n  console.log('After 100ms');\n  await delay(100);\n  console.log('Done');\n}\n\nmain();",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-async-001",
+  "stdout": "Start\nAfter 100ms\nDone\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Enums and Union Types
+
+```json title="Request"
+{
+  "trace_id": "ts-enum-001",
+  "lang": "typescript",
+  "code": "enum Status {\n  Pending = 'PENDING',\n  Active = 'ACTIVE',\n  Completed = 'COMPLETED'\n}\n\ntype Result<T> = { success: true; data: T } | { success: false; error: string };\n\nfunction processStatus(status: Status): Result<string> {\n  if (status === Status.Completed) {\n    return { success: true, data: 'Task completed!' };\n  }\n  return { success: false, error: 'Task not completed' };\n}\n\nconst result = processStatus(Status.Completed);\nif (result.success) {\n  console.log(result.data);\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-enum-001",
+  "stdout": "Task completed!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Complex Test: Comprehensive TypeScript
+
+```json title="Request"
+{
+  "trace_id": "ts-complex-001",
+  "lang": "typescript",
+  "code": "console.log('=== TypeScript Complex Test ===');\nconsole.log();\n\n// Test 1: Fibonacci with memoization and types\nconsole.log('1. Fibonacci with memoization:');\nconst memo: Map<number, number> = new Map();\nfunction fib(n: number): number {\n  if (memo.has(n)) return memo.get(n)!;\n  if (n <= 1) return n;\n  const result = fib(n - 1) + fib(n - 2);\n  memo.set(n, result);\n  return result;\n}\nconst fibs = Array.from({length: 15}, (_, i) => fib(i));\nconsole.log(`   First 15: [${fibs.join(', ')}]`);\nconsole.log(`   Fib(40) = ${fib(40)}`);\n\n// Test 2: Generic QuickSort\nconsole.log();\nconsole.log('2. Generic QuickSort:');\nfunction quicksort<T>(arr: T[], compare: (a: T, b: T) => number): T[] {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[Math.floor(arr.length / 2)];\n  const left = arr.filter(x => compare(x, pivot) < 0);\n  const middle = arr.filter(x => compare(x, pivot) === 0);\n  const right = arr.filter(x => compare(x, pivot) > 0);\n  return [...quicksort(left, compare), ...middle, ...quicksort(right, compare)];\n}\nconst unsorted = [64, 34, 25, 12, 22, 11, 90];\nconsole.log(`   Input:  [${unsorted.join(', ')}]`);\nconsole.log(`   Output: [${quicksort(unsorted, (a, b) => a - b).join(', ')}]`);\n\n// Test 3: Interfaces and type guards\nconsole.log();\nconsole.log('3. Interfaces and type guards:');\ninterface Person { name: string; age: number; city: string; }\ninterface Employee extends Person { role: string; salary: number; }\nfunction isEmployee(p: Person): p is Employee {\n  return 'role' in p && 'salary' in p;\n}\nconst people: Person[] = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA', role: 'Dev', salary: 100000 } as Employee\n];\nfor (const p of people) {\n  if (isEmployee(p)) {\n    console.log(`   ${p.name}: Employee (${p.role})`);\n  } else {\n    console.log(`   ${p.name}: Person`);\n  }\n}\n\n// Test 4: Classes with generics\nconsole.log();\nconsole.log('4. Generic classes:');\nclass Stack<T> {\n  private items: T[] = [];\n  push(item: T): void { this.items.push(item); }\n  pop(): T | undefined { return this.items.pop(); }\n  peek(): T | undefined { return this.items[this.items.length - 1]; }\n  get size(): number { return this.items.length; }\n}\nconst stack = new Stack<number>();\n[1, 2, 3, 4, 5].forEach(n => stack.push(n));\nconsole.log(`   Stack size: ${stack.size}`);\nconsole.log(`   Top: ${stack.peek()}`);\nconsole.log(`   Pop: ${stack.pop()}, ${stack.pop()}`);\n\n// Test 5: Union types and discriminated unions\nconsole.log();\nconsole.log('5. Discriminated unions:');\ntype Result<T> = { kind: 'success'; value: T } | { kind: 'error'; message: string };\nfunction divide(a: number, b: number): Result<number> {\n  if (b === 0) return { kind: 'error', message: 'Division by zero' };\n  return { kind: 'success', value: a / b };\n}\nconst r1 = divide(10, 2);\nconst r2 = divide(10, 0);\nconsole.log(`   10/2: ${r1.kind === 'success' ? r1.value : r1.message}`);\nconsole.log(`   10/0: ${r2.kind === 'success' ? r2.value : r2.message}`);\n\n// Test 6: Mapped and conditional types\nconsole.log();\nconsole.log('6. Utility types:');\ntype User = { id: number; name: string; email: string; password: string };\ntype PublicUser = Omit<User, 'password'>;\ntype PartialUser = Partial<PublicUser>;\nconst user: PublicUser = { id: 1, name: 'Alice', email: 'alice@example.com' };\nconsole.log(`   Public user: ${JSON.stringify(user)}`);\nconst partial: PartialUser = { name: 'Bob' };\nconsole.log(`   Partial user: ${JSON.stringify(partial)}`);\n\n// Test 7: Async/await with types\nconsole.log();\nconsole.log('7. Async with types:');\nasync function fetchData<T>(data: T, delay: number): Promise<T> {\n  return new Promise(resolve => setTimeout(() => resolve(data), delay));\n}\n(async () => {\n  const results = await Promise.all([\n    fetchData({ id: 1, value: 'A' }, 10),\n    fetchData({ id: 2, value: 'B' }, 10),\n    fetchData({ id: 3, value: 'C' }, 10)\n  ]);\n  console.log(`   Results: ${JSON.stringify(results)}`);\n\n  // Test 8: Decorators simulation (function composition)\n  console.log();\n  console.log('8. Higher-order functions:');\n  const withLogging = <T extends (...args: any[]) => any>(fn: T) => {\n    return (...args: Parameters<T>): ReturnType<T> => {\n      console.log(`   Calling with: [${args.join(', ')}]`);\n      return fn(...args);\n    };\n  };\n  const add = (a: number, b: number) => a + b;\n  const loggedAdd = withLogging(add);\n  console.log(`   Result: ${loggedAdd(5, 3)}`);\n\n  console.log();\n  console.log('=== All tests passed ===');\n})();",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "ts-complex-001",
+  "stdout": "=== TypeScript Complex Test ===\n\n1. Fibonacci with memoization:\n   First 15: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377]\n   Fib(40) = 102334155\n\n2. Generic QuickSort:\n   Input:  [64, 34, 25, 12, 22, 11, 90]\n   Output: [11, 12, 22, 25, 34, 64, 90]\n\n3. Interfaces and type guards:\n   Alice: Person\n   Bob: Employee (Dev)\n\n4. Generic classes:\n   Stack size: 5\n   Top: 5\n   Pop: 5, 4\n\n5. Discriminated unions:\n   10/2: 5\n   10/0: Division by zero\n\n6. Utility types:\n   Public user: {\"id\":1,\"name\":\"Alice\",\"email\":\"alice@example.com\"}\n   Partial user: {\"name\":\"Bob\"}\n\n7. Async with types:\n   Results: [{\"id\":1,\"value\":\"A\"},{\"id\":2,\"value\":\"B\"},{\"id\":3,\"value\":\"C\"}]\n\n8. Higher-order functions:\n   Calling with: [5, 3]\n   Result: 8\n\n=== All tests passed ===\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Performance
+
+| Operation | Time |
+|-----------|------|
+| Hello World (total) | ~48ms |
+| Type execution | Native (no compilation) |
+| Async operations | Depends on delays |
+| JSON operations | ~5ms |
+
+## Limitations
+
+:::warning
+
+  The TypeScript environment has the following limitations:
+
+:::
+
+1. **No npm packages**: Only built-in Bun APIs
+2. **No network**: HTTP/fetch operations will fail
+3. **Memory limit**: 512 MiB
+4. **Bun runtime**: Uses Bun instead of Node.js
+5. **File system**: Read-only access
+
+## Best Practices
+
+
+    Leverage TypeScript's type system for safer code.
+
+
+
+    Always await promises or handle them with .then()/.catch().
+
+
+
+    Bun provides fast native APIs for common operations.
+
+

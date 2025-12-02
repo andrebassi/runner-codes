@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360">
+  <defs>
+    <linearGradient id="runnerGradientJ" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0284c7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891b2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stepGradientJ" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8fafc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowJ" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrowJ" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="360" fill="#ecfeff" rx="12"/>
+
+  <!-- Title -->
+  <text x="300" y="35" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#1e293b" text-anchor="middle">JVM Languages Execution</text>
+  <text x="300" y="55" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#64748b" text-anchor="middle">Java, Kotlin, Scala, Groovy, Clojure</text>
+
+  <!-- infra.operator (guest) Container -->
+  <rect x="50" y="75" width="500" height="260" rx="10" fill="url(#runnerGradientJ)" filter="url(#shadowJ)"/>
+  <text x="300" y="100" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="white" text-anchor="middle">infra.operator guest</text>
+
+  <!-- Step 1 -->
+  <rect x="70" y="115" width="220" height="55" rx="6" fill="url(#stepGradientJ)" stroke="#a5f3fc" stroke-width="1"/>
+  <circle cx="90" cy="142" r="14" fill="#3b82f6"/>
+  <text x="90" y="147" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="white" text-anchor="middle">1</text>
+  <text x="110" y="137" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#334155">Write code to</text>
+  <text x="110" y="152" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b">/tmp/job-xxx/Main.{ext}</text>
+
+  <!-- Step 2 -->
+  <rect x="310" y="115" width="220" height="55" rx="6" fill="url(#stepGradientJ)" stroke="#a5f3fc" stroke-width="1"/>
+  <circle cx="330" cy="142" r="14" fill="#0284c7"/>
+  <text x="330" y="147" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="white" text-anchor="middle">2</text>
+  <text x="350" y="137" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#334155">Compile to bytecode</text>
+  <text x="350" y="152" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b">{compiler} Main.{ext}</text>
+
+  <!-- Arrow 1-2 -->
+  <path d="M290 142 L305 142" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowJ)"/>
+
+  <!-- Step 3 -->
+  <rect x="70" y="185" width="220" height="55" rx="6" fill="url(#stepGradientJ)" stroke="#a5f3fc" stroke-width="1"/>
+  <circle cx="90" cy="212" r="14" fill="#10b981"/>
+  <text x="90" y="217" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="white" text-anchor="middle">3</text>
+  <text x="110" y="207" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#334155">Execute on JVM</text>
+  <text x="110" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b">java Main / kotlin Main</text>
+
+  <!-- Step 4 -->
+  <rect x="310" y="185" width="220" height="55" rx="6" fill="url(#stepGradientJ)" stroke="#a5f3fc" stroke-width="1"/>
+  <circle cx="330" cy="212" r="14" fill="#f59e0b"/>
+  <text x="330" y="217" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="white" text-anchor="middle">4</text>
+  <text x="350" y="207" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#334155">Capture output</text>
+  <text x="350" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b">stdout / stderr</text>
+
+  <!-- Step 5 -->
+  <rect x="190" y="255" width="220" height="55" rx="6" fill="url(#stepGradientJ)" stroke="#a5f3fc" stroke-width="1"/>
+  <circle cx="210" cy="282" r="14" fill="#ef4444"/>
+  <text x="210" y="287" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="white" text-anchor="middle">5</text>
+  <text x="230" y="277" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#334155">Return result</text>
+  <text x="230" y="292" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b">JSON with exit_code</text>
+
+  <!-- Connecting lines -->
+  <path d="M420 170 L420 180 L170 180 L170 185" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <path d="M290 212 L305 212" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowJ)"/>
+  <path d="M420 240 L420 250 L300 250 L300 255" stroke="#94a3b8" stroke-width="2" fill="none"/>
+
+  <!-- JVM Badge -->
+  <rect x="70" y="320" width="80" height="25" rx="12" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="110" y="337" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="500" fill="#1d4ed8" text-anchor="middle">JVM Runtime</text>
+
+  <!-- Performance badge -->
+  <rect x="420" y="320" width="110" height="25" rx="12" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
+  <text x="475" y="337" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="500" fill="#0369a1" text-anchor="middle">Medium: ~3-5s</text>
+</svg>

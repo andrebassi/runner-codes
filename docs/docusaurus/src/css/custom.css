@@ -1,0 +1,205 @@
+/**
+ * Runner Codes Documentation Theme
+ * Colors: Primary #3B82F6 (Blue)
+ */
+
+:root {
+  --ifm-color-primary: #3B82F6;
+  --ifm-color-primary-dark: #2563EB;
+  --ifm-color-primary-darker: #1D4ED8;
+  --ifm-color-primary-darkest: #1E40AF;
+  --ifm-color-primary-light: #60A5FA;
+  --ifm-color-primary-lighter: #93C5FD;
+  --ifm-color-primary-lightest: #BFDBFE;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(59, 130, 246, 0.1);
+  --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, Consolas, monospace;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #60A5FA;
+  --ifm-color-primary-dark: #3B82F6;
+  --ifm-color-primary-darker: #2563EB;
+  --ifm-color-primary-darkest: #1D4ED8;
+  --ifm-color-primary-light: #93C5FD;
+  --ifm-color-primary-lighter: #BFDBFE;
+  --ifm-color-primary-lightest: #DBEAFE;
+  --ifm-background-color: #0f172a;
+  --ifm-background-surface-color: #1e293b;
+  --ifm-navbar-background-color: #0f172a;
+  --ifm-footer-background-color: #0f172a;
+  --ifm-card-background-color: #1e293b;
+  --ifm-toc-border-color: #334155;
+  --ifm-color-emphasis-100: #1e293b;
+  --ifm-color-emphasis-200: #334155;
+  --ifm-color-emphasis-300: #475569;
+  --ifm-menu-color-background-active: #1e293b;
+  --docusaurus-highlighted-code-line-bg: rgba(96, 165, 250, 0.2);
+}
+
+/* Force dark background on body and main */
+[data-theme='dark'] body {
+  background-color: #0f172a;
+}
+
+[data-theme='dark'] .main-wrapper {
+  background-color: #0f172a;
+}
+
+[data-theme='dark'] article {
+  background-color: #0f172a;
+}
+
+/* Sidebar dark styling */
+[data-theme='dark'] .theme-doc-sidebar-container {
+  background-color: #0f172a;
+  border-right: 1px solid #1e293b;
+}
+
+[data-theme='dark'] .menu {
+  background-color: #0f172a;
+}
+
+/* TOC dark styling */
+[data-theme='dark'] .table-of-contents {
+  border-left: 1px solid #334155;
+}
+
+/* Card styling for migrated components */
+.card-group {
+  display: grid;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.card-group.cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.card-group.cols-3 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.card-group .card {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card-group .card:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.card-group .card a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.card-group .card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--ifm-color-primary);
+}
+
+.card-group .card p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* Details/Accordion styling */
+details {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ifm-heading-color);
+}
+
+details[open] summary {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding-bottom: 0.5rem;
+}
+
+/* Better code blocks */
+.prism-code {
+  border-radius: 8px;
+}
+
+/* Navbar improvements */
+.navbar {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .navbar {
+  background-color: #0f172a;
+  border-bottom: 1px solid #1e293b;
+}
+
+/* Footer */
+.footer {
+  background-color: #0f172a !important;
+  border-top: 1px solid #1e293b;
+}
+
+[data-theme='dark'] .footer {
+  background-color: #0f172a !important;
+}
+
+/* Code blocks */
+[data-theme='dark'] pre {
+  background-color: #1e293b !important;
+}
+
+[data-theme='dark'] code {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+}
+
+/* Sidebar */
+.menu__link--active {
+  border-left: 3px solid var(--ifm-color-primary);
+  padding-left: calc(var(--ifm-menu-link-padding-horizontal) - 3px);
+}
+
+/* Tables */
+table {
+  display: table;
+  width: 100%;
+}
+
+th {
+  background-color: var(--ifm-color-emphasis-100);
+}
+
+[data-theme='dark'] th {
+  background-color: var(--ifm-color-emphasis-200);
+}
+
+/* Admonitions */
+.admonition {
+  border-radius: 8px;
+}
+
+/* Hero section for landing page */
+.hero {
+  background: linear-gradient(135deg, var(--ifm-color-primary) 0%, var(--ifm-color-primary-dark) 100%);
+}
+
+.hero__title {
+  font-size: 3rem;
+}
+
+.hero__subtitle {
+  font-size: 1.5rem;
+  opacity: 0.9;
+}

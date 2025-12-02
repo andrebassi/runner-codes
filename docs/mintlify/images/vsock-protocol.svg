@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="hostGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1D4ED8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="fcGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EA580C;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="guestGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <filter id="dropShadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="500" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="400" y="35" text-anchor="middle" fill="white" font-family="system-ui" font-size="18" font-weight="600">Vsock Protocol Architecture</text>
+
+  <!-- Host Section -->
+  <g filter="url(#dropShadow)">
+    <rect x="30" y="55" width="740" height="140" rx="10" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+    <text x="55" y="85" fill="#94A3B8" font-family="system-ui" font-size="14" font-weight="600">Host</text>
+  </g>
+
+  <!-- infra.operator (host) -->
+  <rect x="60" y="100" width="680" height="75" rx="8" fill="url(#hostGradient)"/>
+  <text x="90" y="130" fill="white" font-family="system-ui" font-size="13" font-weight="600">infra.operator host</text>
+  <text x="90" y="155" fill="rgba(255,255,255,0.8)" font-family="monospace" font-size="11">net.Dial("unix", "/tmp/fc-{id}.vsock")</text>
+
+  <!-- Firecracker VMM Section -->
+  <g filter="url(#dropShadow)">
+    <rect x="30" y="210" width="740" height="150" rx="10" fill="url(#fcGradient)"/>
+    <text x="55" y="240" fill="white" font-family="system-ui" font-size="14" font-weight="600">Firecracker VMM</text>
+  </g>
+
+  <!-- Vsock UDS Box -->
+  <rect x="60" y="255" width="680" height="90" rx="6" fill="#0F172A"/>
+  <text x="400" y="280" text-anchor="middle" fill="#F97316" font-family="system-ui" font-size="12" font-weight="600">Vsock Unix Domain Socket</text>
+  <text x="400" y="300" text-anchor="middle" fill="#94A3B8" font-family="monospace" font-size="10">/tmp/fc-{instance_id}.vsock</text>
+
+  <!-- Protocol Messages -->
+  <rect x="100" y="310" width="180" height="25" rx="4" fill="#1E293B"/>
+  <text x="190" y="327" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="10">Host: "CONNECT 5000\n"</text>
+
+  <rect x="310" y="310" width="180" height="25" rx="4" fill="#1E293B"/>
+  <text x="400" y="327" text-anchor="middle" fill="#3B82F6" font-family="monospace" font-size="10">Guest: "OK 5000\n"</text>
+
+  <rect x="520" y="310" width="200" height="25" rx="4" fill="#1E293B"/>
+  <text x="620" y="327" text-anchor="middle" fill="#8B5CF6" font-family="system-ui" font-size="10">Bidirectional byte stream</text>
+
+  <!-- virtio-vsock connection -->
+  <rect x="350" y="370" width="100" height="25" rx="4" fill="#EC4899"/>
+  <text x="400" y="387" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">virtio-vsock</text>
+  <text x="470" y="387" fill="#94A3B8" font-family="system-ui" font-size="10">(CID=3)</text>
+
+  <!-- Guest Section -->
+  <g filter="url(#dropShadow)">
+    <rect x="30" y="405" width="740" height="80" rx="10" fill="url(#guestGradient)"/>
+    <text x="55" y="435" fill="white" font-family="system-ui" font-size="14" font-weight="600">Guest</text>
+  </g>
+
+  <!-- infra.operator (guest) -->
+  <rect x="60" y="445" width="680" height="30" rx="4" fill="#0F172A"/>
+  <text x="90" y="465" fill="#10B981" font-family="system-ui" font-size="11" font-weight="500">infra.operator guest</text>
+  <text x="300" y="465" fill="#94A3B8" font-family="monospace" font-size="10">vsock.Listen(CID=3, Port=5000)</text>
+  <text x="550" y="465" fill="#64748B" font-family="system-ui" font-size="10">Accept connections, handle jobs</text>
+
+  <!-- Connection arrows -->
+  <defs>
+    <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+  <path d="M400 175 L400 210" stroke="#94A3B8" stroke-width="2" fill="none" marker-end="url(#arrowDown)"/>
+  <path d="M400 360 L400 405" stroke="#94A3B8" stroke-width="2" fill="none" marker-end="url(#arrowDown)"/>
+</svg>

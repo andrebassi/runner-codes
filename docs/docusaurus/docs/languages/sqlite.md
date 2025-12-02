@@ -1,0 +1,168 @@
+---
+title: 'SQLite'
+description: 'SQLite database execution'
+---
+
+## Overview
+
+SQLite is a lightweight embedded SQL database engine. LLM-Firecracker provides SQLite for executing SQL queries in an isolated environment.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Base OS | Alpine Linux 3.19 |
+| Version | SQLite 3.44.2 |
+| Rootfs Size | 200 MB |
+| Execution | Interpreted (stdin) |
+| File Extension | `.sql` |
+| Run Command | `sqlite3 :memory:` |
+| Execution Time | ~9ms |
+
+```bash title="1. Create Rootfs with infra.operator"
+sudo infra.operator rootfs create --name sqlite --size 200 --base alpine --packages "sqlite"
+```
+
+```bash title="2. Create Snapshot"
+sudo infra.operator snapshot create --lang sqlite --mem 512 --vcpus 1
+```
+
+```bash title="3. Upload rootfs to S3"
+sudo infra.operator rootfs upload --lang sqlite --bucket llm-firecracker
+```
+
+```bash title="3. Upload snapshot to S3"
+sudo infra.operator snapshot upload --lang sqlite --bucket llm-firecracker
+```
+
+```bash title="4. Test Execution"
+sudo infra.operator host --lang sqlite --code "SELECT 1+1 AS result; SELECT 42 AS answer;" --mem 512 --vcpus 1 --snapshot
+```
+
+
+
+## Examples
+
+### Hello World
+
+```json title="Request"
+{
+  "trace_id": "sqlite-hello-001",
+  "lang": "sqlite",
+  "code": "SELECT 'Hello from SQLite!' AS message;",
+  "timeout": 10
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "sqlite-hello-001",
+  "stdout": "Hello from SQLite!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Create and Query Table
+
+```json title="Request"
+{
+  "trace_id": "sqlite-table-001",
+  "lang": "sqlite",
+  "code": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);\nINSERT INTO users VALUES (1, 'Alice', 30);\nINSERT INTO users VALUES (2, 'Bob', 25);\nINSERT INTO users VALUES (3, 'Charlie', 35);\nSELECT * FROM users;",
+  "timeout": 10
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "sqlite-table-001",
+  "stdout": "1|Alice|30\n2|Bob|25\n3|Charlie|35\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Aggregations
+
+```json title="Request"
+{
+  "trace_id": "sqlite-agg-001",
+  "lang": "sqlite",
+  "code": "CREATE TABLE sales (product TEXT, amount REAL);\nINSERT INTO sales VALUES ('A', 100), ('B', 200), ('A', 150), ('B', 300), ('A', 50);\n\nSELECT product, SUM(amount) as total, AVG(amount) as avg, COUNT(*) as count\nFROM sales\nGROUP BY product\nORDER BY total DESC;",
+  "timeout": 10
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "sqlite-agg-001",
+  "stdout": "B|500.0|250.0|2\nA|300.0|100.0|3\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Joins
+
+```json title="Request"
+{
+  "trace_id": "sqlite-join-001",
+  "lang": "sqlite",
+  "code": "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, product TEXT);\n\nINSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob');\nINSERT INTO orders VALUES (1, 1, 'Book'), (2, 1, 'Pen'), (3, 2, 'Laptop');\n\nSELECT c.name, o.product\nFROM customers c\nJOIN orders o ON c.id = o.customer_id;",
+  "timeout": 10
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "sqlite-join-001",
+  "stdout": "Alice|Book\nAlice|Pen\nBob|Laptop\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Complex Test: Comprehensive SQLite
+
+```json title="Request"
+{
+  "trace_id": "sqlite-complex-001",
+  "lang": "sqlite",
+  "code": ".headers on\n.mode column\n\n-- Test 1: Create schema\nSELECT '=== SQLite Complex Test ===' AS message;\nSELECT '';\nSELECT '1. Create schema:' AS test;\n\nCREATE TABLE employees (\n    id INTEGER PRIMARY KEY,\n    name TEXT NOT NULL,\n    department TEXT,\n    salary REAL,\n    hire_date DATE\n);\n\nCREATE TABLE departments (\n    name TEXT PRIMARY KEY,\n    budget REAL\n);\n\nINSERT INTO departments VALUES ('Engineering', 500000), ('Sales', 300000), ('HR', 150000);\n\nINSERT INTO employees VALUES \n    (1, 'Alice', 'Engineering', 75000, '2020-01-15'),\n    (2, 'Bob', 'Engineering', 85000, '2019-03-20'),\n    (3, 'Charlie', 'Sales', 65000, '2021-06-01'),\n    (4, 'Diana', 'Sales', 70000, '2020-09-15'),\n    (5, 'Eve', 'HR', 55000, '2018-04-10');\n\nSELECT '   Tables created successfully' AS result;\n\n-- Test 2: Basic queries\nSELECT '';\nSELECT '2. Basic queries:' AS test;\nSELECT '   ' || name || ' - $' || salary AS employees FROM employees ORDER BY salary DESC;\n\n-- Test 3: Aggregations\nSELECT '';\nSELECT '3. Aggregations by department:' AS test;\nSELECT \n    '   ' || department || ': ' || COUNT(*) || ' employees, avg $' || ROUND(AVG(salary), 0) AS stats\nFROM employees\nGROUP BY department;\n\n-- Test 4: Joins\nSELECT '';\nSELECT '4. Department budgets and spend:' AS test;\nSELECT \n    '   ' || d.name || ': Budget $' || d.budget || ', Spend $' || COALESCE(SUM(e.salary), 0) AS budget_info\nFROM departments d\nLEFT JOIN employees e ON d.name = e.department\nGROUP BY d.name;\n\n-- Test 5: Subqueries\nSELECT '';\nSELECT '5. Above average salary:' AS test;\nSELECT '   ' || name || ' - $' || salary AS high_earners\nFROM employees\nWHERE salary > (SELECT AVG(salary) FROM employees);\n\n-- Test 6: Window functions\nSELECT '';\nSELECT '6. Salary rank by department:' AS test;\nSELECT \n    '   ' || name || ' (' || department || '): Rank ' || \n    RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS ranking\nFROM employees;\n\n-- Test 7: Date operations\nSELECT '';\nSELECT '7. Tenure (years):' AS test;\nSELECT \n    '   ' || name || ': ' || \n    CAST((julianday('2024-01-01') - julianday(hire_date)) / 365 AS INTEGER) || ' years' AS tenure\nFROM employees\nORDER BY hire_date;\n\n-- Test 8: Common Table Expressions (CTE)\nSELECT '';\nSELECT '8. CTE - Top earner per dept:' AS test;\nWITH RankedEmployees AS (\n    SELECT \n        name,\n        department,\n        salary,\n        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) as rn\n    FROM employees\n)\nSELECT '   ' || department || ': ' || name || ' ($' || salary || ')' AS top_earners\nFROM RankedEmployees\nWHERE rn = 1;\n\nSELECT '';\nSELECT '=== All tests passed ===' AS message;",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "sqlite-complex-001",
+  "stdout": "message\n=== SQLite Complex Test ===\n\n\ntest\n1. Create schema:\nresult\n   Tables created successfully\n\ntest\n2. Basic queries:\nemployees\n   Bob - $85000.0\n   Alice - $75000.0\n   Diana - $70000.0\n   Charlie - $65000.0\n   Eve - $55000.0\n\ntest\n3. Aggregations by department:\nstats\n   Engineering: 2 employees, avg $80000\n   HR: 1 employees, avg $55000\n   Sales: 2 employees, avg $67500\n\ntest\n4. Department budgets and spend:\nbudget_info\n   Engineering: Budget $500000.0, Spend $160000.0\n   HR: Budget $150000.0, Spend $55000.0\n   Sales: Budget $300000.0, Spend $135000.0\n\ntest\n5. Above average salary:\nhigh_earners\n   Alice - $75000.0\n   Bob - $85000.0\n\ntest\n6. Salary rank by department:\nranking\n   Bob (Engineering): Rank 1\n   Alice (Engineering): Rank 2\n   Eve (HR): Rank 1\n   Diana (Sales): Rank 1\n   Charlie (Sales): Rank 2\n\ntest\n7. Tenure (years):\ntenure\n   Eve: 5 years\n   Bob: 4 years\n   Alice: 3 years\n   Diana: 3 years\n   Charlie: 2 years\n\ntest\n8. CTE - Top earner per dept:\ntop_earners\n   Engineering: Bob ($85000.0)\n   HR: Eve ($55000.0)\n   Sales: Diana ($70000.0)\n\nmessage\n=== All tests passed ===\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Limitations
+
+:::warning
+
+  The SQLite environment has the following limitations:
+
+:::
+
+1. **In-memory database**: Data not persisted after execution
+2. **No extensions**: Only core SQLite functionality
+3. **No network**: Remote database access not available
+4. **Memory limit**: 512 MiB
+
+## Best Practices
+
+
+    Wrap multiple INSERT/UPDATE in BEGIN/COMMIT for performance.
+
+
+
+    Use CREATE INDEX for frequently queried columns.
+
+

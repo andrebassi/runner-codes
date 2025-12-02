@@ -1,0 +1,394 @@
+---
+title: 'API Overview'
+description: 'Job execution API and vsock communication protocol'
+---
+
+## Overview
+
+LLM-Firecracker uses a JSON-based API over virtio-vsock for communication between the host and guest components of infra.operator. This provides low-latency, secure communication without network stack overhead.
+
+## Communication Flow
+
+<Frame>
+  <img src="/images/communication-flow.svg" alt="Communication Flow Sequence Diagram" />
+</Frame>
+
+## Protocol Layers
+
+### Layer 1: Vsock Connection
+
+The host connects to Firecracker's vsock Unix Domain Socket (UDS):
+
+```
+/tmp/fc-{instance_id}.vsock
+```
+
+### Layer 2: Firecracker Vsock Multiplexer
+
+After connecting to the UDS, the host sends a text command to connect to a specific guest port:
+
+```
+CONNECT 5000\n
+```
+
+The guest responds:
+```
+OK 5000\n
+```
+
+### Layer 3: Message Framing
+
+All messages use a 4-byte big-endian length prefix:
+
+<Frame>
+  <img src="/images/message-framing.svg" alt="Message Framing Protocol" />
+</Frame>
+
+Example (Python):
+```python
+import struct
+
+def send_message(conn, data):
+    payload = json.dumps(data).encode('utf-8')
+    length = struct.pack('>I', len(payload))  # Big-endian unsigned int
+    conn.sendall(length + payload)
+
+def recv_message(conn):
+    length_bytes = conn.recv(4)
+    length = struct.unpack('>I', length_bytes)[0]
+    payload = conn.recv(length)
+    return json.loads(payload.decode('utf-8'))
+```
+
+### Layer 4: JSON Messages
+
+Messages are JSON objects with defined schemas for requests and responses.
+
+## HTTP API
+
+### POST /api/v1/run
+
+Execute code in a Firecracker microVM.
+
+**Request:**
+```json
+{
+  "language": "python",
+  "stdin": "Peter",
+  "files": [
+    {
+      "name": "main.py",
+      "content": "import sys\nname = sys.stdin.readline()\nprint('Hello ' + name)"
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "stdout": "Hello Peter\n",
+  "stderr": null,
+  "exception": null,
+  "executionTime": 41
+}
+```
+
+### Batch Execution
+
+Pass `stdin` as an array to execute the same code with multiple inputs:
+
+**Request:**
+```json
+{
+  "language": "python",
+  "stdin": ["Peter", "Brian", "Meg"],
+  "files": [
+    {
+      "name": "main.py",
+      "content": "import sys\nname = sys.stdin.readline()\nprint('Hello ' + name)"
+    }
+  ]
+}
+```
+
+**Response (Array):**
+```json
+[
+  {
+    "status": "success",
+    "stdout": "Hello Peter\n",
+    "stderr": null,
+    "exception": null,
+    "executionTime": 30,
+    "stdin": "Peter"
+  },
+  {
+    "status": "success",
+    "stdout": "Hello Brian\n",
+    "stderr": null,
+    "exception": null,
+    "executionTime": 26,
+    "stdin": "Brian"
+  },
+  {
+    "status": "success",
+    "stdout": "Hello Meg\n",
+    "stderr": null,
+    "exception": null,
+    "executionTime": 33,
+    "stdin": "Meg"
+  }
+]
+```
+
+## Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `status` | `success` or `failed` |
+| `stdout` | Standard output of the code execution |
+| `stderr` | Standard error (null if empty) |
+| `exception` | Exception details (Timeout, Compilation failure, etc.) |
+| `executionTime` | Time taken to execute in milliseconds |
+| `stdin` | Echo of stdin value (batch execution only) |
+| `error` | Error message when `status: failed` |
+
+## Error Codes
+
+| Error | Description |
+|-------|-------------|
+| `E001: operation timed out` | Execution timeout exceeded |
+| `E002: API quota exceeded` | Rate limit reached |
+| `E003: invalid access_token` | Invalid authentication |
+| `E004: access_token missing` | No token provided |
+| `E005: stdin too long` | STDIN exceeds 1MB limit |
+| `E006: unsupported language xyz` | Language not supported |
+
+### Error Response Examples
+
+**Timeout:**
+```json
+{
+  "status": "success",
+  "exception": "Timeout",
+  "executionTime": 30000
+}
+```
+
+**Unsupported Language:**
+```json
+{
+  "status": "failed",
+  "error": "E006: unsupported language brainfuck"
+}
+```
+
+**STDIN Too Long:**
+```json
+{
+  "status": "failed",
+  "error": "E005: stdin too long"
+}
+```
+
+## Vsock Protocol (Internal)
+
+### Job Request (Internal Format)
+
+```json
+{
+  "trace_id": "tr-1764388648079963068",
+  "lang": "python",
+  "code": "print('Hello, World!')",
+  "timeout": 30
+}
+```
+
+### Job Response (Internal Format)
+
+```json
+{
+  "trace_id": "tr-1764388648079963068",
+  "status": "success",
+  "stdout": "Hello, World!\n",
+  "stderr": null,
+  "exception": null,
+  "executionTime": 41
+}
+```
+
+## Supported Languages
+
+LLM-Firecracker supports **45 programming languages**. Here are the most common:
+
+| Language | Identifier | Execution Method |
+|----------|------------|------------------|
+| Python | `python` | `python3 script.py` |
+| Node.js | `node` | `node script.js` |
+| TypeScript | `typescript` | `ts-node script.ts` |
+| Go | `go` | `go run script.go` |
+| Rust | `rust` | `rustc script.rs -o bin && ./bin` |
+| Java | `java` | `javac Main.java && java Main` |
+| Kotlin | `kotlin` | `kotlinc -include-runtime -d Main.jar && java -jar Main.jar` |
+| C | `c` | `gcc script.c -o bin && ./bin` |
+| C++ | `cpp` | `g++ script.cpp -o bin && ./bin` |
+| Ruby | `ruby` | `ruby script.rb` |
+| PHP | `php` | `php script.php` |
+| Bash | `bash` | `bash script.sh` |
+| Haskell | `haskell` | `ghc -o bin script.hs && ./bin` |
+| Elixir | `elixir` | `elixir script.exs` |
+| Julia | `julia` | `julia script.jl` |
+| R | `r` | `Rscript script.R` |
+
+<Note>
+  See [Language Support Overview](/languages/overview) for the complete list of 45 supported languages with performance benchmarks.
+</Note>
+
+## Quick Reference
+
+<CardGroup cols={2}>
+  <Card
+    title="Job Request"
+    icon="paper-plane"
+    href="/api-reference/job-request"
+  >
+    Request schema and parameters
+  </Card>
+  <Card
+    title="Job Response"
+    icon="inbox"
+    href="/api-reference/job-response"
+  >
+    Response schema and error handling
+  </Card>
+  <Card
+    title="Vsock Protocol"
+    icon="plug"
+    href="/api-reference/vsock-protocol"
+  >
+    Low-level vsock communication details
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/api-reference/job-response#error-handling"
+  >
+    Error codes and troubleshooting
+  </Card>
+</CardGroup>
+
+## Code Examples
+
+### Go (infra.operator host)
+
+```go
+// Connect to vsock UDS
+conn, err := net.Dial("unix", "/tmp/fc-12345.vsock")
+if err != nil {
+    return err
+}
+
+// Send CONNECT command
+fmt.Fprintf(conn, "CONNECT 5000\n")
+
+// Read response
+response, _ := bufio.NewReader(conn).ReadString('\n')
+if !strings.HasPrefix(response, "OK") {
+    return errors.New("vsock connect failed")
+}
+
+// Send job request
+job := Job{
+    TraceID: "tr-123",
+    Lang:    "python",
+    Code:    "print('Hello')",
+    Timeout: 30,
+}
+sendMessage(conn, job)
+
+// Receive result
+result := recvMessage(conn)
+```
+
+### Python (Client Example)
+
+```python
+import json
+import socket
+import struct
+
+def execute_code(sock_path, port, lang, code, timeout=30):
+    # Connect to vsock UDS
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(sock_path)
+
+    # Connect to guest port
+    sock.send(f"CONNECT {port}\n".encode())
+    response = sock.recv(100).decode()
+    if not response.startswith("OK"):
+        raise Exception("Vsock connect failed")
+
+    # Send job
+    job = {
+        "trace_id": f"tr-{uuid.uuid4().hex[:16]}",
+        "lang": lang,
+        "code": code,
+        "timeout": timeout
+    }
+    payload = json.dumps(job).encode()
+    sock.send(struct.pack('>I', len(payload)) + payload)
+
+    # Receive result
+    length = struct.unpack('>I', sock.recv(4))[0]
+    result = json.loads(sock.recv(length).decode())
+
+    sock.close()
+    return result
+```
+
+## Performance Characteristics
+
+| Metric | Value |
+|--------|-------|
+| Vsock latency | < 1ms |
+| Message overhead | 4 bytes per message |
+| Max payload size | Limited by memory |
+| Concurrent connections | 1 per VM (current) |
+
+## Security Considerations
+
+- Vsock communication is isolated within the VM boundary
+- No network exposure; only host can communicate with guest
+- Each VM has unique vsock UDS path
+- Guest CID (Context ID) is fixed at 3 (Firecracker default)
+
+## Debugging
+
+### Enable Verbose Logging
+
+```bash
+sudo infra.operator host \
+  --kernel /srv/firecracker/vmlinux \
+  --rootfs /srv/firecracker/rootfs.ext4 \
+  --lang python \
+  --code "print('test')" \
+  --verbose  # Enable debug output
+```
+
+### Monitor Vsock Traffic
+
+```bash
+# On host, before starting VM
+sudo strace -e trace=read,write -s 1000 infra.operator host ...
+```
+
+### Check Guest Logs
+
+```bash
+# SSH into instance, mount rootfs
+sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt
+cat /mnt/var/log/infra.operator.log
+sudo umount /mnt
+```

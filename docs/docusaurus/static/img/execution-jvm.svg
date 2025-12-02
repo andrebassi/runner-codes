@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300">
+  <defs>
+    <linearGradient id="cardGradJVM" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0EA5E9;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#0284C7;stop-opacity:0.2" />
+    </linearGradient>
+    <marker id="arrowheadJVM" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#0EA5E9" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="300" fill="#0F172A"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="20" font-weight="bold">JVM Languages Execution Flow</text>
+  <text x="400" y="50" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">Java, Kotlin, Scala, Groovy, Clojure</text>
+
+  <!-- Code Input Card -->
+  <g transform="translate(20, 80)">
+    <rect x="0" y="0" width="130" height="140" rx="8" fill="url(#cardGradJVM)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="25" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="13" font-weight="bold">Code Input</text>
+
+    <rect x="45" y="40" width="40" height="30" rx="4" fill="none" stroke="#0EA5E9" stroke-width="2"/>
+    <line x1="53" y1="50" x2="70" y2="50" stroke="#0EA5E9" stroke-width="2"/>
+    <line x1="53" y1="60" x2="77" y2="60" stroke="#0EA5E9" stroke-width="2"/>
+
+    <text x="65" y="90" text-anchor="middle" fill="#CBD5E1" font-family="system-ui" font-size="10">Source code</text>
+    <text x="65" y="105" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="9">Main.java/kt</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M160 150 L180 150" stroke="#0EA5E9" stroke-width="2" fill="none" marker-end="url(#arrowheadJVM)"/>
+
+  <!-- Compilation Card -->
+  <g transform="translate(190, 80)">
+    <rect x="0" y="0" width="130" height="140" rx="8" fill="url(#cardGradJVM)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="25" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="13" font-weight="bold">Compile</text>
+
+    <!-- Bytecode icon -->
+    <circle cx="65" cy="55" r="18" fill="none" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="61" text-anchor="middle" fill="#0EA5E9" font-family="monospace" font-size="10" font-weight="bold">.class</text>
+
+    <text x="65" y="90" text-anchor="middle" fill="#CBD5E1" font-family="system-ui" font-size="10">javac/kotlinc</text>
+    <text x="65" y="105" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="9">→ bytecode</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M330 150 L350 150" stroke="#0EA5E9" stroke-width="2" fill="none" marker-end="url(#arrowheadJVM)"/>
+
+  <!-- Guest Runner Card -->
+  <g transform="translate(360, 80)">
+    <rect x="0" y="0" width="130" height="140" rx="8" fill="url(#cardGradJVM)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="25" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="13" font-weight="bold">Guest Runner</text>
+
+    <!-- VM icon -->
+    <circle cx="65" cy="55" r="18" fill="none" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="61" text-anchor="middle" fill="#0EA5E9" font-family="monospace" font-size="10" font-weight="bold">VM</text>
+
+    <text x="65" y="90" text-anchor="middle" fill="#CBD5E1" font-family="system-ui" font-size="10">Check errors</text>
+    <text x="65" y="105" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="9">validate build</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <path d="M500 150 L520 150" stroke="#0EA5E9" stroke-width="2" fill="none" marker-end="url(#arrowheadJVM)"/>
+
+  <!-- JVM Execution Card -->
+  <g transform="translate(530, 80)">
+    <rect x="0" y="0" width="130" height="140" rx="8" fill="url(#cardGradJVM)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="65" y="25" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="13" font-weight="bold">JVM Execute</text>
+
+    <!-- Java cup icon -->
+    <circle cx="65" cy="55" r="18" fill="none" stroke="#0EA5E9" stroke-width="2"/>
+    <path d="M60 48 L60 62 L73 55 Z" fill="#0EA5E9"/>
+
+    <text x="65" y="90" text-anchor="middle" fill="#CBD5E1" font-family="system-ui" font-size="10">Run on JVM</text>
+    <text x="65" y="105" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="9">java Main</text>
+  </g>
+
+  <!-- Arrow 4 -->
+  <path d="M670 150 L690 150" stroke="#0EA5E9" stroke-width="2" fill="none" marker-end="url(#arrowheadJVM)"/>
+
+  <!-- Output Card -->
+  <g transform="translate(700, 80)">
+    <rect x="0" y="0" width="80" height="140" rx="8" fill="url(#cardGradJVM)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="40" y="25" text-anchor="middle" fill="#F8FAFC" font-family="system-ui" font-size="13" font-weight="bold">Output</text>
+
+    <!-- Terminal icon -->
+    <rect x="20" y="40" width="40" height="30" rx="4" fill="none" stroke="#0EA5E9" stroke-width="2"/>
+    <line x1="25" y1="48" x2="30" y2="53" stroke="#0EA5E9" stroke-width="2"/>
+    <line x1="30" y1="53" x2="25" y2="58" stroke="#0EA5E9" stroke-width="2"/>
+
+    <text x="40" y="90" text-anchor="middle" fill="#CBD5E1" font-family="system-ui" font-size="10">Result</text>
+    <text x="40" y="105" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="9">exit code</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="400" y="270" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="11">Compile to bytecode, execute on Java Virtual Machine</text>
+</svg>

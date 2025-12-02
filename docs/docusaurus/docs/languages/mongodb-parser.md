@@ -1,0 +1,347 @@
+---
+title: 'MongoDB Parser'
+description: 'MongoDB query validation without database connection'
+---
+
+## Overview
+
+MongoDB Parser validates MongoDB queries and operations WITHOUT requiring a real MongoDB database. It parses JSON query documents and validates their structure.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Language ID | `mongodb-parser` |
+| Base OS | Alpine Linux 3.20 |
+| Runtime | Node.js 22 |
+| Rootfs Size | 300 MB |
+| Memory | 256 MB |
+| File Extension | `.json` |
+| Execution Time | ~2.7s |
+
+## Supported Operations
+
+| Operation | Description |
+|-----------|-------------|
+| `find` | Query documents with filter and projection |
+| `insertOne` | Insert single document |
+| `insertMany` | Insert multiple documents |
+| `updateOne/updateMany` | Update documents |
+| `deleteOne/deleteMany` | Delete documents |
+| `aggregate` | Aggregation pipeline |
+
+## Infrastructure
+
+### Step 1: Create Docker Directory
+
+```bash title="Create working directory for MongoDB parser"
+mkdir -p /tmp/docker/mongodb-parser
+cd /tmp/docker/mongodb-parser
+```
+
+### Step 2: Create mongodb-run.js Script
+
+```bash title="Create Node.js parser wrapper script"
+cat > mongodb-run.js << 'EOF'
+#!/usr/bin/env node
+const fs = require('fs');
+
+const QUERY_OPERATORS = [
+    '$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin',
+    '$and', '$or', '$not', '$nor', '$exists', '$type',
+    '$regex', '$text', '$where', '$all', '$elemMatch', '$size',
+    '$expr', '$jsonSchema', '$mod', '$geoIntersects', '$geoWithin',
+    '$near', '$nearSphere'
+];
+
+const AGGREGATION_STAGES = [
+    '$match', '$group', '$sort', '$project', '$limit', '$skip',
+    '$unwind', '$lookup', '$addFields', '$replaceRoot', '$facet',
+    '$bucket', '$bucketAuto', '$count', '$graphLookup', '$sample',
+    '$sortByCount', '$merge', '$out', '$redact', '$unionWith'
+];
+
+function validateOperation(op) {
+    const result = {
+        valid: true,
+        operation: null,
+        collection: null,
+        details: [],
+        warnings: []
+    };
+
+    if (!op.collection || typeof op.collection !== 'string') {
+        result.valid = false;
+        result.details.push('Missing or invalid "collection" field');
+        return result;
+    }
+    result.collection = op.collection;
+
+    if (op.filter !== undefined || op.projection !== undefined) {
+        result.operation = 'find';
+        result.details.push(`Filter: ${JSON.stringify(op.filter || {})}`);
+        if (op.projection) {
+            result.details.push(`Projection: ${JSON.stringify(op.projection)}`);
+        }
+        if (op.sort) {
+            result.details.push(`Sort: ${JSON.stringify(op.sort)}`);
+        }
+        if (op.limit) {
+            result.details.push(`Limit: ${op.limit}`);
+        }
+    } else if (op.document !== undefined) {
+        result.operation = 'insertOne';
+        if (typeof op.document !== 'object' || op.document === null) {
+            result.valid = false;
+            result.details.push('Invalid "document" field - must be an object');
+        } else {
+            result.details.push(`Document keys: ${Object.keys(op.document).join(', ')}`);
+        }
+    } else if (op.documents !== undefined) {
+        result.operation = 'insertMany';
+        if (!Array.isArray(op.documents)) {
+            result.valid = false;
+            result.details.push('Invalid "documents" field - must be an array');
+        } else {
+            result.details.push(`Documents count: ${op.documents.length}`);
+        }
+    } else if (op.update !== undefined) {
+        result.operation = op.multi ? 'updateMany' : 'updateOne';
+        if (!op.filter) {
+            result.warnings.push('No filter specified - will match first document');
+        }
+        result.details.push(`Filter: ${JSON.stringify(op.filter || {})}`);
+        result.details.push(`Update: ${JSON.stringify(op.update)}`);
+        if (op.upsert) {
+            result.details.push('Upsert: enabled');
+        }
+    } else if (op.pipeline !== undefined) {
+        result.operation = 'aggregate';
+        if (!Array.isArray(op.pipeline)) {
+            result.valid = false;
+            result.details.push('Invalid "pipeline" field - must be an array');
+        } else {
+            result.details.push(`Pipeline stages: ${op.pipeline.length}`);
+            op.pipeline.forEach((stage, i) => {
+                const stageType = Object.keys(stage)[0];
+                result.details.push(`  ${i + 1}. ${stageType}`);
+            });
+        }
+    } else if (op.delete !== undefined || op.deleteOne !== undefined || op.deleteMany !== undefined) {
+        result.operation = op.multi || op.deleteMany ? 'deleteMany' : 'deleteOne';
+        const filter = op.delete || op.deleteOne || op.deleteMany;
+        result.details.push(`Filter: ${JSON.stringify(filter)}`);
+    } else {
+        result.valid = false;
+        result.details.push('Unknown operation type. Expected: filter, document, documents, update, or pipeline');
+    }
+
+    return result;
+}
+
+function main() {
+    const args = process.argv.slice(2);
+    if (args.length === 0) {
+        console.error('Usage: mongodb-run.js <file.json>');
+        process.exit(1);
+    }
+
+    const queryFile = args[0];
+    let content;
+    try {
+        content = fs.readFileSync(queryFile, 'utf8').trim();
+    } catch (err) {
+        console.error(`Error reading file: ${err.message}`);
+        process.exit(1);
+    }
+
+    if (!content) {
+        console.error('Error: Empty query file');
+        process.exit(1);
+    }
+
+    let query;
+    try {
+        query = JSON.parse(content);
+    } catch (err) {
+        console.log('=== MongoDB Query Validation ===');
+        console.log('Status: INVALID');
+        console.log('');
+        console.log('=== Error Details ===');
+        console.error(`JSON Parse Error: ${err.message}`);
+        process.exit(1);
+    }
+
+    const results = [];
+    const queries = Array.isArray(query) ? query : [query];
+
+    queries.forEach((q, i) => {
+        const result = validateOperation(q);
+        results.push({ index: i, ...result });
+    });
+
+    console.log('=== MongoDB Query Validation ===');
+    const allValid = results.every(r => r.valid);
+    console.log(`Status: ${allValid ? 'VALID' : 'INVALID'}`);
+    console.log('');
+
+    results.forEach((r, i) => {
+        console.log(`=== Query ${i + 1} ===`);
+        console.log(`Operation: ${r.operation || 'unknown'}`);
+        console.log(`Collection: ${r.collection || 'not specified'}`);
+        console.log(`Valid: ${r.valid ? 'YES' : 'NO'}`);
+
+        if (r.details.length > 0) {
+            console.log('Details:');
+            r.details.forEach(d => console.log(`  ${d}`));
+        }
+
+        if (r.warnings.length > 0) {
+            console.log('Warnings:');
+            r.warnings.forEach(w => console.log(`  - ${w}`));
+        }
+        console.log('');
+    });
+
+    process.exit(allValid ? 0 : 1);
+}
+
+main();
+EOF
+```
+
+### Step 3: Create Dockerfile
+
+```bash title="Create Dockerfile with Node.js and parser dependencies"
+cat > Dockerfile << 'EOF'
+FROM node:22-alpine3.20
+
+WORKDIR /opt/mongodb-parser
+
+COPY mongodb-run.js /usr/local/bin/mongodb-run
+RUN chmod +x /usr/local/bin/mongodb-run
+
+CMD ["node", "--version"]
+EOF
+```
+
+### Step 4: Build and Push Docker Image
+
+```bash title="Build and push Docker image to ttl.sh registry"
+docker build -t ttl.sh/llm-fc-mongodb-parser:24h .
+docker push ttl.sh/llm-fc-mongodb-parser:24h
+```
+
+### Step 5: Create Rootfs
+
+```bash title="Create rootfs from Docker image"
+sudo infra.operator rootfs from-docker \
+    --name mongodb-parser \
+    --image ttl.sh/llm-fc-mongodb-parser:24h \
+    --size 300
+```
+
+### Step 6: Create Snapshot
+
+```bash title="Create VM snapshot for fast boot"
+sudo infra.operator snapshot create \
+    --lang mongodb-parser \
+    --mem 256 \
+    --vcpus 1
+```
+
+### Step 7: Upload to S3
+
+```bash title="Upload rootfs and snapshot to S3 bucket"
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_DEFAULT_REGION="us-east-1"
+
+sudo -E infra.operator rootfs upload --lang mongodb-parser --bucket llm-firecracker
+sudo -E infra.operator snapshot upload --lang mongodb-parser --bucket llm-firecracker
+```
+
+### Step 8: Test Execution
+
+```bash title="Test parser with sample SQL"
+sudo infra.operator host \
+    --lang mongodb-parser \
+    --snapshot \
+    --mem 256 \
+    --vcpus 1 \
+    --code '{"collection": "users", "filter": {"age": {"$gt": 18}}}'
+```
+
+## Examples
+
+### Find Query
+
+```json title="Request"
+{
+  "trace_id": "mongo-find-001",
+  "lang": "mongodb-parser",
+  "code": "{\"collection\": \"users\", \"filter\": {\"age\": 25}}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "mongo-find-001",
+  "stdout": "=== MongoDB Query Validation ===\nStatus: VALID\n\n=== Query 1 ===\nOperation: find\nCollection: users\nValid: YES\nDetails:\n  Filter: {\"age\":25}\n\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Aggregation Pipeline
+
+```json title="Request"
+{
+  "trace_id": "mongo-agg-001",
+  "lang": "mongodb-parser",
+  "code": "{\"collection\": \"orders\", \"pipeline\": [{\"$match\": {\"status\": \"completed\"}}, {\"$group\": {\"_id\": \"$customer_id\", \"total\": {\"$sum\": \"$amount\"}}}]}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "mongo-agg-001",
+  "stdout": "=== MongoDB Query Validation ===\nStatus: VALID\n\n=== Query 1 ===\nOperation: aggregate\nCollection: orders\nValid: YES\nDetails:\n  Pipeline stages: 2\n  1. $match\n  2. $group\n\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Insert Operation
+
+```json title="Request"
+{
+  "trace_id": "mongo-insert-001",
+  "lang": "mongodb-parser",
+  "code": "{\"collection\": \"users\", \"document\": {\"name\": \"John\", \"email\": \"john@example.com\", \"age\": 30}}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "mongo-insert-001",
+  "stdout": "=== MongoDB Query Validation ===\nStatus: VALID\n\n=== Query 1 ===\nOperation: insertOne\nCollection: users\nValid: YES\nDetails:\n  Document keys: name, email, age\n\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Executor Configuration
+
+```go title="Go code"
+// pkg/guest/executor.go
+"mongodb-parser": {
+    Name:      "mongodb-parser",
+    Extension: ".json",
+    Command:   "/usr/local/bin/node",
+    Args:      []string{"/usr/local/bin/mongodb-run"},
+},
+```

@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400">
+  <defs>
+    <linearGradient id="stepGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1D4ED8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stepGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EA580C;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stepGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stepGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stepGrad5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#EC4899;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DB2777;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="400" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="white" font-family="system-ui" font-size="20" font-weight="600">Data Flow: Code Execution</text>
+
+  <!-- Step 1 -->
+  <g filter="url(#glow)">
+    <circle cx="100" cy="150" r="45" fill="url(#stepGrad1)"/>
+    <text x="100" y="145" text-anchor="middle" fill="white" font-family="system-ui" font-size="24" font-weight="700">1</text>
+    <text x="100" y="165" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="10">Submit</text>
+  </g>
+  <text x="100" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="13" font-weight="500">Job Request</text>
+  <text x="100" y="240" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">lang + code</text>
+  <text x="100" y="258" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">+ timeout</text>
+
+  <!-- Arrow 1-2 -->
+  <path d="M 155 150 L 215 150" stroke="#475569" stroke-width="3" fill="none"/>
+  <polygon points="225,150 213,143 213,157" fill="#475569"/>
+
+  <!-- Step 2 -->
+  <g filter="url(#glow)">
+    <circle cx="280" cy="150" r="45" fill="url(#stepGrad2)"/>
+    <text x="280" y="145" text-anchor="middle" fill="white" font-family="system-ui" font-size="24" font-weight="700">2</text>
+    <text x="280" y="165" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="10">Start</text>
+  </g>
+  <text x="280" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="13" font-weight="500">Boot microVM</text>
+  <text x="280" y="240" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">Firecracker API</text>
+  <text x="280" y="258" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">~3 seconds</text>
+
+  <!-- Arrow 2-3 -->
+  <path d="M 335 150 L 395 150" stroke="#475569" stroke-width="3" fill="none"/>
+  <polygon points="405,150 393,143 393,157" fill="#475569"/>
+
+  <!-- Step 3 -->
+  <g filter="url(#glow)">
+    <circle cx="460" cy="150" r="45" fill="url(#stepGrad3)"/>
+    <text x="460" y="145" text-anchor="middle" fill="white" font-family="system-ui" font-size="24" font-weight="700">3</text>
+    <text x="460" y="165" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="10">Connect</text>
+  </g>
+  <text x="460" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="13" font-weight="500">Vsock Connect</text>
+  <text x="460" y="240" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">CONNECT 5000</text>
+  <text x="460" y="258" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">→ OK 5000</text>
+
+  <!-- Arrow 3-4 -->
+  <path d="M 515 150 L 575 150" stroke="#475569" stroke-width="3" fill="none"/>
+  <polygon points="585,150 573,143 573,157" fill="#475569"/>
+
+  <!-- Step 4 -->
+  <g filter="url(#glow)">
+    <circle cx="640" cy="150" r="45" fill="url(#stepGrad4)"/>
+    <text x="640" y="145" text-anchor="middle" fill="white" font-family="system-ui" font-size="24" font-weight="700">4</text>
+    <text x="640" y="165" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="10">Execute</text>
+  </g>
+  <text x="640" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="13" font-weight="500">Run Code</text>
+  <text x="640" y="240" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">infra.operator guest</text>
+  <text x="640" y="258" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">python/node/...</text>
+
+  <!-- Arrow 4-5 -->
+  <path d="M 695 150 L 755 150" stroke="#475569" stroke-width="3" fill="none"/>
+  <polygon points="765,150 753,143 753,157" fill="#475569"/>
+
+  <!-- Step 5 -->
+  <g filter="url(#glow)">
+    <circle cx="820" cy="150" r="45" fill="url(#stepGrad5)"/>
+    <text x="820" y="145" text-anchor="middle" fill="white" font-family="system-ui" font-size="24" font-weight="700">5</text>
+    <text x="820" y="165" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="10">Return</text>
+  </g>
+  <text x="820" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="13" font-weight="500">Result</text>
+  <text x="820" y="240" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">stdout + stderr</text>
+  <text x="820" y="258" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">+ exit_code</text>
+
+  <!-- Protocol detail box -->
+  <rect x="50" y="290" width="800" height="90" rx="8" fill="#1E293B" stroke="#334155"/>
+  <text x="70" y="320" fill="#94A3B8" font-family="system-ui" font-size="12" font-weight="500">Message Framing (4-byte length prefix):</text>
+
+  <!-- Request -->
+  <rect x="70" y="335" width="350" height="35" rx="4" fill="#0F172A"/>
+  <text x="85" y="358" fill="#3B82F6" font-family="monospace" font-size="11">[00 00 00 2B]</text>
+  <text x="175" y="358" fill="#94A3B8" font-family="monospace" font-size="11">{"trace_id":"t1","lang":"python","code":"..."}</text>
+
+  <!-- Response -->
+  <rect x="480" y="335" width="350" height="35" rx="4" fill="#0F172A"/>
+  <text x="495" y="358" fill="#10B981" font-family="monospace" font-size="11">[00 00 00 1F]</text>
+  <text x="585" y="358" fill="#94A3B8" font-family="monospace" font-size="11">{"stdout":"Hello\\n","exit_code":0}</text>
+</svg>

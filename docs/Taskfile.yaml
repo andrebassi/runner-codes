@@ -1,0 +1,415 @@
+version: '3'
+
+vars:
+  MINTLIFY_DIR: "{{.ROOT_DIR}}/mintlify"
+  OUTPUT_DIR: "{{.ROOT_DIR}}/static-html"
+  MINTLIFY_PORT: "3333"
+  MINTLIFY_URL: "http://localhost:{{.MINTLIFY_PORT}}"
+
+tasks:
+  # ===========================================
+  # SETUP TASKS
+  # ===========================================
+
+  setup:monolith:
+    desc: Install Monolith CLI for static HTML generation
+    cmds:
+      - |
+        echo "=== Installing Monolith ==="
+        if command -v monolith &> /dev/null; then
+          echo "Monolith already installed: $(monolith --version)"
+        elif command -v brew &> /dev/null; then
+          echo "Installing via Homebrew..."
+          brew install monolith
+        elif command -v cargo &> /dev/null; then
+          echo "Installing via Cargo..."
+          cargo install monolith
+        else
+          echo "ERROR: Neither brew nor cargo available"
+          echo "Install Homebrew: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+          echo "Or install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+          exit 1
+        fi
+        echo ""
+        echo "Monolith installed successfully!"
+        monolith --version
+
+  setup:all:
+    desc: Install all dependencies (Monolith + npm packages)
+    cmds:
+      - task: setup:monolith
+      - |
+        echo ""
+        echo "=== Installing npm dependencies for Mintlify ==="
+        cd {{.MINTLIFY_DIR}} && npm install
+
+  # ===========================================
+  # MINTLIFY SERVER
+  # ===========================================
+
+  mintlify:start:
+    desc: Start Mintlify dev server on port 3333
+    dir: "{{.MINTLIFY_DIR}}"
+    cmds:
+      - |
+        echo "=== Starting Mintlify Server ==="
+        echo "URL: {{.MINTLIFY_URL}}"
+        echo ""
+        npx mintlify dev --port {{.MINTLIFY_PORT}}
+
+  mintlify:start-bg:
+    desc: Start Mintlify in background
+    dir: "{{.MINTLIFY_DIR}}"
+    cmds:
+      - |
+        echo "=== Starting Mintlify in Background ==="
+        pkill -f "mintlify" || true
+        sleep 1
+        nohup npx mintlify dev --port {{.MINTLIFY_PORT}} > /tmp/mintlify.log 2>&1 &
+        echo "Waiting for server to start..."
+        sleep 8
+        if curl -s -o /dev/null -w "%{http_code}" {{.MINTLIFY_URL}} | grep -q "200\|307"; then
+          echo "Mintlify running at {{.MINTLIFY_URL}}"
+        else
+          echo "WARNING: Server may not be ready yet. Check /tmp/mintlify.log"
+        fi
+
+  mintlify:stop:
+    desc: Stop Mintlify server
+    cmds:
+      - |
+        echo "=== Stopping Mintlify ==="
+        pkill -f "mintlify" || true
+        echo "Mintlify stopped"
+
+  mintlify:status:
+    desc: Check Mintlify server status
+    cmds:
+      - |
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" {{.MINTLIFY_URL}} 2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "307" ]; then
+          echo "✓ Mintlify is running at {{.MINTLIFY_URL}} (HTTP $HTTP_CODE)"
+        else
+          echo "✗ Mintlify is NOT running (HTTP $HTTP_CODE)"
+        fi
+
+  # ===========================================
+  # STATIC HTML GENERATION WITH MONOLITH
+  # ===========================================
+
+  scrape:single:
+    desc: Scrape a single page with Monolith
+    vars:
+      PAGE: '{{.PAGE | default "/"}}'
+      OUTPUT: '{{.OUTPUT | default "index.html"}}'
+    cmds:
+      - |
+        mkdir -p {{.OUTPUT_DIR}}
+        echo "Scraping: {{.MINTLIFY_URL}}{{.PAGE}}"
+        monolith {{.MINTLIFY_URL}}{{.PAGE}} \
+          --no-audio \
+          --no-video \
+          --no-fonts \
+          --isolate \
+          -o {{.OUTPUT_DIR}}/{{.OUTPUT}}
+        echo "Saved: {{.OUTPUT_DIR}}/{{.OUTPUT}}"
+
+  scrape:all:
+    desc: Scrape all documentation pages with Monolith
+    cmds:
+      - |
+        echo "=== Scraping LLM-Firecracker Documentation ==="
+        echo "Source: {{.MINTLIFY_URL}}"
+        echo "Output: {{.OUTPUT_DIR}}"
+        echo ""
+
+        # Check if Mintlify is running
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" {{.MINTLIFY_URL}} 2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "307" ]; then
+          echo "ERROR: Mintlify is not running at {{.MINTLIFY_URL}}"
+          echo "Run: task mintlify:start-bg"
+          exit 1
+        fi
+
+        mkdir -p {{.OUTPUT_DIR}}/{languages,cli,concepts,aws,tasks,api-reference,advanced}
+
+        # Define all pages to scrape
+        PAGES=(
+          "/:index.html"
+          "/introduction:introduction.html"
+          "/quickstart:quickstart.html"
+          "/architecture:architecture.html"
+          # CLI
+          "/cli/overview:cli/overview.html"
+          "/cli/rootfs:cli/rootfs.html"
+          "/cli/snapshot:cli/snapshot.html"
+          "/cli/run:cli/run.html"
+          "/cli/http-api:cli/http-api.html"
+          # Concepts
+          "/concepts/firecracker:concepts/firecracker.html"
+          "/concepts/vsock-communication:concepts/vsock-communication.html"
+          "/concepts/rootfs-images:concepts/rootfs-images.html"
+          "/concepts/guest-runner:concepts/guest-runner.html"
+          # AWS
+          "/aws/overview:aws/overview.html"
+          "/aws/ec2-setup:aws/ec2-setup.html"
+          "/aws/s3-storage:aws/s3-storage.html"
+          "/aws/full-pipeline:aws/full-pipeline.html"
+          # Tasks
+          "/tasks/overview:tasks/overview.html"
+          "/tasks/build:tasks/build.html"
+          "/tasks/aws-infrastructure:tasks/aws-infrastructure.html"
+          "/tasks/rootfs-management:tasks/rootfs-management.html"
+          "/tasks/s3-operations:tasks/s3-operations.html"
+          "/tasks/testing:tasks/testing.html"
+          # API Reference
+          "/api-reference/overview:api-reference/overview.html"
+          "/api-reference/job-request:api-reference/job-request.html"
+          "/api-reference/job-response:api-reference/job-response.html"
+          "/api-reference/vsock-protocol:api-reference/vsock-protocol.html"
+          # Advanced
+          "/advanced/snapshots:advanced/snapshots.html"
+          "/advanced/security:advanced/security.html"
+          "/advanced/performance:advanced/performance.html"
+          "/advanced/troubleshooting:advanced/troubleshooting.html"
+          # Languages Overview
+          "/languages/overview:languages/overview.html"
+          "/languages/mega-runtime:languages/mega-runtime.html"
+          # Main Languages
+          "/languages/python:languages/python.html"
+          "/languages/nodejs:languages/nodejs.html"
+          "/languages/typescript:languages/typescript.html"
+          "/languages/go:languages/go.html"
+          "/languages/java:languages/java.html"
+          "/languages/bash:languages/bash.html"
+          # Systems
+          "/languages/rust:languages/rust.html"
+          "/languages/c:languages/c.html"
+          "/languages/cpp:languages/cpp.html"
+          # JVM
+          "/languages/kotlin:languages/kotlin.html"
+          "/languages/scala:languages/scala.html"
+          # Scripting
+          "/languages/ruby:languages/ruby.html"
+          "/languages/php:languages/php.html"
+          "/languages/perl:languages/perl.html"
+          "/languages/lua:languages/lua.html"
+          "/languages/tcl:languages/tcl.html"
+          # Functional
+          "/languages/haskell:languages/haskell.html"
+          "/languages/elixir:languages/elixir.html"
+          "/languages/erlang:languages/erlang.html"
+          "/languages/lisp:languages/lisp.html"
+          "/languages/scheme:languages/scheme.html"
+          # Scientific
+          "/languages/r:languages/r.html"
+          "/languages/julia:languages/julia.html"
+          "/languages/octave:languages/octave.html"
+          "/languages/fortran:languages/fortran.html"
+          # Others
+          "/languages/crystal:languages/crystal.html"
+          "/languages/nim:languages/nim.html"
+          "/languages/prolog:languages/prolog.html"
+          "/languages/pascal:languages/pascal.html"
+          "/languages/sqlite:languages/sqlite.html"
+          "/languages/cobol:languages/cobol.html"
+          "/languages/swift:languages/swift.html"
+          "/languages/dart:languages/dart.html"
+          # Database Parsers
+          "/languages/mysql-parser:languages/mysql-parser.html"
+          "/languages/postgresql-parser:languages/postgresql-parser.html"
+          "/languages/mariadb-parser:languages/mariadb-parser.html"
+          "/languages/sqlite-parser:languages/sqlite-parser.html"
+          "/languages/mongodb-parser:languages/mongodb-parser.html"
+          "/languages/redis-parser:languages/redis-parser.html"
+        )
+
+        TOTAL=${#PAGES[@]}
+        COUNT=0
+        FAILED=0
+
+        for entry in "${PAGES[@]}"; do
+          PAGE="${entry%%:*}"
+          OUTPUT="${entry#*:}"
+          COUNT=$((COUNT + 1))
+
+          echo "[$COUNT/$TOTAL] Scraping $PAGE -> $OUTPUT"
+
+          if monolith "{{.MINTLIFY_URL}}$PAGE" \
+            --no-audio \
+            --no-video \
+            --no-fonts \
+            --isolate \
+            -o "{{.OUTPUT_DIR}}/$OUTPUT" 2>/dev/null; then
+            echo "  ✓ OK"
+          else
+            echo "  ✗ FAILED"
+            FAILED=$((FAILED + 1))
+          fi
+        done
+
+        echo ""
+        echo "========================================="
+        echo "SCRAPE COMPLETE"
+        echo "========================================="
+        echo "Total:  $TOTAL pages"
+        echo "OK:     $((TOTAL - FAILED)) pages"
+        echo "Failed: $FAILED pages"
+        echo "Output: {{.OUTPUT_DIR}}"
+        echo ""
+        du -sh {{.OUTPUT_DIR}}
+
+  scrape:quick:
+    desc: Quick scrape of main pages only
+    cmds:
+      - |
+        echo "=== Quick Scrape (Main Pages Only) ==="
+        mkdir -p {{.OUTPUT_DIR}}/languages
+
+        PAGES=(
+          "/:index.html"
+          "/quickstart:quickstart.html"
+          "/architecture:architecture.html"
+          "/languages/overview:languages/overview.html"
+          "/languages/mega-runtime:languages/mega-runtime.html"
+        )
+
+        for entry in "${PAGES[@]}"; do
+          PAGE="${entry%%:*}"
+          OUTPUT="${entry#*:}"
+          echo "Scraping $PAGE..."
+          monolith "{{.MINTLIFY_URL}}$PAGE" --no-audio --no-video --no-fonts --isolate -o "{{.OUTPUT_DIR}}/$OUTPUT" 2>/dev/null && echo "  ✓" || echo "  ✗"
+        done
+
+        echo ""
+        echo "Quick scrape complete!"
+        ls -la {{.OUTPUT_DIR}}
+
+  # ===========================================
+  # UTILITIES
+  # ===========================================
+
+  clean:
+    desc: Remove generated static HTML files
+    cmds:
+      - |
+        echo "=== Cleaning Output Directory ==="
+        rm -rf {{.OUTPUT_DIR}}
+        echo "Removed: {{.OUTPUT_DIR}}"
+
+  serve:
+    desc: Serve static HTML with Python HTTP server
+    dir: "{{.OUTPUT_DIR}}"
+    cmds:
+      - |
+        echo "=== Serving Static HTML ==="
+        echo "URL: http://localhost:8000"
+        echo ""
+        python3 -m http.server 8000
+
+  open:
+    desc: Open generated docs in browser
+    cmds:
+      - |
+        if [ -f "{{.OUTPUT_DIR}}/index.html" ]; then
+          open "{{.OUTPUT_DIR}}/index.html"
+        else
+          echo "ERROR: index.html not found. Run 'task scrape:all' first."
+          exit 1
+        fi
+
+  # ===========================================
+  # ALL-IN-ONE TASKS
+  # ===========================================
+
+  generate:
+    desc: Full pipeline - Start Mintlify, scrape all pages, stop server
+    cmds:
+      - task: setup:monolith
+      - task: mintlify:start-bg
+      - sleep 3
+      - task: scrape:all
+      - task: mintlify:stop
+      - |
+        echo ""
+        echo "========================================="
+        echo "STATIC HTML GENERATION COMPLETE!"
+        echo "========================================="
+        echo ""
+        echo "Files: {{.OUTPUT_DIR}}"
+        echo ""
+        echo "To view locally:"
+        echo "  task serve     # Start HTTP server"
+        echo "  task open      # Open in browser"
+
+  # ===========================================
+  # WGET SCRAPER (UNIVERSAL ALTERNATIVE)
+  # ===========================================
+
+  scrape:wget:
+    desc: Scrape all pages using wget (universal tool, no deps)
+    cmds:
+      - |
+        echo "=== Scraping with wget ==="
+        echo "Source: {{.MINTLIFY_URL}}"
+        echo "Output: {{.OUTPUT_DIR}}"
+        echo ""
+
+        # Check if Mintlify is running
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" {{.MINTLIFY_URL}} 2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "307" ]; then
+          echo "ERROR: Mintlify is not running at {{.MINTLIFY_URL}}"
+          echo "Run: task mintlify:start-bg"
+          exit 1
+        fi
+
+        rm -rf {{.OUTPUT_DIR}}
+        mkdir -p {{.OUTPUT_DIR}}
+
+        wget \
+          --recursive \
+          --page-requisites \
+          --html-extension \
+          --convert-links \
+          --no-parent \
+          --domains localhost \
+          --directory-prefix={{.OUTPUT_DIR}} \
+          --no-host-directories \
+          --adjust-extension \
+          --timeout=30 \
+          --tries=3 \
+          --quiet \
+          --show-progress \
+          {{.MINTLIFY_URL}} 2>&1
+
+        echo ""
+        echo "========================================="
+        echo "WGET SCRAPE COMPLETE"
+        echo "========================================="
+        find {{.OUTPUT_DIR}} -name "*.html" | wc -l
+        echo "HTML files generated"
+        du -sh {{.OUTPUT_DIR}}
+
+  generate:wget:
+    desc: Full pipeline using wget (no Monolith required)
+    cmds:
+      - task: mintlify:start-bg
+      - sleep 3
+      - task: scrape:wget
+      - task: mintlify:stop
+      - |
+        echo ""
+        echo "========================================="
+        echo "STATIC HTML GENERATION COMPLETE (wget)!"
+        echo "========================================="
+        echo ""
+        echo "Files: {{.OUTPUT_DIR}}"
+        echo ""
+        echo "To view locally:"
+        echo "  task serve     # Start HTTP server"
+        echo "  task open      # Open in browser"
+
+  help:
+    desc: Show available tasks
+    cmds:
+      - task --list

@@ -1,0 +1,218 @@
+# infra.operator CLI Taskfile
+# https://taskfile.dev
+#
+# Usage: task -t Taskfile.cli.yaml [task]
+
+version: '3'
+
+vars:
+  BIN_DIR: bin
+  AWS_KEY_NAME: firesandbox-key
+
+tasks:
+  default:
+    desc: Show available CLI tasks
+    cmds:
+      - task -t Taskfile.cli.yaml --list
+
+  # ===========================================================================
+  # Build Tasks
+  # ===========================================================================
+
+  build:
+    desc: Build infra.operator CLI
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -ldflags="-s -w" -o {{.BIN_DIR}}/infra.operator ./cmd/infra.operator
+      - echo "Built {{.BIN_DIR}}/infra.operator"
+
+  build-linux:
+    desc: Build infra.operator CLI for Linux/amd64 (deploy to EC2)
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o {{.BIN_DIR}}/infra.operator-linux-amd64 ./cmd/infra.operator
+      - echo "Built {{.BIN_DIR}}/infra.operator-linux-amd64"
+
+  deploy:
+    desc: Deploy infra.operator to EC2 instance
+    deps:
+      - build-linux
+    vars:
+      EC2_IP:
+        sh: cat aws/.public-ip 2>/dev/null || echo ""
+    cmds:
+      - |
+        if [ -z "{{.EC2_IP}}" ]; then
+          echo "ERROR: EC2 IP not found in aws/.public-ip"
+          exit 1
+        fi
+        echo "Deploying to {{.EC2_IP}}..."
+        scp -i aws/keys/{{.AWS_KEY_NAME}}.pem {{.BIN_DIR}}/infra.operator-linux-amd64 ubuntu@{{.EC2_IP}}:/tmp/infra.operator
+        ssh -i aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@{{.EC2_IP}} "sudo mv /tmp/infra.operator /usr/local/bin/ && sudo chmod +x /usr/local/bin/infra.operator && infra.operator --version"
+        echo "Deployed!"
+
+  # ===========================================================================
+  # Rootfs Commands
+  # ===========================================================================
+
+  rootfs:list:
+    desc: List local rootfs images
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator rootfs list
+
+  rootfs:list-remote:
+    desc: List rootfs images from S3
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator rootfs list --remote
+
+  rootfs:create:
+    desc: "Create rootfs (use: task -t Taskfile.cli.yaml rootfs:create LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator rootfs create --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  rootfs:upload:
+    desc: "Upload rootfs to S3 (use: LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator rootfs upload --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  rootfs:download:
+    desc: "Download rootfs from S3 (use: LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator rootfs download --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  # ===========================================================================
+  # Snapshot Commands
+  # ===========================================================================
+
+  snapshot:list:
+    desc: List local snapshots
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator snapshot list
+
+  snapshot:list-remote:
+    desc: List snapshots from S3
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator snapshot list --remote
+
+  snapshot:create:
+    desc: "Create snapshot (use: LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator snapshot create --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  snapshot:upload:
+    desc: "Upload snapshot to S3 (use: LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator snapshot upload --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  snapshot:download:
+    desc: "Download snapshot from S3 (use: LANG=python)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator snapshot download --lang {{.LANG}}
+    requires:
+      vars: [LANG]
+
+  # ===========================================================================
+  # Run/Execute Commands
+  # ===========================================================================
+
+  run:
+    desc: "Execute code (use: LANG=python CODE='print(1)')"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator run --lang {{.LANG}} --code '{{.CODE}}'
+    requires:
+      vars: [LANG, CODE]
+
+  run:file:
+    desc: "Execute file (use: LANG=python FILE=script.py)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator run --lang {{.LANG}} --file {{.FILE}}
+    requires:
+      vars: [LANG, FILE]
+
+  # ===========================================================================
+  # API Server
+  # ===========================================================================
+
+  api:
+    desc: "Start API server (use: PORT=8080)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator api --port {{.PORT | default "8080"}}
+
+  # ===========================================================================
+  # Benchmark
+  # ===========================================================================
+
+  benchmark:
+    desc: Run benchmark for all 45 languages
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator benchmark --all
+
+  benchmark:langs:
+    desc: "Benchmark specific languages (use: LANGS=python,nodejs,go)"
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/infra.operator benchmark --langs {{.LANGS}}
+    requires:
+      vars: [LANGS]
+
+  # ===========================================================================
+  # Remote Execution on EC2
+  # ===========================================================================
+
+  remote:rootfs-list:
+    desc: List rootfs on EC2 instance
+    vars:
+      EC2_IP:
+        sh: cat aws/.public-ip 2>/dev/null || echo ""
+    cmds:
+      - ssh -i aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@{{.EC2_IP}} "infra.operator rootfs list"
+
+  remote:snapshot-list:
+    desc: List snapshots on EC2 instance
+    vars:
+      EC2_IP:
+        sh: cat aws/.public-ip 2>/dev/null || echo ""
+    cmds:
+      - ssh -i aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@{{.EC2_IP}} "infra.operator snapshot list"
+
+  remote:benchmark:
+    desc: Run benchmark on EC2 instance
+    vars:
+      EC2_IP:
+        sh: cat aws/.public-ip 2>/dev/null || echo ""
+    cmds:
+      - ssh -i aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@{{.EC2_IP}} "sudo infra.operator benchmark --all"
+
+  remote:run:
+    desc: "Execute code on EC2 (use: LANG=python CODE='print(1)')"
+    vars:
+      EC2_IP:
+        sh: cat aws/.public-ip 2>/dev/null || echo ""
+    cmds:
+      - ssh -i aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@{{.EC2_IP}} "sudo infra.operator run --lang {{.LANG}} --code '{{.CODE}}'"
+    requires:
+      vars: [LANG, CODE]
