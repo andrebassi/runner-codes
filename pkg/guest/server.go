@@ -51,7 +51,7 @@ func (s *Server) Run() error {
 	os.Setenv("HOME", "/root")
 	os.Setenv("LANG", "C.UTF-8")
 
-	log.Printf("LLM-Firecracker Guest Runner starting...")
+	log.Printf("Runner Codes Guest Runner starting...")
 	log.Printf("  Vsock Port: %d", s.config.Port)
 	log.Printf("  PID: %d", os.Getpid())
 	log.Printf("  Supported languages: %v", s.executor.SupportedLanguages())

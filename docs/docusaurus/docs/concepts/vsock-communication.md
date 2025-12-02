@@ -35,7 +35,7 @@ Vsock uses a simple addressing scheme:
 
 :::
 
-## Communication Flow in LLM-Firecracker
+## Communication Flow in Runner Codes
 
 **Step 1:** When configuring the VM, Firecracker creates a Unix socket:
 
@@ -100,7 +100,7 @@ NO 5000\n
 
 ### After Handshake
 
-After successful connection, the socket becomes a raw byte stream. LLM-Firecracker uses length-prefixed JSON messages.
+After successful connection, the socket becomes a raw byte stream. Runner Codes uses length-prefixed JSON messages.
 
 ## Message Framing
 

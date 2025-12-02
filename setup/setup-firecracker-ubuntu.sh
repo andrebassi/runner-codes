@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# LLM-FireSandbox: Firecracker Setup Script for Ubuntu/Zorin
+# Runner Codes: Firecracker Setup Script for Ubuntu/Zorin
 # =============================================================================
 # This script prepares a Linux host for running Firecracker microVMs.
 # Supports both x86_64 and aarch64 architectures.
@@ -303,7 +303,7 @@ print_next_steps() {
 # =============================================================================
 
 main() {
-    log_info "Starting Firecracker setup for LLM-FireSandbox"
+    log_info "Starting Firecracker setup for Runner Codes"
     log_info "Architecture: $ARCH"
     log_info "Workdir: $WORKDIR"
     echo ""

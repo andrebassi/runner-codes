@@ -1,6 +1,6 @@
 ---
 title: 'Firecracker'
-description: 'Understanding Firecracker microVMs and their role in LLM-Firecracker'
+description: 'Understanding Firecracker microVMs and their role in Runner Codes'
 ---
 
 ## What is Firecracker?
@@ -149,7 +149,7 @@ Firecracker implements a minimal set of devices:
 
 ![VM Lifecycle State Diagram](/img/vm-lifecycle.svg)
 
-## In LLM-Firecracker
+## In Runner Codes
 
 ### How We Use Firecracker
 

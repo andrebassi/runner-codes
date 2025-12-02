@@ -5,7 +5,7 @@ description: 'Common Lisp with Steel Bank Common Lisp'
 
 ## Overview
 
-Common Lisp is one of the oldest high-level programming languages. LLM-Firecracker provides SBCL (Steel Bank Common Lisp).
+Common Lisp is one of the oldest high-level programming languages. Runner Codes provides SBCL (Steel Bank Common Lisp).
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang lisp --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang lisp --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang lisp --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang lisp --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang lisp --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

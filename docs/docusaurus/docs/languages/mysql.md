@@ -5,7 +5,7 @@ description: 'MySQL/MariaDB database execution'
 
 ## Overview
 
-MySQL is one of the most popular relational database management systems. LLM-Firecracker uses MariaDB (a drop-in MySQL replacement) for executing SQL queries in an isolated Firecracker microVM.
+MySQL is one of the most popular relational database management systems. Runner Codes uses MariaDB (a drop-in MySQL replacement) for executing SQL queries in an isolated Firecracker microVM.
 
 ## Specifications
 
@@ -91,8 +91,8 @@ infra.operator snapshot create --lang mysql --mem 512 --vcpus 1
 ```
 
 ```bash title="9. Upload to S3"
-infra.operator rootfs upload --lang mysql --bucket llm-firecracker
-infra.operator snapshot upload --lang mysql --bucket llm-firecracker
+infra.operator rootfs upload --lang mysql --bucket runner-codes
+infra.operator snapshot upload --lang mysql --bucket runner-codes
 ```
 
 ```bash title="10. Test Execution"

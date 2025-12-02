@@ -5,7 +5,7 @@ description: 'Erlang concurrent programming with escript'
 
 ## Overview
 
-Erlang is a functional language designed for concurrent, distributed systems. LLM-Firecracker provides Erlang with escript for script execution.
+Erlang is a functional language designed for concurrent, distributed systems. Runner Codes provides Erlang with escript for script execution.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang erlang --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang erlang --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang erlang --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang erlang --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang erlang --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

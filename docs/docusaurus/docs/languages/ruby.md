@@ -5,7 +5,7 @@ description: 'Ruby code execution'
 
 ## Overview
 
-Ruby is a dynamic, object-oriented programming language focused on simplicity and productivity. LLM-Firecracker provides Ruby for executing Ruby scripts.
+Ruby is a dynamic, object-oriented programming language focused on simplicity and productivity. Runner Codes provides Ruby for executing Ruby scripts.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang ruby --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang ruby --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang ruby --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang ruby --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang ruby --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

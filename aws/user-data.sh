@@ -1,5 +1,5 @@
 #!/bin/bash
-# LLM-FireSandbox EC2 User Data Script
+# Runner Codes EC2 User Data Script
 # Installs Firecracker and downloads rootfs images from S3
 
 set -euo pipefail
@@ -7,11 +7,11 @@ set -euo pipefail
 LOG_FILE="/var/log/firesandbox-setup.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo "=== LLM-FireSandbox Setup Starting ==="
+echo "=== Runner Codes Setup Starting ==="
 echo "Date: $(date)"
 
 # S3 Configuration
-S3_BUCKET="llm-firesandbox-rootfs"
+S3_BUCKET="runner-codes-rootfs"
 S3_REGION="us-east-1"
 
 # Update system
@@ -156,9 +156,9 @@ echo "Go version:"
 
 # Clone project (placeholder - will be replaced by actual deployment)
 echo "Creating project directory..."
-mkdir -p /opt/llm-firesandbox
-cat > /opt/llm-firesandbox/README.md << 'EOF'
-# LLM-FireSandbox
+mkdir -p /opt/runner-codes
+cat > /opt/runner-codes/README.md << 'EOF'
+# Runner Codes
 
 Environment ready. Deploy your code here.
 
@@ -180,7 +180,7 @@ ls -la /srv/firecracker/images/
 
 ## Available rootfs images
 
-Images are downloaded from S3 bucket: llm-firesandbox-rootfs
+Images are downloaded from S3 bucket: runner-codes-rootfs
 
 - rootfs-python.ext4 - Python 3.10
 - rootfs-nodejs.ext4 - Node.js 20 LTS
@@ -192,7 +192,7 @@ EOF
 # Create systemd service for persistence
 cat > /etc/systemd/system/firesandbox-setup.service << 'EOF'
 [Unit]
-Description=LLM-FireSandbox KVM/Vsock Setup
+Description=Runner Codes KVM/Vsock Setup
 After=network.target
 
 [Service]
@@ -208,7 +208,7 @@ systemctl daemon-reload
 systemctl enable firesandbox-setup.service
 
 echo ""
-echo "=== LLM-FireSandbox Setup Complete ==="
+echo "=== Runner Codes Setup Complete ==="
 echo "Firecracker: $(firecracker --version)"
 echo "Kernel: $WORKDIR/vmlinux"
 echo "Rootfs: $WORKDIR/rootfs.ext4 -> $(readlink -f $WORKDIR/rootfs.ext4 2>/dev/null || echo 'N/A')"

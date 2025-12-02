@@ -5,7 +5,7 @@ description: 'PHP code execution'
 
 ## Overview
 
-PHP is a popular server-side scripting language. LLM-Firecracker provides PHP CLI for executing PHP scripts.
+PHP is a popular server-side scripting language. Runner Codes provides PHP CLI for executing PHP scripts.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang php --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang php --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang php --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang php --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang php --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

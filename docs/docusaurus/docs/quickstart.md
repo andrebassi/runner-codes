@@ -1,6 +1,6 @@
 ---
 title: 'Quickstart'
-description: 'Get LLM-Firecracker running in 5 minutes'
+description: 'Get Runner Codes running in 5 minutes'
 ---
 
 ## Prerequisites

@@ -5,7 +5,7 @@ description: 'Fortran scientific computing with GFortran'
 
 ## Overview
 
-Fortran is one of the oldest programming languages, designed for scientific computing. LLM-Firecracker provides GFortran.
+Fortran is one of the oldest programming languages, designed for scientific computing. Runner Codes provides GFortran.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang fortran --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang fortran --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang fortran --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang fortran --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang fortran --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

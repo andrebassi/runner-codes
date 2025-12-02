@@ -24,7 +24,7 @@ func main() {
 	port := flag.Uint("port", defaultPort, "Vsock port to listen on")
 	flag.Parse()
 
-	log.Printf("LLM-Firecracker Guest Runner starting...")
+	log.Printf("Runner Codes Guest Runner starting...")
 	log.Printf("  Vsock Port: %d", *port)
 	log.Printf("  PID: %d", os.Getpid())
 

@@ -5,7 +5,7 @@ description: 'Supported programming languages and execution details'
 
 ## Supported Languages
 
-LLM-Firecracker supports **45 programming languages** across multiple categories, each with its own optimized rootfs image.
+Runner Codes supports **45 programming languages** across multiple categories, each with its own optimized rootfs image.
 
 ### Main Languages
 

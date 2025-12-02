@@ -5,7 +5,7 @@ description: 'Elixir functional programming on BEAM'
 
 ## Overview
 
-Elixir is a dynamic, functional language built on the Erlang VM (BEAM). LLM-Firecracker provides Elixir for script execution.
+Elixir is a dynamic, functional language built on the Erlang VM (BEAM). Runner Codes provides Elixir for script execution.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang elixir --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang elixir --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang elixir --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang elixir --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang elixir --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

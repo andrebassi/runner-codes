@@ -5,7 +5,7 @@ description: 'Kotlin code execution on JVM'
 
 ## Overview
 
-Kotlin is a modern, concise language fully interoperable with Java. LLM-Firecracker provides Kotlin with OpenJDK runtime.
+Kotlin is a modern, concise language fully interoperable with Java. Runner Codes provides Kotlin with OpenJDK runtime.
 
 ## Specifications
 
@@ -29,11 +29,11 @@ sudo infra.operator snapshot create --lang kotlin --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang kotlin --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang kotlin --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang kotlin --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang kotlin --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

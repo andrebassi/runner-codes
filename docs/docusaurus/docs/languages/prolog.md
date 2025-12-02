@@ -5,7 +5,7 @@ description: 'Prolog logic programming'
 
 ## Overview
 
-Prolog is a logic programming language. LLM-Firecracker provides SWI-Prolog for logic programming.
+Prolog is a logic programming language. Runner Codes provides SWI-Prolog for logic programming.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang prolog --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang prolog --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang prolog --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang prolog --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang prolog --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

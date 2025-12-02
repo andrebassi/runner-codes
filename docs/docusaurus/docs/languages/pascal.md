@@ -5,7 +5,7 @@ description: 'Pascal programming with Free Pascal'
 
 ## Overview
 
-Pascal is an educational and procedural programming language. LLM-Firecracker provides Free Pascal Compiler.
+Pascal is an educational and procedural programming language. Runner Codes provides Free Pascal Compiler.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang pascal --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang pascal --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang pascal --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang pascal --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang pascal --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

@@ -5,7 +5,7 @@ description: 'Perl code execution'
 
 ## Overview
 
-Perl is a highly capable scripting language known for text processing. LLM-Firecracker provides Perl for executing Perl scripts.
+Perl is a highly capable scripting language known for text processing. Runner Codes provides Perl for executing Perl scripts.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang perl --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang perl --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang perl --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang perl --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang perl --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

@@ -5,7 +5,7 @@ description: 'Java 17 (OpenJDK) code execution'
 
 ## Overview
 
-Java is a widely-used enterprise programming language. LLM-Firecracker provides OpenJDK 17 for executing Java code with automatic compilation.
+Java is a widely-used enterprise programming language. Runner Codes provides OpenJDK 17 for executing Java code with automatic compilation.
 
 ## Specifications
 
@@ -29,11 +29,11 @@ sudo infra.operator snapshot create --lang java --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang java --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang java --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang java --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang java --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

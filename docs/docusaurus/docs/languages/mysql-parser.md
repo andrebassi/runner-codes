@@ -150,8 +150,8 @@ export AWS_ACCESS_KEY_ID="your-key"
 export AWS_SECRET_ACCESS_KEY="your-secret"
 export AWS_DEFAULT_REGION="us-east-1"
 
-sudo -E infra.operator rootfs upload --lang mysql-parser --bucket llm-firecracker
-sudo -E infra.operator snapshot upload --lang mysql-parser --bucket llm-firecracker
+sudo -E infra.operator rootfs upload --lang mysql-parser --bucket runner-codes
+sudo -E infra.operator snapshot upload --lang mysql-parser --bucket runner-codes
 ```
 
 ### Step 8: Test Execution

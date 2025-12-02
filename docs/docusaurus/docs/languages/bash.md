@@ -5,7 +5,7 @@ description: 'Bash 5.2 shell script execution'
 
 ## Overview
 
-Bash is ideal for system operations, file manipulation, and quick shell scripting. LLM-Firecracker provides Bash 5.2 on Alpine Linux with BusyBox utilities.
+Bash is ideal for system operations, file manipulation, and quick shell scripting. Runner Codes provides Bash 5.2 on Alpine Linux with BusyBox utilities.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang bash --mem 256 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang bash --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang bash --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang bash --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang bash --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

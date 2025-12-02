@@ -14,7 +14,7 @@ func TestSnapshotCacheConstants(t *testing.T) {
 		constant string
 	}{
 		{"DefaultCacheDir", DefaultCacheDir, "/srv/firecracker/snapshots", "DefaultCacheDir"},
-		{"DefaultS3Bucket", DefaultS3Bucket, "llm-firesandbox-rootfs", "DefaultS3Bucket"},
+		{"DefaultS3Bucket", DefaultS3Bucket, "runner-codes-rootfs", "DefaultS3Bucket"},
 		{"DefaultS3Region", DefaultS3Region, "us-east-1", "DefaultS3Region"},
 	}
 

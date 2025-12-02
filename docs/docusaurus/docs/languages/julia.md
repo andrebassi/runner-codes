@@ -5,7 +5,7 @@ description: 'Julia high-performance scientific computing'
 
 ## Overview
 
-Julia is a high-performance language for technical computing. LLM-Firecracker provides Julia for scientific programming.
+Julia is a high-performance language for technical computing. Runner Codes provides Julia for scientific programming.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang julia --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang julia --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang julia --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang julia --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang julia --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

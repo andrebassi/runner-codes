@@ -5,7 +5,7 @@ description: 'Rust stable code execution'
 
 ## Overview
 
-Rust is ideal for maximum performance, memory safety, and production-quality code. LLM-Firecracker provides Rust stable (1.91+) with rustc compiler.
+Rust is ideal for maximum performance, memory safety, and production-quality code. Runner Codes provides Rust stable (1.91+) with rustc compiler.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang rust --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang rust --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang rust --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang rust --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang rust --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

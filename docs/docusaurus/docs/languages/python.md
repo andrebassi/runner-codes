@@ -5,7 +5,7 @@ description: 'Python 3.12 code execution'
 
 ## Overview
 
-Python is one of the most commonly used languages for LLM-generated code. LLM-Firecracker provides Python 3.12 with the complete standard library.
+Python is one of the most commonly used languages for LLM-generated code. Runner Codes provides Python 3.12 with the complete standard library.
 
 ## Specifications
 
@@ -30,11 +30,11 @@ sudo infra.operator snapshot create --lang python --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang python --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang python --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang python --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang python --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

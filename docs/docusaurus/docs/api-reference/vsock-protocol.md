@@ -5,7 +5,7 @@ description: 'Low-level virtio-vsock communication protocol'
 
 ## Overview
 
-Virtio-vsock provides a communication channel between the host and guest without requiring a network stack. LLM-Firecracker uses Firecracker's vsock implementation through Unix Domain Sockets (UDS).
+Virtio-vsock provides a communication channel between the host and guest without requiring a network stack. Runner Codes uses Firecracker's vsock implementation through Unix Domain Sockets (UDS).
 
 ## Architecture
 

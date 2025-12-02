@@ -5,7 +5,7 @@ description: 'TypeScript code execution with Bun'
 
 ## Overview
 
-TypeScript adds static typing to JavaScript. LLM-Firecracker provides Bun runtime for executing TypeScript code directly with native TypeScript support.
+TypeScript adds static typing to JavaScript. Runner Codes provides Bun runtime for executing TypeScript code directly with native TypeScript support.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang typescript --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang typescript --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang typescript --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang typescript --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang typescript --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

@@ -5,7 +5,7 @@ description: 'COBOL business programming language'
 
 ## Overview
 
-COBOL (Common Business-Oriented Language) is one of the oldest programming languages, still widely used in banking and government systems. LLM-Firecracker provides GnuCOBOL for executing COBOL programs.
+COBOL (Common Business-Oriented Language) is one of the oldest programming languages, still widely used in banking and government systems. Runner Codes provides GnuCOBOL for executing COBOL programs.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang cobol --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang cobol --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang cobol --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang cobol --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang cobol --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

@@ -5,7 +5,7 @@ description: 'GNU Octave numerical computing'
 
 ## Overview
 
-GNU Octave is a high-level language for numerical computations, largely compatible with MATLAB. LLM-Firecracker provides Octave for mathematical programming.
+GNU Octave is a high-level language for numerical computations, largely compatible with MATLAB. Runner Codes provides Octave for mathematical programming.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang octave --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang octave --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang octave --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang octave --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang octave --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

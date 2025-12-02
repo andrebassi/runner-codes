@@ -49,7 +49,7 @@ func main() {
 		*code = getDemoCode(*lang)
 	}
 
-	log.Printf("Starting LLM-Firecracker Host Agent")
+	log.Printf("Starting Runner Codes Host Agent")
 	log.Printf("  Language:    %s", *lang)
 	log.Printf("  Mode:        %s", map[bool]string{true: "Warm Boot (Snapshot)", false: "Cold Boot"}[*useSnapshot])
 	log.Printf("  Vsock Port:  %d", *vsockPort)

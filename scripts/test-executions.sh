@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# LLM-FireSandbox: Test All Languages Execution
+# Runner Codes: Test All Languages Execution
 # =============================================================================
 # Tests real code execution for all 40 languages with timeout protection.
 #
@@ -17,7 +17,7 @@ RESULTS_FILE="/tmp/test-results-$(date +%Y%m%d-%H%M%S).txt"
 TIMEOUT=30  # seconds per test
 
 echo "=============================================="
-echo "LLM-FireSandbox - Execution Tests"
+echo "Runner Codes - Execution Tests"
 echo "Started: $(date)"
 echo "Results: $RESULTS_FILE"
 echo "=============================================="

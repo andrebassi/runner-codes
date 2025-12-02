@@ -124,7 +124,7 @@ connect(sock, (struct sockaddr *)&addr, sizeof(addr));
 │  │ > 65535            │ Extended range (32-bit ports)  │    │
 │  └────────────────────┴────────────────────────────────┘    │
 │                                                              │
-│  LLM-FireSandbox:                                            │
+│  Runner Codes:                                            │
 │  - Port 5000: GuestRunner service                           │
 │  - Port 5001+: Reserved for future services                 │
 └─────────────────────────────────────────────────────────────┘

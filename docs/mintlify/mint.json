@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/schema.json",
-  "name": "LLM-Firecracker",
+  "name": "Runner Codes",
   "logo": {
     "dark": "/logo/dark.svg",
     "light": "/logo/light.svg"
@@ -25,7 +25,7 @@
   "topbarLinks": [
     {
       "name": "GitHub",
-      "url": "https://github.com/andrebassi/llm-firecracker"
+      "url": "https://github.com/andrebassi/runner-codes"
     }
   ],
   "topbarCtaButton": {
@@ -46,7 +46,7 @@
     {
       "name": "GitHub",
       "icon": "github",
-      "url": "https://github.com/andrebassi/llm-firecracker"
+      "url": "https://github.com/andrebassi/runner-codes"
     }
   ],
   "navigation": [
@@ -211,6 +211,6 @@
     }
   ],
   "footerSocials": {
-    "github": "https://github.com/andrebassi/llm-firecracker"
+    "github": "https://github.com/andrebassi/runner-codes"
   }
 }

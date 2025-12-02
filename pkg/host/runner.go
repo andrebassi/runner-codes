@@ -81,7 +81,7 @@ func (r *Runner) Run() (*RunResult, error) {
 		code = getDemoCode(r.config.Lang)
 	}
 
-	log.Printf("Starting LLM-Firecracker Host Runner")
+	log.Printf("Starting Runner Codes Host Runner")
 	log.Printf("  Language:    %s", r.config.Lang)
 	log.Printf("  Mode:        %s", map[bool]string{true: "Warm Boot (Snapshot)", false: "Cold Boot"}[r.config.UseSnapshot])
 	log.Printf("  Vsock Port:  %d", r.config.VsockPort)

@@ -150,7 +150,7 @@ infra.operator rootfs upload --lang <language> [flags]
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--lang` | `-l` | Language to upload (required) | - |
-| `--bucket` | `-b` | S3 bucket | `s3://llm-firecracker` |
+| `--bucket` | `-b` | S3 bucket | `s3://runner-codes` |
 
 **Examples:**
 
@@ -175,7 +175,7 @@ infra.operator rootfs download --lang <language> [flags]
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--lang` | `-l` | Language to download (required) | - |
-| `--bucket` | `-b` | S3 bucket | `s3://llm-firecracker` |
+| `--bucket` | `-b` | S3 bucket | `s3://runner-codes` |
 | `--output` | `-o` | Output path | Auto-detect |
 
 **Examples:**
@@ -291,7 +291,7 @@ aws sts get-caller-identity
 **Wrong bucket or region:**
 
 ```bash title="List S3 bucket contents"
-aws s3 ls s3://llm-firecracker/
+aws s3 ls s3://runner-codes/
 ```
 
 ## Next Steps

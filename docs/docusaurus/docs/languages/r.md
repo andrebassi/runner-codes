@@ -5,7 +5,7 @@ description: 'R statistical computing'
 
 ## Overview
 
-R is a language for statistical computing and graphics. LLM-Firecracker provides R with base packages.
+R is a language for statistical computing and graphics. Runner Codes provides R with base packages.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang r --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang r --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang r --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang r --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang r --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

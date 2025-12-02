@@ -5,7 +5,7 @@ description: 'Crystal 1.18 code execution'
 
 ## Overview
 
-Crystal is a programming language with Ruby-like syntax but compiled to efficient native code via LLVM. LLM-Firecracker provides Crystal 1.18.2 runtime.
+Crystal is a programming language with Ruby-like syntax but compiled to efficient native code via LLVM. Runner Codes provides Crystal 1.18.2 runtime.
 
 ## Specifications
 
@@ -108,8 +108,8 @@ sudo infra.operator snapshot create --lang crystal --mem 2048 --vcpus 2
 ```
 
 ```bash title="9. Upload to S3"
-sudo infra.operator snapshot upload --lang crystal --bucket llm-firecracker
-aws s3 cp /srv/firecracker/images/rootfs-crystal.ext4 s3://llm-firecracker/rootfs/crystal/
+sudo infra.operator snapshot upload --lang crystal --bucket runner-codes
+aws s3 cp /srv/firecracker/images/rootfs-crystal.ext4 s3://runner-codes/rootfs/crystal/
 ```
 
 ```bash title="10. Test Execution (with high timeout)"
