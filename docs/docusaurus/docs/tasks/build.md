@@ -262,7 +262,7 @@ This clears the Go build cache, which will slow down subsequent builds.
 After running `task build:all`, you'll have:
 
 ```text title="Build artifacts directory structure"
-llm-firecracker/
+runner-codes/
 ├── bin/
 │   ├── infra.operator        # Unified CLI for current OS
 │   └── infra.operator-linux  # Cross-compiled for Linux

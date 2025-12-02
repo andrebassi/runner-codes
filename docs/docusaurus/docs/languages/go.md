@@ -5,7 +5,7 @@ description: 'Go 1.22 code execution'
 
 ## Overview
 
-Go is ideal for systems programming, concurrent operations, and performance-critical code. LLM-Firecracker provides Go 1.22.12 with the full standard library.
+Go is ideal for systems programming, concurrent operations, and performance-critical code. Runner Codes provides Go 1.22.12 with the full standard library.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang go --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang go --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang go --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang go --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang go --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

@@ -5,7 +5,7 @@ description: 'Scheme programming with Guile'
 
 ## Overview
 
-Scheme is a minimalist dialect of Lisp. LLM-Firecracker provides GNU Guile Scheme interpreter.
+Scheme is a minimalist dialect of Lisp. Runner Codes provides GNU Guile Scheme interpreter.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang scheme --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang scheme --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang scheme --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang scheme --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang scheme --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

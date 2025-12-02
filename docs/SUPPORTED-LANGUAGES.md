@@ -1,4 +1,4 @@
-# Linguagens Suportadas - LLM-FireSandbox
+# Linguagens Suportadas - Runner Codes
 
 > **Status**: 41/41 linguagens funcionando (100%) - Completo
 > **Atualizado**: 2025-11-30
@@ -6,7 +6,7 @@
 
 ## Resumo
 
-O LLM-FireSandbox suporta **41 linguagens de programação** (incluindo databases) com execução real em microVMs Firecracker isoladas. Cada linguagem possui seu próprio rootfs (sistema de arquivos raiz) com todas as dependências necessárias.
+O Runner Codes suporta **41 linguagens de programação** (incluindo databases) com execução real em microVMs Firecracker isoladas. Cada linguagem possui seu próprio rootfs (sistema de arquivos raiz) com todas as dependências necessárias.
 
 ---
 
@@ -422,8 +422,8 @@ sudo umount /tmp/mnt-mysql
 infra.operator snapshot create --lang mysql --mem 512 --vcpus 1
 
 # 9. Upload para S3
-infra.operator rootfs upload --lang mysql --bucket llm-firecracker
-infra.operator snapshot upload --lang mysql --bucket llm-firecracker
+infra.operator rootfs upload --lang mysql --bucket runner-codes
+infra.operator snapshot upload --lang mysql --bucket runner-codes
 ```
 
 ### Executor Config (pkg/guest/executor.go)

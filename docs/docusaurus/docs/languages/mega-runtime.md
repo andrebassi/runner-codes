@@ -334,7 +334,7 @@ export AWS_DEFAULT_REGION="us-east-1"
 
 ```bash title="Upload 8GB rootfs to S3 bucket"
 aws s3 cp /srv/firecracker/images/rootfs-mega-runtime.ext4 \
-    s3://llm-firecracker/rootfs-mega-runtime.ext4 \
+    s3://runner-codes/rootfs-mega-runtime.ext4 \
     --no-progress
 ```
 
@@ -342,7 +342,7 @@ aws s3 cp /srv/firecracker/images/rootfs-mega-runtime.ext4 \
 
 ```bash title="Upload snapshot files to S3"
 aws s3 cp /srv/firecracker/snapshots/mega-runtime/ \
-    s3://llm-firecracker/snapshots/mega-runtime/ \
+    s3://runner-codes/snapshots/mega-runtime/ \
     --recursive --no-progress
 ```
 

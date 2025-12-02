@@ -20,7 +20,7 @@ func main() {
 	guestPort := flag.Uint("port", 5000, "Guest port for vsock")
 	flag.Parse()
 
-	log.Printf("LLM-Firecracker Vsock Proxy starting...")
+	log.Printf("Runner Codes Vsock Proxy starting...")
 	log.Printf("  Unix Socket: %s", *socketPath)
 	log.Printf("  Guest CID:   %d", *guestCID)
 	log.Printf("  Guest Port:  %d", *guestPort)

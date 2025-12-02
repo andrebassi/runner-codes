@@ -5,7 +5,7 @@ description: 'SQLite database execution'
 
 ## Overview
 
-SQLite is a lightweight embedded SQL database engine. LLM-Firecracker provides SQLite for executing SQL queries in an isolated environment.
+SQLite is a lightweight embedded SQL database engine. Runner Codes provides SQLite for executing SQL queries in an isolated environment.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang sqlite --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang sqlite --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang sqlite --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang sqlite --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang sqlite --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

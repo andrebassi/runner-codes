@@ -5,7 +5,7 @@ description: 'Tcl scripting language'
 
 ## Overview
 
-Tcl (Tool Command Language) is a dynamic scripting language known for its simplicity and extensibility. LLM-Firecracker provides Tcl for scripting and automation tasks.
+Tcl (Tool Command Language) is a dynamic scripting language known for its simplicity and extensibility. Runner Codes provides Tcl for scripting and automation tasks.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang tcl --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang tcl --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang tcl --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang tcl --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang tcl --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

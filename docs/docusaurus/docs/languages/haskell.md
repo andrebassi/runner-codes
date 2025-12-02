@@ -5,7 +5,7 @@ description: 'Haskell functional programming with GHC'
 
 ## Overview
 
-Haskell is a purely functional programming language with strong static typing. LLM-Firecracker provides GHC (Glasgow Haskell Compiler).
+Haskell is a purely functional programming language with strong static typing. Runner Codes provides GHC (Glasgow Haskell Compiler).
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang haskell --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang haskell --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang haskell --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang haskell --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang haskell --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

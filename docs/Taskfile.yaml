@@ -118,7 +118,7 @@ tasks:
     desc: Scrape all documentation pages with Monolith
     cmds:
       - |
-        echo "=== Scraping LLM-Firecracker Documentation ==="
+        echo "=== Scraping Runner Codes Documentation ==="
         echo "Source: {{.MINTLIFY_URL}}"
         echo "Output: {{.OUTPUT_DIR}}"
         echo ""

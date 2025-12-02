@@ -7,7 +7,7 @@ description: 'Complete AWS deployment workflow from build to execution'
 
 The complete pipeline takes code from source to execution in a secure microVM on AWS.
 
-![LLM-Firecracker Pipeline](/img/pipeline-overview.svg)
+![Runner Codes Pipeline](/img/pipeline-overview.svg)
 
 ## Quick Start
 
@@ -243,7 +243,7 @@ Full pipeline from scratch:
 
 ```bash title="run-pipeline.sh"
 set -e
-echo "=== LLM-Firecracker Full Pipeline ==="
+echo "=== Runner Codes Full Pipeline ==="
 ```
 
 ```bash title="Set AWS credentials"
@@ -307,7 +307,7 @@ echo "Instance IP: $(cat aws/.public-ip)"
 
 ## Pipeline Diagram
 
-![LLM-Firecracker Detailed Pipeline](/img/pipeline-detailed.svg)
+![Runner Codes Detailed Pipeline](/img/pipeline-detailed.svg)
 
 ## CI/CD Integration
 
@@ -315,7 +315,7 @@ echo "Instance IP: $(cat aws/.public-ip)"
 
 ```yaml title=".github/workflows/deploy.yml"
 # .github/workflows/deploy.yml
-name: Deploy LLM-Firecracker
+name: Deploy Runner Codes
 
 on:
   push:

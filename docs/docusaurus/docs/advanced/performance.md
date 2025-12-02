@@ -5,7 +5,7 @@ description: 'Optimize execution speed and resource usage'
 
 ## Performance Overview
 
-LLM-Firecracker performance depends on three main factors:
+Runner Codes performance depends on three main factors:
 1. **VM Boot Time**: Time to start a microVM (~125ms base)
 2. **Guest Ready**: Time until infra.operator guest accepts connections (~2.5s)
 3. **Code Execution**: Actual code execution time (varies)

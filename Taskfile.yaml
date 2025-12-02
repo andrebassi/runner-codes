@@ -1,4 +1,4 @@
-# LLM-FireSandbox Taskfile
+# Runner Codes Taskfile
 # https://taskfile.dev
 
 version: '3'
@@ -14,12 +14,12 @@ vars:
   AWS_REGION: '{{.AWS_REGION | default "us-east-1"}}'
   AWS_INSTANCE_TYPE: '{{.AWS_INSTANCE_TYPE | default "m5zn.metal"}}'
   AWS_KEY_NAME: '{{.AWS_KEY_NAME | default "firesandbox-key"}}'
-  AWS_INSTANCE_NAME: '{{.AWS_INSTANCE_NAME | default "llm-firesandbox-test"}}'
+  AWS_INSTANCE_NAME: '{{.AWS_INSTANCE_NAME | default "runner-codes-test"}}'
   AWS_VPC_ID: '{{.AWS_VPC_ID | default "vpc-0dd1e4d3c5ed4f3c7"}}'
   AWS_SUBNET_ID: '{{.AWS_SUBNET_ID | default "subnet-004de53997864f0a3"}}'
-  PROJECT_DIR: '{{.PROJECT_DIR | default "/Users/andrebassi/works/.solutions/fly.io/llm-firesandbox"}}'
+  PROJECT_DIR: '{{.PROJECT_DIR | default "/Users/andrebassi/works/.solutions/fly.io/runner-codes"}}'
   # S3 Configuration for rootfs storage
-  S3_BUCKET: '{{.S3_BUCKET | default "llm-firesandbox-rootfs"}}'
+  S3_BUCKET: '{{.S3_BUCKET | default "runner-codes-rootfs"}}'
   S3_REGION: '{{.S3_REGION | default "us-east-1"}}'
 
 tasks:
@@ -349,7 +349,7 @@ tasks:
         else
           SG_ID=$(aws ec2 create-security-group \
             --group-name firesandbox-sg \
-            --description "LLM-FireSandbox test security group" \
+            --description "Runner Codes test security group" \
             --vpc-id {{.AWS_VPC_ID}} \
             --region {{.AWS_REGION}} \
             --query 'GroupId' \
@@ -419,7 +419,7 @@ tasks:
           --associate-public-ip-address \
           --user-data file://{{.PROJECT_DIR}}/aws/user-data.sh \
           --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":50,"VolumeType":"gp3"}}]' \
-          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value={{.AWS_INSTANCE_NAME}}},{Key=Project,Value=llm-firesandbox}]" \
+          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value={{.AWS_INSTANCE_NAME}}},{Key=Project,Value=runner-codes}]" \
           --region {{.AWS_REGION}} \
           --query 'Instances[0].InstanceId' \
           --output text)
@@ -510,15 +510,15 @@ tasks:
         cd {{.PROJECT_DIR}}/host-agent && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../bin/host-agent .
 
         echo "Deploying to $PUBLIC_IP..."
-        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "sudo mkdir -p /opt/llm-firesandbox/{bin,rootfs} && sudo chown -R ubuntu:ubuntu /opt/llm-firesandbox"
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "sudo mkdir -p /opt/runner-codes/{bin,rootfs} && sudo chown -R ubuntu:ubuntu /opt/runner-codes"
 
         scp -i $KEY -o StrictHostKeyChecking=no \
           {{.PROJECT_DIR}}/bin/host-agent \
-          ubuntu@$PUBLIC_IP:/opt/llm-firesandbox/bin/
+          ubuntu@$PUBLIC_IP:/opt/runner-codes/bin/
 
         scp -i $KEY -o StrictHostKeyChecking=no \
           {{.PROJECT_DIR}}/rootfs/guest-runner \
-          ubuntu@$PUBLIC_IP:/opt/llm-firesandbox/rootfs/
+          ubuntu@$PUBLIC_IP:/opt/runner-codes/rootfs/
 
         echo "Deployment complete!"
         echo ""
@@ -546,7 +546,7 @@ tasks:
         sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
 
         echo "Copying guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/rootfs/usr/local/bin/guest-runner
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/rootfs/usr/local/bin/guest-runner
         sudo chmod +x /mnt/rootfs/usr/local/bin/guest-runner
 
         echo "Creating systemd service..."
@@ -574,7 +574,7 @@ tasks:
         echo "Running Firecracker test on $PUBLIC_IP..."
         ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
         set -e
-        cd /opt/llm-firesandbox
+        cd /opt/runner-codes
 
         echo "=== Checking prerequisites ==="
         echo "KVM: $(ls -la /dev/kvm 2>/dev/null || echo 'NOT FOUND')"
@@ -604,7 +604,7 @@ tasks:
 
         echo "Testing all languages on $PUBLIC_IP..."
         ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
-        cd /opt/llm-firesandbox
+        cd /opt/runner-codes
 
         echo "=== Testing Python ==="
         sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
@@ -1278,7 +1278,7 @@ tasks:
 
         echo "Testing all languages..."
         ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
-        cd /opt/llm-firesandbox
+        cd /opt/runner-codes
 
         echo ""
         echo "============================================="
@@ -1451,7 +1451,7 @@ tasks:
         sudo chroot /mnt/python apt-get install -y --no-install-recommends python3 python3-pip ca-certificates
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/python/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/python/usr/local/bin/
         sudo chmod +x /mnt/python/usr/local/bin/guest-runner
 
         # Create systemd service
@@ -1516,7 +1516,7 @@ EOF
         sudo chroot /mnt/nodejs apt-get install -y nodejs
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/nodejs/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/nodejs/usr/local/bin/
         sudo chmod +x /mnt/nodejs/usr/local/bin/guest-runner
 
         # Create systemd service
@@ -1586,7 +1586,7 @@ EOF
         sudo ln -sf /usr/local/go/bin/go /mnt/go/usr/bin/go
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/go/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/go/usr/local/bin/
         sudo chmod +x /mnt/go/usr/local/bin/guest-runner
 
         # Create systemd service
@@ -1671,7 +1671,7 @@ EOF
         sudo ln -sf /opt/cargo/bin/cargo /mnt/rust/usr/bin/cargo
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/rust/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/rust/usr/local/bin/
         sudo chmod +x /mnt/rust/usr/local/bin/guest-runner
 
         # Create systemd service
@@ -1734,7 +1734,7 @@ EOF
         sudo debootstrap --variant=minbase jammy /mnt/bash http://archive.ubuntu.com/ubuntu/
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/bash/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/bash/usr/local/bin/
         sudo chmod +x /mnt/bash/usr/local/bin/guest-runner
 
         # Create systemd service
@@ -1813,7 +1813,7 @@ EOF
         sudo chroot /mnt/java apt-get install -y --no-install-recommends openjdk-21-jdk ca-certificates
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/java/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/java/usr/local/bin/
         sudo chmod +x /mnt/java/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/java/etc/systemd/system
@@ -1840,7 +1840,7 @@ EOF
         sudo mv /tmp/rootfs-java.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-java.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-java.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Java rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-java.ext4
@@ -1877,7 +1877,7 @@ EOF
         sudo chroot /mnt/c apt-get install -y --no-install-recommends gcc libc6-dev
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/c/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/c/usr/local/bin/
         sudo chmod +x /mnt/c/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/c/etc/systemd/system
@@ -1902,7 +1902,7 @@ EOF
         sudo mv /tmp/rootfs-c.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-c.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-c.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== C rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-c.ext4
@@ -1939,7 +1939,7 @@ EOF
         sudo chroot /mnt/cpp apt-get install -y --no-install-recommends g++ libc6-dev libstdc++-11-dev
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/cpp/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/cpp/usr/local/bin/
         sudo chmod +x /mnt/cpp/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/cpp/etc/systemd/system
@@ -1964,7 +1964,7 @@ EOF
         sudo mv /tmp/rootfs-cpp.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-cpp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-cpp.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== C++ rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-cpp.ext4
@@ -2004,7 +2004,7 @@ EOF
         sudo chroot /mnt/typescript npm install -g typescript ts-node @types/node
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/typescript/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/typescript/usr/local/bin/
         sudo chmod +x /mnt/typescript/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/typescript/etc/systemd/system
@@ -2029,7 +2029,7 @@ EOF
         sudo mv /tmp/rootfs-typescript.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-typescript.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-typescript.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== TypeScript rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-typescript.ext4
@@ -2066,7 +2066,7 @@ EOF
         sudo chroot /mnt/php apt-get install -y --no-install-recommends php8.1-cli php8.1-common
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/php/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/php/usr/local/bin/
         sudo chmod +x /mnt/php/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/php/etc/systemd/system
@@ -2091,7 +2091,7 @@ EOF
         sudo mv /tmp/rootfs-php.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-php.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-php.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== PHP rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-php.ext4
@@ -2132,7 +2132,7 @@ EOF
         sudo chroot /mnt/ruby apt-get install -y --no-install-recommends ruby ruby-bundler
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/ruby/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/ruby/usr/local/bin/
         sudo chmod +x /mnt/ruby/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/ruby/etc/systemd/system
@@ -2157,7 +2157,7 @@ EOF
         sudo mv /tmp/rootfs-ruby.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-ruby.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-ruby.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Ruby rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-ruby.ext4
@@ -2194,7 +2194,7 @@ EOF
         sudo chroot /mnt/perl apt-get install -y --no-install-recommends perl
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/perl/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/perl/usr/local/bin/
         sudo chmod +x /mnt/perl/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/perl/etc/systemd/system
@@ -2219,7 +2219,7 @@ EOF
         sudo mv /tmp/rootfs-perl.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-perl.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-perl.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Perl rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-perl.ext4
@@ -2256,7 +2256,7 @@ EOF
         sudo chroot /mnt/scala apt-get install -y --no-install-recommends openjdk-21-jdk scala ca-certificates
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/scala/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/scala/usr/local/bin/
         sudo chmod +x /mnt/scala/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/scala/etc/systemd/system
@@ -2282,7 +2282,7 @@ EOF
         sudo mv /tmp/rootfs-scala.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-scala.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-scala.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Scala rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-scala.ext4
@@ -2324,7 +2324,7 @@ EOF
         sudo ln -sf /opt/kotlinc/bin/kotlinc /mnt/kotlin/usr/bin/kotlinc
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/kotlin/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/kotlin/usr/local/bin/
         sudo chmod +x /mnt/kotlin/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/kotlin/etc/systemd/system
@@ -2351,7 +2351,7 @@ EOF
         sudo mv /tmp/rootfs-kotlin.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-kotlin.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-kotlin.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Kotlin rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-kotlin.ext4
@@ -2392,7 +2392,7 @@ EOF
         sudo chroot /mnt/lua apt-get install -y --no-install-recommends lua5.4
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/lua/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/lua/usr/local/bin/
         sudo chmod +x /mnt/lua/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/lua/etc/systemd/system
@@ -2417,7 +2417,7 @@ EOF
         sudo mv /tmp/rootfs-lua.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-lua.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-lua.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Lua rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-lua.ext4
@@ -2454,7 +2454,7 @@ EOF
         sudo chroot /mnt/r apt-get install -y --no-install-recommends r-base
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/r/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/r/usr/local/bin/
         sudo chmod +x /mnt/r/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/r/etc/systemd/system
@@ -2479,7 +2479,7 @@ EOF
         sudo mv /tmp/rootfs-r.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-r.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-r.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== R rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-r.ext4
@@ -2516,7 +2516,7 @@ EOF
         sudo chroot /mnt/haskell apt-get install -y --no-install-recommends ghc
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/haskell/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/haskell/usr/local/bin/
         sudo chmod +x /mnt/haskell/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/haskell/etc/systemd/system
@@ -2541,7 +2541,7 @@ EOF
         sudo mv /tmp/rootfs-haskell.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-haskell.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-haskell.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Haskell rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-haskell.ext4
@@ -2578,7 +2578,7 @@ EOF
         sudo chroot /mnt/elixir apt-get install -y --no-install-recommends erlang elixir
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/elixir/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/elixir/usr/local/bin/
         sudo chmod +x /mnt/elixir/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/elixir/etc/systemd/system
@@ -2603,7 +2603,7 @@ EOF
         sudo mv /tmp/rootfs-elixir.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-elixir.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-elixir.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Elixir rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-elixir.ext4
@@ -2640,7 +2640,7 @@ EOF
         sudo chroot /mnt/erlang apt-get install -y --no-install-recommends erlang
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/erlang/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/erlang/usr/local/bin/
         sudo chmod +x /mnt/erlang/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/erlang/etc/systemd/system
@@ -2665,7 +2665,7 @@ EOF
         sudo mv /tmp/rootfs-erlang.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-erlang.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-erlang.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Erlang rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-erlang.ext4
@@ -2702,7 +2702,7 @@ EOF
         sudo chroot /mnt/clojure apt-get install -y --no-install-recommends openjdk-21-jdk clojure ca-certificates
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/clojure/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/clojure/usr/local/bin/
         sudo chmod +x /mnt/clojure/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/clojure/etc/systemd/system
@@ -2728,7 +2728,7 @@ EOF
         sudo mv /tmp/rootfs-clojure.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-clojure.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-clojure.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Clojure rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-clojure.ext4
@@ -2773,7 +2773,7 @@ EOF
         sudo chroot /mnt/dart apt-get install -y dart
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/dart/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/dart/usr/local/bin/
         sudo chmod +x /mnt/dart/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/dart/etc/systemd/system
@@ -2799,7 +2799,7 @@ EOF
         sudo mv /tmp/rootfs-dart.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-dart.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-dart.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Dart rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-dart.ext4
@@ -2839,7 +2839,7 @@ EOF
         sudo chmod +x /mnt/deno/usr/bin/deno
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/deno/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/deno/usr/local/bin/
         sudo chmod +x /mnt/deno/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/deno/etc/systemd/system
@@ -2864,7 +2864,7 @@ EOF
         sudo mv /tmp/rootfs-deno.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-deno.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-deno.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Deno rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-deno.ext4
@@ -2904,7 +2904,7 @@ EOF
         sudo chmod +x /mnt/bun/usr/bin/bun
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/bun/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/bun/usr/local/bin/
         sudo chmod +x /mnt/bun/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/bun/etc/systemd/system
@@ -2929,7 +2929,7 @@ EOF
         sudo mv /tmp/rootfs-bun.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-bun.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-bun.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Bun rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-bun.ext4
@@ -2970,7 +2970,7 @@ EOF
         sudo chroot /mnt/pascal apt-get install -y --no-install-recommends fpc
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/pascal/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/pascal/usr/local/bin/
         sudo chmod +x /mnt/pascal/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/pascal/etc/systemd/system
@@ -2995,7 +2995,7 @@ EOF
         sudo mv /tmp/rootfs-pascal.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-pascal.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-pascal.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Pascal rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-pascal.ext4
@@ -3032,7 +3032,7 @@ EOF
         sudo chroot /mnt/fortran apt-get install -y --no-install-recommends gfortran
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/fortran/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/fortran/usr/local/bin/
         sudo chmod +x /mnt/fortran/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/fortran/etc/systemd/system
@@ -3057,7 +3057,7 @@ EOF
         sudo mv /tmp/rootfs-fortran.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-fortran.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-fortran.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Fortran rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-fortran.ext4
@@ -3094,7 +3094,7 @@ EOF
         sudo chroot /mnt/cobol apt-get install -y --no-install-recommends gnucobol
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/cobol/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/cobol/usr/local/bin/
         sudo chmod +x /mnt/cobol/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/cobol/etc/systemd/system
@@ -3119,7 +3119,7 @@ EOF
         sudo mv /tmp/rootfs-cobol.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-cobol.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-cobol.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== COBOL rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-cobol.ext4
@@ -3160,7 +3160,7 @@ EOF
         sudo chroot /mnt/prolog apt-get install -y --no-install-recommends swi-prolog
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/prolog/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/prolog/usr/local/bin/
         sudo chmod +x /mnt/prolog/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/prolog/etc/systemd/system
@@ -3185,7 +3185,7 @@ EOF
         sudo mv /tmp/rootfs-prolog.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-prolog.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-prolog.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Prolog rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-prolog.ext4
@@ -3222,7 +3222,7 @@ EOF
         sudo chroot /mnt/lisp apt-get install -y --no-install-recommends sbcl
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/lisp/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/lisp/usr/local/bin/
         sudo chmod +x /mnt/lisp/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/lisp/etc/systemd/system
@@ -3247,7 +3247,7 @@ EOF
         sudo mv /tmp/rootfs-lisp.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-lisp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-lisp.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Lisp rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-lisp.ext4
@@ -3284,7 +3284,7 @@ EOF
         sudo chroot /mnt/racket apt-get install -y --no-install-recommends racket
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/racket/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/racket/usr/local/bin/
         sudo chmod +x /mnt/racket/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/racket/etc/systemd/system
@@ -3309,7 +3309,7 @@ EOF
         sudo mv /tmp/rootfs-racket.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-racket.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-racket.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Racket rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-racket.ext4
@@ -3352,7 +3352,7 @@ EOF
         sudo ln -sf /opt/zig-linux-x86_64-0.11.0/zig /mnt/zig/usr/bin/zig
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/zig/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/zig/usr/local/bin/
         sudo chmod +x /mnt/zig/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/zig/etc/systemd/system
@@ -3377,7 +3377,7 @@ EOF
         sudo mv /tmp/rootfs-zig.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-zig.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-zig.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Zig rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-zig.ext4
@@ -3414,7 +3414,7 @@ EOF
         sudo chroot /mnt/nim apt-get install -y --no-install-recommends nim
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/nim/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/nim/usr/local/bin/
         sudo chmod +x /mnt/nim/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/nim/etc/systemd/system
@@ -3439,7 +3439,7 @@ EOF
         sudo mv /tmp/rootfs-nim.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-nim.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-nim.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Nim rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-nim.ext4
@@ -3476,7 +3476,7 @@ EOF
         sudo chroot /mnt/crystal apt-get install -y --no-install-recommends crystal
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/crystal/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/crystal/usr/local/bin/
         sudo chmod +x /mnt/crystal/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/crystal/etc/systemd/system
@@ -3501,7 +3501,7 @@ EOF
         sudo mv /tmp/rootfs-crystal.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-crystal.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-crystal.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Crystal rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-crystal.ext4
@@ -3546,7 +3546,7 @@ EOF
         sudo chroot /mnt/csharp dotnet tool install -g dotnet-script
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/csharp/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/csharp/usr/local/bin/
         sudo chmod +x /mnt/csharp/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/csharp/etc/systemd/system
@@ -3573,7 +3573,7 @@ EOF
         sudo mv /tmp/rootfs-csharp.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-csharp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-csharp.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== C# rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-csharp.ext4
@@ -3613,7 +3613,7 @@ EOF
         sudo chroot /mnt/fsharp apt-get install -y dotnet-sdk-8.0
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/fsharp/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/fsharp/usr/local/bin/
         sudo chmod +x /mnt/fsharp/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/fsharp/etc/systemd/system
@@ -3639,7 +3639,7 @@ EOF
         sudo mv /tmp/rootfs-fsharp.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-fsharp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-fsharp.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== F# rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-fsharp.ext4
@@ -3679,7 +3679,7 @@ EOF
         sudo chroot /mnt/powershell apt-get install -y powershell
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/powershell/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/powershell/usr/local/bin/
         sudo chmod +x /mnt/powershell/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/powershell/etc/systemd/system
@@ -3704,7 +3704,7 @@ EOF
         sudo mv /tmp/rootfs-powershell.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-powershell.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-powershell.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== PowerShell rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-powershell.ext4
@@ -3747,7 +3747,7 @@ EOF
         sudo ln -sf /root/.juliaup/bin/julia /mnt/julia/usr/bin/julia
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/julia/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/julia/usr/local/bin/
         sudo chmod +x /mnt/julia/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/julia/etc/systemd/system
@@ -3773,7 +3773,7 @@ EOF
         sudo mv /tmp/rootfs-julia.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-julia.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-julia.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Julia rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-julia.ext4
@@ -3810,7 +3810,7 @@ EOF
         sudo chroot /mnt/octave apt-get install -y --no-install-recommends octave
 
         echo "Installing guest-runner..."
-        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/octave/usr/local/bin/
+        sudo cp /opt/runner-codes/rootfs/guest-runner /mnt/octave/usr/local/bin/
         sudo chmod +x /mnt/octave/usr/local/bin/guest-runner
 
         sudo mkdir -p /mnt/octave/etc/systemd/system
@@ -3835,7 +3835,7 @@ EOF
         sudo mv /tmp/rootfs-octave.ext4 /srv/firecracker/images/
 
         echo "Uploading to S3..."
-        aws s3 cp /srv/firecracker/images/rootfs-octave.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+        aws s3 cp /srv/firecracker/images/rootfs-octave.ext4 s3://runner-codes-rootfs/ --only-show-errors
 
         echo "=== Octave rootfs created and uploaded to S3 ==="
         ls -lh /srv/firecracker/images/rootfs-octave.ext4
@@ -3925,8 +3925,8 @@ EOF
 
         # Upload to S3
         echo "Uploading snapshot to S3..."
-        aws s3 cp \$SNAP_DIR/vm.snap s3://llm-firesandbox-rootfs/snapshots/\$LANG/ --only-show-errors
-        aws s3 cp \$SNAP_DIR/vm.mem s3://llm-firesandbox-rootfs/snapshots/\$LANG/ --only-show-errors
+        aws s3 cp \$SNAP_DIR/vm.snap s3://runner-codes-rootfs/snapshots/\$LANG/ --only-show-errors
+        aws s3 cp \$SNAP_DIR/vm.mem s3://runner-codes-rootfs/snapshots/\$LANG/ --only-show-errors
 
         echo "=== Snapshot for \$LANG created and uploaded ==="
         ls -lh \$SNAP_DIR/

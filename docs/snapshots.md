@@ -19,7 +19,7 @@ Speedup:        8.4x mais rapido
 ### Armazenamento no S3
 
 ```
-s3://llm-firesandbox-rootfs/
+s3://runner-codes-rootfs/
 └── snapshots/
     ├── python/
     │   ├── mem.snapshot      # ~512 MB (memoria da VM)
@@ -281,7 +281,7 @@ WORKDIR="/srv/firecracker"
 KERNEL="$WORKDIR/vmlinux"
 IMAGES_DIR="$WORKDIR/images"
 SNAPSHOT_DIR="$WORKDIR/snapshots"
-S3_BUCKET="s3://llm-firesandbox-rootfs/snapshots"
+S3_BUCKET="s3://runner-codes-rootfs/snapshots"
 
 # Listar todas as linguagens
 LANGUAGES=$(ls $IMAGES_DIR/rootfs-*.ext4 | sed 's/.*rootfs-\(.*\)\.ext4/\1/' | sort)
@@ -364,13 +364,13 @@ done
 ### Listar todos os snapshots no S3
 
 ```bash
-aws s3 ls s3://llm-firesandbox-rootfs/snapshots/ --recursive
+aws s3 ls s3://runner-codes-rootfs/snapshots/ --recursive
 ```
 
 ### Verificar total de linguagens
 
 ```bash
-aws s3 ls s3://llm-firesandbox-rootfs/snapshots/ | grep -c "PRE"
+aws s3 ls s3://runner-codes-rootfs/snapshots/ | grep -c "PRE"
 # Esperado: 45
 ```
 
@@ -379,13 +379,13 @@ aws s3 ls s3://llm-firesandbox-rootfs/snapshots/ | grep -c "PRE"
 ```bash
 LANG="python"
 mkdir -p /srv/firecracker/snapshots/$LANG
-aws s3 cp s3://llm-firesandbox-rootfs/snapshots/$LANG/ /srv/firecracker/snapshots/$LANG/ --recursive
+aws s3 cp s3://runner-codes-rootfs/snapshots/$LANG/ /srv/firecracker/snapshots/$LANG/ --recursive
 ```
 
 ### Verificar tamanho total
 
 ```bash
-aws s3 ls s3://llm-firesandbox-rootfs/snapshots/ --recursive --summarize | tail -2
+aws s3 ls s3://runner-codes-rootfs/snapshots/ --recursive --summarize | tail -2
 # Total Objects: 90
 # Total Size: ~22.5 GB
 ```
@@ -454,7 +454,7 @@ cp $ROOTFS $TMP_ROOTFS
 |------|-----------|---------|
 | `-snapshot` | Ativar warm boot via snapshot | `false` |
 | `-cache-dir` | Diretorio para cache local | `/srv/firecracker/snapshots` |
-| `-s3-bucket` | Bucket S3 com snapshots | `llm-firesandbox-rootfs` |
+| `-s3-bucket` | Bucket S3 com snapshots | `runner-codes-rootfs` |
 | `-s3-region` | Regiao do S3 | `us-east-1` |
 
 ### Exemplo de Execucao

@@ -5,7 +5,7 @@ description: 'Swift 5.10 code execution'
 
 ## Overview
 
-Swift is Apple's modern programming language for building safe, fast, and expressive code. LLM-Firecracker provides Swift 5.10.1 runtime for Linux.
+Swift is Apple's modern programming language for building safe, fast, and expressive code. Runner Codes provides Swift 5.10.1 runtime for Linux.
 
 ## Specifications
 
@@ -88,8 +88,8 @@ sudo infra.operator snapshot create --lang swift --mem 1024 --vcpus 1
 ```
 
 ```bash title="9. Upload to S3"
-sudo infra.operator snapshot upload --lang swift --bucket llm-firecracker
-aws s3 cp /srv/firecracker/images/rootfs-swift.ext4 s3://llm-firecracker/rootfs/swift/
+sudo infra.operator snapshot upload --lang swift --bucket runner-codes
+aws s3 cp /srv/firecracker/images/rootfs-swift.ext4 s3://runner-codes/rootfs/swift/
 ```
 
 ```bash title="10. Test Execution"

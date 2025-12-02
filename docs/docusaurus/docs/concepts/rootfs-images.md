@@ -5,7 +5,7 @@ description: 'Understanding and managing root filesystem images'
 
 ## What is a Rootfs?
 
-A rootfs (root filesystem) is a disk image containing the complete Linux userspace needed to run code. In LLM-Firecracker, each supported language has its own optimized rootfs image.
+A rootfs (root filesystem) is a disk image containing the complete Linux userspace needed to run code. In Runner Codes, each supported language has its own optimized rootfs image.
 
 ![Rootfs Structure](/img/rootfs-structure.svg)
 

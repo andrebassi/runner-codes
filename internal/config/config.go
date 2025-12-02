@@ -30,7 +30,7 @@ func DefaultConfig() *Config {
 		WorkDir:      "/srv/firecracker",
 		ImagesDir:    "/srv/firecracker/images",
 		SnapshotsDir: "/dev/shm/snapshots",
-		S3Bucket:     "llm-firecracker",
+		S3Bucket:     "runner-codes",
 		S3Region:     "us-east-1",
 		Firecracker: FirecrackerConfig{
 			BinaryPath: "/usr/local/bin/firecracker",

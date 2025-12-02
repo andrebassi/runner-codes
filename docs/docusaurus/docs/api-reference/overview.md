@@ -5,7 +5,7 @@ description: 'Job execution API and vsock communication protocol'
 
 ## Overview
 
-LLM-Firecracker uses a JSON-based API over virtio-vsock for communication between the host and guest components of infra.operator. This provides low-latency, secure communication without network stack overhead.
+Runner Codes uses a JSON-based API over virtio-vsock for communication between the host and guest components of infra.operator. This provides low-latency, secure communication without network stack overhead.
 
 ## Communication Flow
 
@@ -217,7 +217,7 @@ Pass `stdin` as an array to execute the same code with multiple inputs:
 
 ## Supported Languages
 
-LLM-Firecracker supports **45 programming languages**. Here are the most common:
+Runner Codes supports **45 programming languages**. Here are the most common:
 
 | Language | Identifier | Execution Method |
 |----------|------------|------------------|

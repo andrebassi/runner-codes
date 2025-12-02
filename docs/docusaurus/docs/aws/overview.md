@@ -1,6 +1,6 @@
 ---
 title: 'AWS Overview'
-description: 'Deploy LLM-Firecracker on AWS EC2 metal instances'
+description: 'Deploy Runner Codes on AWS EC2 metal instances'
 ---
 
 ## Why AWS?

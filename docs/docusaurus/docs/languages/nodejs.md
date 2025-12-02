@@ -5,7 +5,7 @@ description: 'Node.js 22 Alpine code execution'
 
 ## Overview
 
-Node.js is ideal for asynchronous operations, JSON processing, and web-related code. LLM-Firecracker provides Node.js 22 LTS with full ES modules support.
+Node.js is ideal for asynchronous operations, JSON processing, and web-related code. Runner Codes provides Node.js 22 LTS with full ES modules support.
 
 ## Specifications
 
@@ -37,11 +37,11 @@ sudo infra.operator snapshot create --lang nodejs --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang nodejs --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang nodejs --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang nodejs --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang nodejs --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"
@@ -476,8 +476,8 @@ infra.operator rootfs from-docker --name nodejs --image my-nodejs --size 500
 
 ```bash title="Create snapshot and upload to S3"
 infra.operator snapshot create --lang nodejs --mem 512 --vcpus 1
-infra.operator rootfs upload --lang nodejs --bucket llm-firecracker
-infra.operator snapshot upload --lang nodejs --bucket llm-firecracker
+infra.operator rootfs upload --lang nodejs --bucket runner-codes
+infra.operator snapshot upload --lang nodejs --bucket runner-codes
 ```
 
 ### Option 2: Mount and modify existing rootfs
@@ -505,8 +505,8 @@ sudo umount /mnt/rootfs
 
 ```bash title="Recreate snapshot and upload to S3"
 infra.operator snapshot create --lang nodejs --mem 512 --vcpus 1
-infra.operator rootfs upload --lang nodejs --bucket llm-firecracker
-infra.operator snapshot upload --lang nodejs --bucket llm-firecracker
+infra.operator rootfs upload --lang nodejs --bucket runner-codes
+infra.operator snapshot upload --lang nodejs --bucket runner-codes
 ```
 
 ## Troubleshooting

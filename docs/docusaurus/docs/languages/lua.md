@@ -5,7 +5,7 @@ description: 'Lua lightweight scripting'
 
 ## Overview
 
-Lua is a lightweight, embeddable scripting language. LLM-Firecracker provides Lua 5.4 for script execution.
+Lua is a lightweight, embeddable scripting language. Runner Codes provides Lua 5.4 for script execution.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang lua --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang lua --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang lua --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang lua --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang lua --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

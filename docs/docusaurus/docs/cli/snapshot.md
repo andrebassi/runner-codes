@@ -128,8 +128,8 @@ infra.operator snapshot list --remote
 
 ```text title="Output"
 LANGUAGE  VMSTATE     MEMORY    S3 PATH
-python    13.2 KB     512 MB    s3://llm-firecracker/snapshots/python/
-nodejs    14.1 KB     512 MB    s3://llm-firecracker/snapshots/nodejs/
+python    13.2 KB     512 MB    s3://runner-codes/snapshots/python/
+nodejs    14.1 KB     512 MB    s3://runner-codes/snapshots/nodejs/
 ```
 
 ---
@@ -147,7 +147,7 @@ infra.operator snapshot upload --lang <language> [flags]
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--lang` | `-l` | Language to upload (required) | - |
-| `--bucket` | `-b` | S3 bucket | `s3://llm-firecracker/snapshots` |
+| `--bucket` | `-b` | S3 bucket | `s3://runner-codes/snapshots` |
 
 **Example:**
 
@@ -159,7 +159,7 @@ infra.operator snapshot upload --lang python
 Uploading snapshot for python to S3...
   - Uploading vmstate.snapshot (13.2 KB)...
   - Uploading mem.snapshot (512 MB)...
-Uploaded successfully: s3://llm-firecracker/snapshots/python/
+Uploaded successfully: s3://runner-codes/snapshots/python/
 ```
 
 ---
@@ -177,7 +177,7 @@ infra.operator snapshot download --lang <language> [flags]
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--lang` | `-l` | Language to download (required) | - |
-| `--bucket` | `-b` | S3 bucket | `s3://llm-firecracker/snapshots` |
+| `--bucket` | `-b` | S3 bucket | `s3://runner-codes/snapshots` |
 | `--output` | `-o` | Output directory | Auto-detect |
 
 **Example:**

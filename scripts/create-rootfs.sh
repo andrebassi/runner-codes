@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# LLM-FireSandbox: Consolidated Rootfs Creation Script
+# Runner Codes: Consolidated Rootfs Creation Script
 # =============================================================================
 # This script creates ALL 40 language rootfs images from scratch.
 # Each language has its correct size, packages, and post-installation steps.
@@ -16,8 +16,8 @@
 set -e
 
 # Configuration
-GUEST_RUNNER="/opt/llm-firecracker/guest-runner"
-S3_BUCKET="llm-firecracker"
+GUEST_RUNNER="/opt/runner-codes/guest-runner"
+S3_BUCKET="runner-codes"
 IMAGES_DIR="/srv/firecracker/images"
 LOG_FILE="/tmp/rootfs-creation-$(date +%Y%m%d-%H%M%S).log"
 
@@ -410,7 +410,7 @@ ALL_LANGUAGES=(
 # =============================================================================
 
 echo "============================================================"
-echo "LLM-FireSandbox: Consolidated Rootfs Creation"
+echo "Runner Codes: Consolidated Rootfs Creation"
 echo "Started: $(date)"
 echo "Log file: $LOG_FILE"
 echo "============================================================"

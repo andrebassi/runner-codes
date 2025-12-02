@@ -5,7 +5,7 @@ description: 'Nim programming language'
 
 ## Overview
 
-Nim is a statically typed compiled language that combines powerful metaprogramming with Python-like readability. LLM-Firecracker provides Nim compiler for efficient code execution.
+Nim is a statically typed compiled language that combines powerful metaprogramming with Python-like readability. Runner Codes provides Nim compiler for efficient code execution.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang nim --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang nim --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang nim --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang nim --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang nim --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

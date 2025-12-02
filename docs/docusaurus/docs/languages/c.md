@@ -5,7 +5,7 @@ description: 'C language code execution with GCC'
 
 ## Overview
 
-C is a low-level systems programming language. LLM-Firecracker provides GCC for compiling and executing C programs.
+C is a low-level systems programming language. Runner Codes provides GCC for compiling and executing C programs.
 
 ## Specifications
 
@@ -28,11 +28,11 @@ sudo infra.operator snapshot create --lang c --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang c --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang c --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang c --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang c --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

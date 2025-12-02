@@ -193,11 +193,11 @@ func rootfsUploadCmd() *cobra.Command {
 		Use:   "upload",
 		Short: "Upload rootfs image to storage bucket",
 		Example: `  # Using environment variable
-  export BUCKET=llm-firecracker
+  export BUCKET=runner-codes
   infra.operator rootfs upload --lang python
 
   # Using flag
-  infra.operator rootfs upload --lang python --bucket llm-firecracker`,
+  infra.operator rootfs upload --lang python --bucket runner-codes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bucket == "" {
 				return fmt.Errorf("bucket required: set BUCKET env var or use --bucket flag")
@@ -220,11 +220,11 @@ func rootfsDownloadCmd() *cobra.Command {
 		Use:   "download",
 		Short: "Download rootfs image from storage bucket",
 		Example: `  # Using environment variable
-  export BUCKET=llm-firecracker
+  export BUCKET=runner-codes
   infra.operator rootfs download --lang python
 
   # Using flag
-  infra.operator rootfs download --lang python --bucket llm-firecracker`,
+  infra.operator rootfs download --lang python --bucket runner-codes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bucket == "" {
 				return fmt.Errorf("bucket required: set BUCKET env var or use --bucket flag")
@@ -317,11 +317,11 @@ func snapshotUploadCmd() *cobra.Command {
 		Use:   "upload",
 		Short: "Upload snapshot to storage bucket",
 		Example: `  # Using environment variable
-  export BUCKET=llm-firecracker
+  export BUCKET=runner-codes
   infra.operator snapshot upload --lang python
 
   # Using flag
-  infra.operator snapshot upload --lang python --bucket llm-firecracker`,
+  infra.operator snapshot upload --lang python --bucket runner-codes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bucket == "" {
 				return fmt.Errorf("bucket required: set BUCKET env var or use --bucket flag")
@@ -344,11 +344,11 @@ func snapshotDownloadCmd() *cobra.Command {
 		Use:   "download",
 		Short: "Download snapshot from storage bucket",
 		Example: `  # Using environment variable
-  export BUCKET=llm-firecracker
+  export BUCKET=runner-codes
   infra.operator snapshot download --lang python
 
   # Using flag
-  infra.operator snapshot download --lang python --bucket llm-firecracker`,
+  infra.operator snapshot download --lang python --bucket runner-codes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bucket == "" {
 				return fmt.Errorf("bucket required: set BUCKET env var or use --bucket flag")

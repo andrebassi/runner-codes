@@ -5,7 +5,7 @@ description: 'Complete guide to set up SQL and NoSQL syntax validators'
 
 ## Overview
 
-This guide covers the complete setup process for SQL and NoSQL syntax validators in LLM-Firecracker. These parsers validate query syntax WITHOUT requiring real database connections.
+This guide covers the complete setup process for SQL and NoSQL syntax validators in Runner Codes. These parsers validate query syntax WITHOUT requiring real database connections.
 
 ## Architecture
 
@@ -223,7 +223,7 @@ for parser in mysql-parser postgresql-parser mariadb-parser sqlite-parser mongod
     echo "Uploading rootfs ${parser}..."
     sudo -E infra.operator rootfs upload \
         --lang ${parser} \
-        --bucket llm-firecracker
+        --bucket runner-codes
 done
 ```
 
@@ -232,18 +232,18 @@ for parser in mysql-parser postgresql-parser mariadb-parser sqlite-parser mongod
     echo "Uploading snapshot ${parser}..."
     sudo -E infra.operator snapshot upload \
         --lang ${parser} \
-        --bucket llm-firecracker
+        --bucket runner-codes
 done
 ```
 
 ### Verify S3 Upload
 
 ```bash title="Verify rootfs uploads in S3"
-aws s3 ls s3://llm-firecracker/ | grep parser
+aws s3 ls s3://runner-codes/ | grep parser
 ```
 
 ```bash title="Verify snapshot uploads in S3"
-aws s3 ls s3://llm-firecracker/snapshots/ | grep parser
+aws s3 ls s3://runner-codes/snapshots/ | grep parser
 ```
 
 ## Step 6: Update executor.go
@@ -293,7 +293,7 @@ Also add `NODE_PATH` to the environment in `runCommandWithStdin`:
 ## Step 7: Rebuild and Deploy Binary
 
 ```bash title="Build binary for Linux"
-cd /path/to/llm-firecracker
+cd /path/to/runner-codes
 GOOS=linux GOARCH=amd64 go build -o bin/infra.operator-linux ./cmd/infra.operator/...
 ```
 
@@ -340,7 +340,7 @@ done
 export AWS_ACCESS_KEY_ID="your-key"
 export AWS_SECRET_ACCESS_KEY="your-secret"
 for parser in mysql-parser postgresql-parser mariadb-parser sqlite-parser mongodb-parser redis-parser; do
-    sudo -E infra.operator snapshot upload --lang ${parser} --bucket llm-firecracker
+    sudo -E infra.operator snapshot upload --lang ${parser} --bucket runner-codes
 done
 ```
 

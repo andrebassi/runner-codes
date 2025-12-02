@@ -5,7 +5,7 @@ description: 'Scala code execution on JVM'
 
 ## Overview
 
-Scala is a powerful language that combines object-oriented and functional programming. LLM-Firecracker provides Scala with OpenJDK runtime.
+Scala is a powerful language that combines object-oriented and functional programming. Runner Codes provides Scala with OpenJDK runtime.
 
 ## Specifications
 
@@ -29,11 +29,11 @@ sudo infra.operator snapshot create --lang scala --mem 512 --vcpus 1
 ```
 
 ```bash title="3. Upload rootfs to S3"
-sudo infra.operator rootfs upload --lang scala --bucket llm-firecracker
+sudo infra.operator rootfs upload --lang scala --bucket runner-codes
 ```
 
 ```bash title="3. Upload snapshot to S3"
-sudo infra.operator snapshot upload --lang scala --bucket llm-firecracker
+sudo infra.operator snapshot upload --lang scala --bucket runner-codes
 ```
 
 ```bash title="4. Test Execution"

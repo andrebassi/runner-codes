@@ -1,4 +1,4 @@
-# LLM-FireSandbox Scripts
+# Runner Codes Scripts
 
 Scripts para criação e manutenção das imagens rootfs para as 40 linguagens de programação suportadas.
 
@@ -49,7 +49,7 @@ Scripts para criação e manutenção das imagens rootfs para as 40 linguagens d
 - Ubuntu 22.04 (bare metal ou VM com KVM)
 - Pacotes: `debootstrap`, `e2fsprogs`, `wget`, `curl`
 - AWS CLI configurado (para upload S3)
-- Guest-runner compilado em `/opt/llm-firesandbox/rootfs/guest-runner`
+- Guest-runner compilado em `/opt/runner-codes/rootfs/guest-runner`
 
 ### Configuração
 
@@ -58,10 +58,10 @@ Scripts para criação e manutenção das imagens rootfs para as 40 linguagens d
 IMAGES_DIR="/srv/firecracker/images"
 
 # Bucket S3
-S3_BUCKET="llm-firesandbox-rootfs"
+S3_BUCKET="runner-codes-rootfs"
 
 # Guest Runner
-GUEST_RUNNER="/opt/llm-firesandbox/rootfs/guest-runner"
+GUEST_RUNNER="/opt/runner-codes/rootfs/guest-runner"
 ```
 
 ### Criar Todas as Rootfs
@@ -121,20 +121,20 @@ Estas linguagens não estão disponíveis via apt e requerem download manual:
 
 ## S3 Storage
 
-- **Bucket**: `s3://llm-firesandbox-rootfs/`
+- **Bucket**: `s3://runner-codes-rootfs/`
 - **Region**: `us-east-1`
 - **Total**: ~37 GiB (42 objetos)
 
 ### Upload para S3
 
 ```bash
-aws s3 cp /srv/firecracker/images/rootfs-LANG.ext4 s3://llm-firesandbox-rootfs/
+aws s3 cp /srv/firecracker/images/rootfs-LANG.ext4 s3://runner-codes-rootfs/
 ```
 
 ### Download do S3
 
 ```bash
-aws s3 cp s3://llm-firesandbox-rootfs/rootfs-LANG.ext4 /srv/firecracker/images/
+aws s3 cp s3://runner-codes-rootfs/rootfs-LANG.ext4 /srv/firecracker/images/
 ```
 
 ## Troubleshooting

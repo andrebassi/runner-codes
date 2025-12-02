@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DefaultS3Bucket     = "llm-firecracker"
+	DefaultS3Bucket     = "runner-codes"
 	DefaultS3Region     = "us-east-1"
 	DefaultCacheDir     = "/srv/firecracker/snapshots"
 	SnapshotMemFile     = "mem.snapshot"

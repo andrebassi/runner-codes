@@ -149,7 +149,7 @@ task aws:logs
 ```
 
 ```text title="Expected output"
-=== LLM-Firecracker Setup Starting ===
+=== Runner Codes Setup Starting ===
 Date: Sat Nov 29 04:25:00 UTC 2025
 Updating system packages...
 Installing dependencies...
@@ -175,7 +175,7 @@ Downloading rootfs images...
 
 Default rootfs symlinked to rootfs-python.ext4
 
-=== LLM-Firecracker Setup Complete ===
+=== Runner Codes Setup Complete ===
 ```
 
 :::tip
