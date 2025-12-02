@@ -68,7 +68,7 @@ curl -X POST http://localhost:8080/api/v1/execute \
 
 ## Open Source
 
-Runner Codes is **fully open source** under the MIT license. The entire codebase, including the CLI, HTTP API, guest runner, and documentation, is available on GitHub. We welcome contributions, bug reports, and feature requests from the community.
+Runner Codes is **fully open source** under the MPL-2.0 license. The entire codebase, including the CLI, HTTP API, guest runner, and documentation, is available on GitHub. We welcome contributions, bug reports, and feature requests from the community.
 
 **GitHub:** https://github.com/andrebassi/runner-codes
 
