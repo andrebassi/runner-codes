@@ -267,15 +267,11 @@ func (fc *FirecrackerClient) ConfigureMachine(vcpus, memMiB int) error {
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always use optional binding (if let, guard let) to safely unwrap optionals.
+- **Handle optionals safely** — Always use optional binding (if let, guard let) to safely unwrap optionals.
+- **Prefer structs** — For simple data types, prefer structs for value semantics and performance.
+- **Use standard library** — Only Swift standard library is available.
+- **Account for compilation** — Set timeout to at least 60 seconds for compilation time.
 
-
-
-    For simple data types, prefer structs for value semantics and performance.
-
-
-
-    Swift interpretation is slower than compiled; use 30+ second timeouts.
-
-
+:::

@@ -158,11 +158,11 @@ sudo infra.operator host --lang perl --code 'print "Hello from Perl $^V\n";' --m
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always include `use strict; use warnings;` for safer code.
+- **Use strict and warnings** — Always include `use strict; use warnings;` for safer code.
+- **Declare variables properly** — Declare variables with `my` for proper scoping.
+- **Use standard modules** — Only core Perl modules are available, no CPAN packages.
+- **Handle errors** — Use eval/die or try/catch patterns for error handling.
 
-
-
-    Declare variables with `my` for proper scoping.
-
-
+:::

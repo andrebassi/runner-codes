@@ -215,11 +215,14 @@ The `mysql-run` wrapper script performs the following steps:
 
 ## Best Practices
 
-**Always CREATE TABLE before INSERT statements. Each execution is a fresh database:**
+:::info Best Practices
 
-Wrap related INSERT/UPDATE statements in BEGIN/COMMIT for better performance.
+- **Create tables first** — Always CREATE TABLE before INSERT statements. Each execution is a fresh database.
+- **Use transactions** — Wrap related INSERT/UPDATE statements in BEGIN/COMMIT for better performance.
+- **Use standard SQL** — MariaDB is MySQL-compatible, but some edge cases may differ. Use standard SQL when possible.
+- **Use proper indexes** — Create indexes for frequently queried columns.
 
-**MariaDB is MySQL-compatible, but some edge cases may differ. Use standard SQL when possible:**
+:::
 
 ## Executor Configuration
 ```go title="Go code"

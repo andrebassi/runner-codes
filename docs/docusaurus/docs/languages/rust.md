@@ -415,10 +415,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/cargo/bin
 
 ## Best Practices
 
-**Write code using only `std` crate. No external dependencies via Cargo:**
+:::info Best Practices
 
-Use `Result` and `Option` types. Avoid `unwrap()` unless you're certain.
+- **Use std crate only** — Write code using only the standard library. No external dependencies via Cargo.
+- **Handle errors properly** — Use `Result` and `Option` types. Avoid `unwrap()` unless you're certain.
+- **Add Debug derives** — Add `#[derive(Debug)]` to structs for easy printing with `{:?}`.
+- **Account for compilation** — Set timeout to at least 60 seconds to account for compilation time.
 
-**Add `#[derive(Debug)]` to structs for easy printing with `{:?}`.:**
-
-Set timeout to at least 60 seconds to account for compilation time.
+:::

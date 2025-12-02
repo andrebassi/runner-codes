@@ -311,13 +311,14 @@ aws s3 sync s3://llm-infra-operator-rootfs/snapshots/ /srv/snapshots
 
 ## Best Practices
 
-### When to Create Snapshots
+:::info Best Practices
 
-Create snapshot right after infra.operator guest signals ready.
+- **Snapshot at the right moment** — Create snapshot right after infra.operator guest signals ready.
+- **Pre-load dependencies** — If pre-loading dependencies, snapshot after they're loaded.
+- **Keep snapshots updated** — Recreate snapshots when updating rootfs or infra.operator.
+- **Use SSD storage** — Store snapshots on fast SSD for optimal restore performance.
 
-If pre-loading dependencies, snapshot after they're loaded.
-
-Recreate snapshots when updating rootfs or infra.operator.
+:::
 
 ### Snapshot Management
 

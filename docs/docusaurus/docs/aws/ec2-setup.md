@@ -358,19 +358,11 @@ concurrent_vms_total
 
 ## Best Practices
 
+:::info Best Practices
 
-    c6i.metal offers better price/performance than c5.metal
+- **Choose the right instance** — c6i.metal offers better price/performance than c5.metal.
+- **Enable detailed monitoring** — Enable 1-minute CloudWatch metrics for production.
+- **Use placement groups** — For multi-instance deployments, use cluster placement groups.
+- **Use Auto Scaling** — Use Auto Scaling groups with scheduled scaling for cost optimization.
 
-
-
-    Enable 1-minute CloudWatch metrics for production
-
-
-
-    For multi-instance deployments, use cluster placement groups
-
-
-
-    Use Auto Scaling groups with scheduled scaling
-
-
+:::

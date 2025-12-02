@@ -163,15 +163,11 @@ sudo infra.operator host --lang cobol --code "       IDENTIFICATION DIVISION.
 
 ## Best Practices
 
+:::info Best Practices
 
-    COBOL uses fixed columns: 1-6 sequence, 7 indicator, 8-72 code.
+- **Follow column structure** — COBOL uses fixed columns: 1-6 sequence, 7 indicator, 8-72 code.
+- **Use descriptive names** — COBOL allows descriptive names like WS-CUSTOMER-NAME.
+- **Use proper divisions** — Always include IDENTIFICATION, DATA, and PROCEDURE divisions.
+- **End with STOP RUN** — Always end programs with STOP RUN statement.
 
-
-
-    COBOL allows descriptive names like WS-CUSTOMER-NAME.
-
-
-
-    Always initialize working storage variables with VALUE clause.
-
-
+:::

@@ -392,10 +392,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/
 
 ## Best Practices
 
-**Write code that only uses the standard library. No external dependencies:**
+:::info Best Practices
 
-Always check error returns. Go's error handling is explicit and important.
+- **Use standard library only** — Write code that only uses the standard library. No external dependencies.
+- **Handle errors explicitly** — Always check error returns. Go's error handling is explicit and important.
+- **Manage goroutines properly** — Ensure goroutines complete before main exits. Use channels or sync.WaitGroup.
+- **Use package main** — All code must be in a single main.go file with package main.
 
-**Ensure goroutines complete before main exits. Use channels or sync.WaitGroup:**
-
-All code must be in a single main.go file with package main.
+:::

@@ -212,15 +212,11 @@ sudo infra.operator host --lang typescript --code 'console.log(`Hello from TypeS
 
 ## Best Practices
 
+:::info Best Practices
 
-    Leverage TypeScript's type system for safer code.
+- **Use the type system** — Leverage TypeScript's type system for safer code.
+- **Handle async properly** — Always await promises or handle them with .then()/.catch().
+- **Use interfaces** — Define interfaces for complex data structures.
+- **Avoid any type** — Use specific types instead of any for type safety.
 
-
-
-    Always await promises or handle them with .then()/.catch().
-
-
-
-    Bun provides fast native APIs for common operations.
-
-
+:::

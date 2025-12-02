@@ -193,15 +193,13 @@ sudo infra.operator host --lang java --code "public class Main { public static v
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always name your main class `Main` for proper execution.
+- **Name your class Main** — Always name your main class `Main` for proper execution.
+- **Use full imports** — Use full import statements for java.util, java.io, etc.
+- **Handle exceptions** — Wrap risky operations in try-catch blocks for meaningful errors.
+- **Account for compilation** — Set timeout to at least 60 seconds to account for JVM startup and compilation.
 
-
-
-    Use full import statements for java.util, java.io, etc.
-
-
-
-    Wrap risky operations in try-catch blocks for meaningful errors.
+:::
 
 

@@ -521,19 +521,12 @@ task s3:upload-single LANG=python
 
 ## Best Practices
 
-**Use standard library only:**
+:::info Best Practices
 
-Write code that doesn't depend on external packages. Use only standard library modules.
+- **Use standard library only** — Write code that doesn't depend on external packages. Use only standard library modules.
+- **Handle errors gracefully** — Use try/except blocks to provide meaningful error messages.
+- **Output to stdout/stderr** — All output must go to stdout/stderr. There's no other way to return data.
+- **Ensure termination** — Always have termination conditions. Long-running code will be killed by timeout.
 
-**Handle errors gracefully:**
-
-Use try/except blocks to provide meaningful error messages.
-
-**Output to stdout/stderr:**
-
-All output must go to stdout/stderr. There's no other way to return data.
-
-**Ensure termination:**
-
-Always have termination conditions. Long-running code will be killed by timeout.
+:::
 

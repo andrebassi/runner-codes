@@ -470,10 +470,11 @@ sudo infra.operator host --lang bash --code "bash --version | head -1" --mem 256
 
 ## Best Practices
 
-**Always quote variables: `"$var"` instead of `$var` to prevent word splitting.:**
+:::info Best Practices
 
-Prefer `[[ ]]` over `[ ]` for safer string comparisons and regex support.
+- **Always quote variables** — Use `"$var"` instead of `$var` to prevent word splitting.
+- **Use modern conditionals** — Prefer `[[ ]]` over `[ ]` for safer string comparisons and regex support.
+- **Check command existence** — Use `command -v cmd` to check if a command exists before using it.
+- **Exit on errors** — Add `set -e` at the start to exit on first error.
 
-**Use `command -v cmd` to check if a command exists before using it:**
-
-Add `set -e` at the start to exit on first error.
+:::

@@ -212,15 +212,11 @@ sudo infra.operator host --lang php --code '<?php echo "Hello from PHP " . PHP_V
 
 ## Best Practices
 
+:::info Best Practices
 
-    All PHP code must begin with the opening PHP tag.
+- **Start with PHP tag** — All PHP code must begin with the `<?php` opening tag.
+- **Use type declarations** — Leverage PHP 8's type system for safer code.
+- **Handle errors** — Use try/catch for exception handling.
+- **Output to stdout** — Use echo or print for output to stdout.
 
-
-
-    Leverage PHP 8's type system for safer code.
-
-
-
-    All output must go through echo/print to stdout.
-
-
+:::

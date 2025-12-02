@@ -158,11 +158,11 @@ sudo infra.operator host --lang tcl --code 'puts "Hello from Tcl [info patchleve
 
 ## Best Practices
 
+:::info Best Practices
 
-    Always use braces in expr: `expr {$a + $b}` instead of `expr $a + $b`.
+- **Use braces in expr** — Always use braces: `expr {$a + $b}` instead of `expr $a + $b`.
+- **Use proc for functions** — Define reusable code with the proc command.
+- **Use puts for output** — Use puts for output to stdout.
+- **Handle errors** — Use catch command for error handling.
 
-
-
-    Define reusable code with proc command.
-
-
+:::

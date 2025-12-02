@@ -254,10 +254,11 @@ Steps 3-6 are the bottleneck in resource-constrained microVMs.
 
 ## Best Practices
 
-**Always set timeout to 180+ seconds for Crystal executions:**
+:::info Best Practices
 
-More code means more types to infer and more LLVM work.
+- **Set longer timeouts** — Always set timeout to 180+ seconds for Crystal executions.
+- **Consider code complexity** — More code means more types to infer and more LLVM work.
+- **Consider Ruby for quick tasks** — If you just need Ruby-like syntax quickly, use Ruby instead.
+- **Let the compiler infer types** — Crystal's type inference is powerful - let the compiler figure out types.
 
-**If you just need Ruby-like syntax quickly, use Ruby instead:**
-
-Crystal's type inference is powerful - let the compiler figure out types.
+:::

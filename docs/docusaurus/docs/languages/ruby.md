@@ -212,15 +212,11 @@ sudo infra.operator host --lang ruby --code 'puts "Hello from Ruby #{RUBY_VERSIO
 
 ## Best Practices
 
+:::info Best Practices
 
-    Use puts for output to stdout. Use p for debugging.
+- **Use puts for output** — Use puts for output to stdout. Use p for debugging.
+- **Use blocks effectively** — Ruby's block syntax is powerful for iterators and callbacks.
+- **Use standard library** — Only Ruby standard library is available, no gems.
+- **Handle exceptions** — Use begin/rescue/end for error handling.
 
-
-
-    Ruby's block syntax is powerful for iterators and callbacks.
-
-
-
-    Prefer symbol keys (:name) over string keys for better performance.
-
-
+:::
