@@ -15,7 +15,7 @@ const config: Config = {
   baseUrl: '/',
 
   organizationName: 'andrebassi',
-  projectName: 'llm-firecracker',
+  projectName: 'runner-codes',
 
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -36,7 +36,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/andrebassi/llm-firecracker/tree/main/docs/docusaurus/',
+          editUrl: 'https://github.com/andrebassi/runner-codes/tree/main/docs/docusaurus/',
         },
         blog: false,
         theme: {
@@ -71,11 +71,11 @@ const config: Config = {
           label: 'API Reference',
           position: 'left',
         },
-        // {
-        //   href: 'https://github.com/andrebassi/llm-firecracker',
-        //   label: 'GitHub',
-        //   position: 'right',
-        // },
+{
+          href: 'https://github.com/andrebassi/runner-codes',
+          label: 'GitHub',
+          position: 'right',
+        },
       ],
     },
     footer: {
@@ -100,7 +100,7 @@ const config: Config = {
         {
           title: 'More',
           items: [
-            {label: 'GitHub', href: 'https://github.com/andrebassi/llm-firecracker'},
+            {label: 'GitHub', href: 'https://github.com/andrebassi/runner-codes'},
           ],
         },
       ],
