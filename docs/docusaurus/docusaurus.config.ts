@@ -80,25 +80,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      links: [
-        {
-          title: 'Documentation',
-          items: [
-            {label: 'Introduction', to: '/introduction'},
-            {label: 'Quickstart', to: '/quickstart'},
-            {label: 'Architecture', to: '/architecture'},
-          ],
-        },
-        {
-          title: 'Reference',
-          items: [
-            {label: 'CLI Overview', to: '/cli/overview'},
-            {label: 'API Reference', to: '/api-reference/overview'},
-            {label: 'Languages', to: '/languages/overview'},
-          ],
-        },
-      ],
-      copyright: `Copyright © ${new Date().getFullYear()} Runner Codes. Developed and maintained by <a href="https://andrebassi.com.br" target="_blank" rel="noopener noreferrer">André Bassi</a>`,
+      copyright: `Copyright © ${new Date().getFullYear()} Runner Codes.<br/>Developed and maintained by <a href="https://andrebassi.com.br" target="_blank" rel="noopener noreferrer">André Bassi</a>`,
     },
     prism: {
       theme: prismThemes.github,
