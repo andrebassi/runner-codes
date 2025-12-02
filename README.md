@@ -4,6 +4,7 @@
 
 [![Website](https://img.shields.io/badge/website-runner.codes-orange)](https://runner.codes)
 [![Documentation](https://img.shields.io/badge/docs-docs.runner.codes-blue)](https://docs.runner.codes)
+[![Release](https://img.shields.io/github/v/release/andrebassi/runner-codes)](https://github.com/andrebassi/runner-codes/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Website:** https://runner.codes | **Documentation:** https://docs.runner.codes
@@ -41,14 +42,19 @@ Firecracker is a Virtual Machine Monitor (VMM) developed by AWS that provides:
 ### Installation
 
 ```bash
-# Download the binary
+# Download the binary (Linux x86_64)
 curl -L -o infra.operator https://github.com/andrebassi/runner-codes/releases/latest/download/infra.operator-linux-amd64
 chmod +x infra.operator
 sudo mv infra.operator /usr/local/bin/
 
+# Or for ARM64
+curl -L -o infra.operator https://github.com/andrebassi/runner-codes/releases/latest/download/infra.operator-linux-arm64
+
 # Run setup (installs Firecracker, kernel, creates directories)
 sudo infra.operator setup
 ```
+
+See all releases at [github.com/andrebassi/runner-codes/releases](https://github.com/andrebassi/runner-codes/releases)
 
 ### Create a Rootfs
 
