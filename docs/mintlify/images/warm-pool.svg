@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200">
+  <defs>
+    <linearGradient id="poolGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="vmReadyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <filter id="poolShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.25"/>
+    </filter>
+    <marker id="poolArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="200" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="400" y="25" text-anchor="middle" fill="white" font-family="system-ui" font-size="14" font-weight="600">Warm Pool Architecture</text>
+
+  <!-- Pool container -->
+  <g filter="url(#poolShadow)">
+    <rect x="30" y="45" width="550" height="100" rx="10" fill="url(#poolGrad)"/>
+    <text x="55" y="70" fill="white" font-family="system-ui" font-size="12" font-weight="600">Warm Pool</text>
+  </g>
+
+  <!-- VM boxes -->
+  <g>
+    <rect x="50" y="85" width="70" height="45" rx="4" fill="url(#vmReadyGrad)"/>
+    <text x="85" y="108" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">VM1</text>
+    <text x="85" y="122" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">Ready</text>
+  </g>
+  <g>
+    <rect x="130" y="85" width="70" height="45" rx="4" fill="url(#vmReadyGrad)"/>
+    <text x="165" y="108" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">VM2</text>
+    <text x="165" y="122" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">Ready</text>
+  </g>
+  <g>
+    <rect x="210" y="85" width="70" height="45" rx="4" fill="url(#vmReadyGrad)"/>
+    <text x="245" y="108" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">VM3</text>
+    <text x="245" y="122" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">Ready</text>
+  </g>
+  <g>
+    <rect x="290" y="85" width="70" height="45" rx="4" fill="url(#vmReadyGrad)"/>
+    <text x="325" y="108" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">VM4</text>
+    <text x="325" y="122" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">Ready</text>
+  </g>
+  <g>
+    <rect x="370" y="85" width="70" height="45" rx="4" fill="url(#vmReadyGrad)"/>
+    <text x="405" y="108" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="500">VM5</text>
+    <text x="405" y="122" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">Ready</text>
+  </g>
+
+  <!-- Ellipsis -->
+  <text x="470" y="112" fill="white" font-family="system-ui" font-size="16">...</text>
+  <text x="510" y="112" fill="rgba(255,255,255,0.7)" font-family="system-ui" font-size="10">(N VMs)</text>
+
+  <!-- Flow description -->
+  <rect x="30" y="160" width="740" height="30" rx="4" fill="#1E293B"/>
+  <text x="400" y="180" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">Job arrives → Assign ready VM → Execute → Replace VM</text>
+
+  <!-- Arrow to execute -->
+  <path d="M590 95 L630 95" stroke="#94A3B8" stroke-width="2" fill="none" marker-end="url(#poolArrow)"/>
+
+  <!-- Execute box -->
+  <rect x="640" y="65" width="130" height="80" rx="6" fill="#1E293B" stroke="#F97316" stroke-width="2"/>
+  <text x="705" y="95" text-anchor="middle" fill="#F97316" font-family="system-ui" font-size="11" font-weight="500">Execute Job</text>
+  <text x="705" y="115" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="9">Instant start!</text>
+  <text x="705" y="135" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="10" font-weight="600">~0ms wait</text>
+</svg>

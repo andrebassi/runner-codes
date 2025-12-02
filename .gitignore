@@ -1,0 +1,72 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firecracker artifacts (large files)
+rootfs/*.ext4
+rootfs/vmlinux
+rootfs/guest-runner
+rootfs/guest-runner-*
+
+# Runtime files
+/tmp/
+*.sock
+*.log
+
+# Snapshots
+snapshots/
+
+# Local config
+.env
+.env.local
+
+# AWS artifacts (SENSITIVE - never commit)
+aws/keys/
+aws/.instance-id
+aws/.public-ip
+aws/.ami-id
+aws/.sg-id
+*.pem
+
+# Node modules
+node_modules/
+
+# Docusaurus
+docs/docusaurus/.docusaurus/
+docs/docusaurus/build/
+docs/mintlify/node_modules/
+
+# Coverage
+coverage.out
+
+# Claude instructions (may contain secrets)
+CLAUDE.md
+
+# Scripts with credentials
+scripts/benchmark-on-demand.sh

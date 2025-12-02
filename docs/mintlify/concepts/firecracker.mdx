@@ -1,0 +1,309 @@
+---
+title: 'Firecracker'
+description: 'Understanding Firecracker microVMs and their role in LLM-Firecracker'
+---
+
+## What is Firecracker?
+
+[Firecracker](https://firecracker-microvm.github.io/) is an open-source Virtual Machine Monitor (VMM) developed by Amazon Web Services. It's designed specifically for creating and managing lightweight virtual machines called microVMs.
+
+<CardGroup cols={2}>
+  <Card title="Minimal Attack Surface" icon="shield-halved">
+    Only ~50k lines of Rust code, minimal device model
+  </Card>
+  <Card title="Fast Boot Times" icon="bolt">
+    Boot a VM in ~125ms
+  </Card>
+  <Card title="Low Memory Overhead" icon="microchip">
+    ~5MB per microVM
+  </Card>
+  <Card title="Strong Isolation" icon="lock">
+    Full VM-level isolation using KVM
+  </Card>
+</CardGroup>
+
+## Firecracker vs Containers
+
+| Feature | Firecracker | Containers (Docker) |
+|---------|-------------|---------------------|
+| Isolation | Hardware virtualization (KVM) | Namespace/cgroup |
+| Security | Stronger (separate kernel) | Shared kernel |
+| Boot time | ~125ms | ~100ms |
+| Memory overhead | ~5MB | ~1MB |
+| Attack surface | Very small | Larger |
+| Device model | Minimal | Full host access |
+
+<Note>
+  Firecracker provides stronger isolation than containers because each microVM runs its own kernel instance, completely separated from the host.
+</Note>
+
+## Architecture
+
+<Frame>
+  <img src="/images/firecracker-architecture.svg" alt="Firecracker Architecture" />
+</Frame>
+
+## Key Components
+
+### API Server
+
+Firecracker exposes a REST API over a Unix socket for VM management:
+
+```bash
+# Configure machine
+curl --unix-socket /tmp/fc.sock -X PUT \
+  "http://localhost/machine-config" \
+  -d '{"vcpu_count": 1, "mem_size_mib": 512}'
+
+# Set boot source
+curl --unix-socket /tmp/fc.sock -X PUT \
+  "http://localhost/boot-source" \
+  -d '{"kernel_image_path": "/path/to/vmlinux"}'
+
+# Add root drive
+curl --unix-socket /tmp/fc.sock -X PUT \
+  "http://localhost/drives/rootfs" \
+  -d '{"drive_id": "rootfs", "path_on_host": "/path/to/rootfs.ext4"}'
+
+# Start VM
+curl --unix-socket /tmp/fc.sock -X PUT \
+  "http://localhost/actions" \
+  -d '{"action_type": "InstanceStart"}'
+```
+
+### Device Model
+
+Firecracker implements a minimal set of devices:
+
+| Device | Type | Purpose |
+|--------|------|---------|
+| virtio-block | Storage | Root filesystem |
+| virtio-net | Network | Optional network access |
+| virtio-vsock | Communication | Host-guest communication |
+| Serial console | I/O | Debug output |
+
+### Memory Management
+
+- **Memory ballooning**: Dynamically adjust guest memory
+- **Memory overcommit**: Not supported (for security)
+- **Huge pages**: Supported for performance
+
+## Configuration
+
+### Machine Config
+
+```json
+{
+  "vcpu_count": 1,
+  "mem_size_mib": 512,
+  "smt": false
+}
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `vcpu_count` | Number of virtual CPUs | 1 |
+| `mem_size_mib` | Memory in MiB | 128 |
+| `smt` | Simultaneous multi-threading | false |
+
+### Boot Source
+
+```json
+{
+  "kernel_image_path": "/srv/firecracker/vmlinux",
+  "boot_args": "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw"
+}
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `kernel_image_path` | Path to uncompressed Linux kernel |
+| `boot_args` | Kernel command line arguments |
+| `initrd_path` | Optional initrd/initramfs |
+
+### Drive Configuration
+
+```json
+{
+  "drive_id": "rootfs",
+  "path_on_host": "/srv/firecracker/rootfs.ext4",
+  "is_root_device": true,
+  "is_read_only": false
+}
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `drive_id` | Unique identifier for the drive |
+| `path_on_host` | Path to disk image on host |
+| `is_root_device` | Whether this is the root partition |
+| `is_read_only` | Read-only or read-write |
+
+### Vsock Configuration
+
+```json
+{
+  "guest_cid": 3,
+  "uds_path": "/tmp/fc-12345.vsock"
+}
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `guest_cid` | Context ID for guest (3+ for guests) |
+| `uds_path` | Unix socket path for host-side access |
+
+## VM Lifecycle
+
+<Frame>
+  <img src="/images/vm-lifecycle.svg" alt="VM Lifecycle State Diagram" />
+</Frame>
+
+## In LLM-Firecracker
+
+### How We Use Firecracker
+
+1. **Start Firecracker process** with API socket
+2. **Configure VM** (1 vCPU, 512 MiB RAM)
+3. **Set boot source** (Linux kernel)
+4. **Attach rootfs** (language-specific image)
+5. **Configure vsock** for communication
+6. **Start VM** and wait for boot
+7. **Execute code** via vsock
+8. **Shutdown VM** when done
+
+### Code Example (Go)
+
+```go
+func (h *HostAgent) startVM() error {
+    // Create Firecracker process
+    cmd := exec.Command("firecracker",
+        "--api-sock", h.apiSocketPath,
+    )
+    cmd.Start()
+
+    // Configure machine
+    h.setMachineConfig(MachineConfig{
+        VCPUCount:  1,
+        MemSizeMiB: 512,
+        SMT:        false,
+    })
+
+    // Set boot source
+    h.setBootSource(BootSource{
+        KernelPath: h.kernelPath,
+        BootArgs:   "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw",
+    })
+
+    // Add rootfs drive
+    h.addDrive(Drive{
+        DriveID:      "rootfs",
+        PathOnHost:   h.rootfsPath,
+        IsRootDevice: true,
+        IsReadOnly:   false,
+    })
+
+    // Configure vsock
+    h.setVsock(Vsock{
+        GuestCID: 3,
+        UDSPath:  h.vsockPath,
+    })
+
+    // Start VM
+    h.instanceStart()
+
+    return nil
+}
+```
+
+## Requirements
+
+### Hardware
+
+- **CPU**: Intel VT-x or AMD-V support
+- **Memory**: Enough for host + all VMs
+- **Storage**: SSD recommended for rootfs images
+
+### Software
+
+- **Linux kernel 4.14+**: With KVM support
+- **KVM module**: `/dev/kvm` accessible
+- **vhost_vsock module**: `/dev/vhost-vsock` accessible
+
+### Checking Requirements
+
+```bash
+# Check KVM
+ls -la /dev/kvm
+# crw-rw-rw- 1 root kvm 10, 232 Nov 29 04:25 /dev/kvm
+
+# Check vhost_vsock
+ls -la /dev/vhost-vsock
+# crw-rw-rw- 1 root kvm 10, 241 Nov 29 04:25 /dev/vhost-vsock
+
+# Load modules if missing
+sudo modprobe kvm
+sudo modprobe kvm_intel  # or kvm_amd
+sudo modprobe vhost_vsock
+```
+
+## Security
+
+### Security Features
+
+<AccordionGroup>
+  <Accordion title="Minimal Device Model">
+    Only essential devices are emulated, reducing attack surface.
+  </Accordion>
+
+  <Accordion title="Seccomp Filtering">
+    System call filtering limits what Firecracker can do.
+  </Accordion>
+
+  <Accordion title="Jailer (Optional)">
+    Additional isolation with chroot and dropped capabilities.
+  </Accordion>
+
+  <Accordion title="No Network by Default">
+    VMs don't have network access unless explicitly configured.
+  </Accordion>
+</AccordionGroup>
+
+### Production Hardening
+
+For production use, enable the Jailer:
+
+```bash
+jailer --id my-vm \
+    --exec-file /usr/bin/firecracker \
+    --uid 1000 --gid 1000 \
+    --chroot-base-dir /srv/jailer \
+    --daemonize
+```
+
+## Performance Tuning
+
+### Boot Time Optimization
+
+1. **Use uncompressed kernel**: Faster to load
+2. **Minimize rootfs**: Only include necessary packages
+3. **Pre-warm VMs**: Use snapshot restore for hot paths
+
+### Memory Optimization
+
+1. **Right-size VMs**: Don't over-provision memory
+2. **Use huge pages**: Reduces TLB misses
+3. **Enable KSM**: Kernel Same-page Merging (for similar VMs)
+
+### CPU Optimization
+
+1. **Pin vCPUs**: Improve cache locality
+2. **Disable SMT**: Mitigate side-channel attacks
+3. **Set CPU template**: Normalize CPU features
+
+## Resources
+
+- [Firecracker GitHub](https://github.com/firecracker-microvm/firecracker)
+- [Firecracker Documentation](https://github.com/firecracker-microvm/firecracker/tree/main/docs)
+- [Firecracker API Specification](https://github.com/firecracker-microvm/firecracker/blob/main/src/api_server/swagger/firecracker.yaml)
+- [Production Deployment Guide](https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md)

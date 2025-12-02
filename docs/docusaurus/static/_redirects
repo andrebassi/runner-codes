@@ -1,0 +1,3 @@
+# Redirect root domain to docs subdomain
+https://runner.codes/* https://docs.runner.codes/:splat 301
+http://runner.codes/* https://docs.runner.codes/:splat 301

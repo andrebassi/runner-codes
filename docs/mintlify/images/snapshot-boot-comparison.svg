@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 350">
+  <defs>
+    <linearGradient id="coldGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#EF4444;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DC2626;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="warmGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="phaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563EB;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowSmall">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="350" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" fill="white" font-family="system-ui" font-size="16" font-weight="700">Cold Boot vs Warm Boot (Snapshot)</text>
+
+  <!-- Cold Boot Section -->
+  <g>
+    <text x="60" y="70" fill="#EF4444" font-family="system-ui" font-size="14" font-weight="600">COLD BOOT</text>
+    <text x="180" y="70" fill="#94A3B8" font-family="system-ui" font-size="11">(~2600ms total)</text>
+
+    <!-- Timeline base -->
+    <line x1="60" y1="120" x2="840" y2="120" stroke="#374151" stroke-width="2"/>
+
+    <!-- Phase 1: API Config -->
+    <rect x="60" y="90" width="100" height="50" rx="4" fill="url(#phaseGrad)" filter="url(#shadowSmall)"/>
+    <text x="110" y="110" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">API Config</text>
+    <text x="110" y="125" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~100ms</text>
+
+    <!-- Phase 2: Kernel Boot -->
+    <rect x="170" y="90" width="200" height="50" rx="4" fill="url(#phaseGrad)" filter="url(#shadowSmall)"/>
+    <text x="270" y="110" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Kernel Boot</text>
+    <text x="270" y="125" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~900ms</text>
+
+    <!-- Phase 3: Systemd Init -->
+    <rect x="380" y="90" width="300" height="50" rx="4" fill="url(#phaseGrad)" filter="url(#shadowSmall)"/>
+    <text x="530" y="110" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Systemd Init + Services</text>
+    <text x="530" y="125" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~1500ms</text>
+
+    <!-- Phase 4: Infra.Operator Guest -->
+    <rect x="690" y="90" width="100" height="50" rx="4" fill="url(#phaseGrad)" filter="url(#shadowSmall)"/>
+    <text x="740" y="110" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Guest Ready</text>
+    <text x="740" y="125" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~100ms</text>
+
+    <!-- Total time indicator -->
+    <rect x="800" y="90" width="70" height="50" rx="4" fill="url(#coldGrad)" filter="url(#shadowSmall)"/>
+    <text x="835" y="110" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="600">~2600ms</text>
+    <text x="835" y="125" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="system-ui" font-size="8">SLOW</text>
+  </g>
+
+  <!-- Warm Boot Section -->
+  <g>
+    <text x="60" y="180" fill="#10B981" font-family="system-ui" font-size="14" font-weight="600">WARM BOOT</text>
+    <text x="190" y="180" fill="#94A3B8" font-family="system-ui" font-size="11">(~300ms total) - 8.4x FASTER</text>
+
+    <!-- Timeline base -->
+    <line x1="60" y1="230" x2="840" y2="230" stroke="#374151" stroke-width="2"/>
+
+    <!-- Phase 1: Load Snapshot -->
+    <rect x="60" y="200" width="80" height="50" rx="4" fill="url(#warmGrad)" filter="url(#shadowSmall)"/>
+    <text x="100" y="218" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Load</text>
+    <text x="100" y="232" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Snapshot</text>
+    <text x="100" y="245" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~200ms</text>
+
+    <!-- Phase 2: Resume -->
+    <rect x="150" y="200" width="50" height="50" rx="4" fill="url(#warmGrad)" filter="url(#shadowSmall)"/>
+    <text x="175" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="9" font-weight="500">Resume</text>
+    <text x="175" y="240" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="8">~100ms</text>
+
+    <!-- Ready indicator -->
+    <rect x="210" y="200" width="70" height="50" rx="4" fill="url(#warmGrad)" filter="url(#shadowSmall)"/>
+    <text x="245" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="600">READY!</text>
+    <text x="245" y="238" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="9">~300ms</text>
+
+    <!-- Saved time visualization -->
+    <rect x="290" y="200" width="500" height="50" rx="4" fill="#1E293B" stroke="#10B981" stroke-width="2" stroke-dasharray="5,5"/>
+    <text x="540" y="225" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="12" font-weight="500">Time Saved: ~2300ms per execution</text>
+    <text x="540" y="243" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="9">All initialization already done in snapshot</text>
+
+    <!-- Total time indicator -->
+    <rect x="800" y="200" width="70" height="50" rx="4" fill="url(#warmGrad)" filter="url(#shadowSmall)"/>
+    <text x="835" y="220" text-anchor="middle" fill="white" font-family="system-ui" font-size="10" font-weight="600">~300ms</text>
+    <text x="835" y="235" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="system-ui" font-size="8">FAST!</text>
+  </g>
+
+  <!-- Speedup callout -->
+  <rect x="300" y="280" width="300" height="55" rx="8" fill="#1E293B" stroke="#F97316" stroke-width="2" filter="url(#shadowSmall)"/>
+  <text x="450" y="303" text-anchor="middle" fill="#F97316" font-family="system-ui" font-size="18" font-weight="700">8.4x FASTER</text>
+  <text x="450" y="323" text-anchor="middle" fill="#94A3B8" font-family="system-ui" font-size="11">Boot time reduced from ~2600ms to ~300ms</text>
+
+  <!-- Legend -->
+  <g>
+    <rect x="60" y="295" width="15" height="15" rx="2" fill="url(#phaseGrad)"/>
+    <text x="82" y="307" fill="#94A3B8" font-family="system-ui" font-size="10">Cold boot phases</text>
+
+    <rect x="60" y="315" width="15" height="15" rx="2" fill="url(#warmGrad)"/>
+    <text x="82" y="327" fill="#94A3B8" font-family="system-ui" font-size="10">Warm boot phases</text>
+  </g>
+</svg>

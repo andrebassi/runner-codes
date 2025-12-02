@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380">
+  <defs>
+    <linearGradient id="vmGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1E293B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0F172A;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="runnerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="compGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1D4ED8;stop-opacity:1" />
+    </linearGradient>
+    <filter id="boxShadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#10B981"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="380" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" fill="white" font-family="system-ui" font-size="18" font-weight="600">Infra.Operator Guest Architecture</text>
+
+  <!-- Firecracker microVM Container -->
+  <g filter="url(#boxShadow)">
+    <rect x="30" y="50" width="740" height="310" rx="10" fill="url(#vmGradient)" stroke="#334155" stroke-width="2"/>
+    <text x="55" y="80" fill="#94A3B8" font-family="system-ui" font-size="14" font-weight="600">Firecracker microVM</text>
+  </g>
+
+  <!-- infra.operator (guest) Container -->
+  <g filter="url(#boxShadow)">
+    <rect x="60" y="95" width="680" height="245" rx="8" fill="url(#runnerGrad)"/>
+    <text x="90" y="125" fill="white" font-family="system-ui" font-size="14" font-weight="600">infra.operator guest</text>
+  </g>
+
+  <!-- Vsock Server -->
+  <rect x="90" y="145" width="150" height="80" rx="6" fill="url(#compGrad)"/>
+  <text x="165" y="175" text-anchor="middle" fill="white" font-family="system-ui" font-size="12" font-weight="500">Vsock Server</text>
+  <text x="165" y="195" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="monospace" font-size="10">(port 5000)</text>
+  <text x="165" y="215" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui" font-size="9">Length-prefix Framing</text>
+
+  <!-- Arrow 1 -->
+  <path d="M240 185 L290 185" stroke="#10B981" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Job Dispatcher -->
+  <rect x="300" y="145" width="150" height="80" rx="6" fill="url(#compGrad)"/>
+  <text x="375" y="175" text-anchor="middle" fill="white" font-family="system-ui" font-size="12" font-weight="500">Job Dispatcher</text>
+  <text x="375" y="195" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="system-ui" font-size="10">Parse JSON</text>
+  <text x="375" y="212" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui" font-size="9">Job Request</text>
+
+  <!-- Arrow 2 -->
+  <path d="M450 185 L500 185" stroke="#10B981" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Executor -->
+  <rect x="510" y="145" width="210" height="80" rx="6" fill="url(#compGrad)"/>
+  <text x="615" y="175" text-anchor="middle" fill="white" font-family="system-ui" font-size="12" font-weight="500">Executor</text>
+  <text x="615" y="195" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="system-ui" font-size="10">Run Code</text>
+  <text x="615" y="212" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui" font-size="9">Capture stdout/stderr</text>
+
+  <!-- Language Interpreters -->
+  <g>
+    <rect x="90" y="255" width="100" height="35" rx="4" fill="#0F172A"/>
+    <text x="140" y="277" text-anchor="middle" fill="#3B82F6" font-family="monospace" font-size="11">python3</text>
+  </g>
+  <g>
+    <rect x="210" y="255" width="100" height="35" rx="4" fill="#0F172A"/>
+    <text x="260" y="277" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="11">node</text>
+  </g>
+  <g>
+    <rect x="330" y="255" width="100" height="35" rx="4" fill="#0F172A"/>
+    <text x="380" y="277" text-anchor="middle" fill="#06B6D4" font-family="monospace" font-size="11">go run</text>
+  </g>
+  <g>
+    <rect x="450" y="255" width="100" height="35" rx="4" fill="#0F172A"/>
+    <text x="500" y="277" text-anchor="middle" fill="#F97316" font-family="monospace" font-size="11">rustc</text>
+  </g>
+  <g>
+    <rect x="570" y="255" width="100" height="35" rx="4" fill="#0F172A"/>
+    <text x="620" y="277" text-anchor="middle" fill="#8B5CF6" font-family="monospace" font-size="11">bash</text>
+  </g>
+
+  <!-- Workspace Info -->
+  <rect x="90" y="305" width="630" height="25" rx="4" fill="#0F172A"/>
+  <text x="405" y="322" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="10">Workspace: /tmp/job-{trace_id}/ → script.{ext} → Execute → Cleanup</text>
+</svg>

@@ -1,0 +1,231 @@
+---
+title: 'SQLite Parser'
+description: 'SQLite SQL syntax validation without database connection'
+---
+
+## Overview
+
+SQLite Parser validates SQLite SQL syntax using [node-sql-parser](https://github.com/taozhi8833998/node-sql-parser) WITHOUT requiring a real SQLite database.
+
+<Card title="SQLite Parser" icon="database">
+  Validates SQLite 3.x SQL syntax, formats queries, and returns statement analysis.
+</Card>
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Language ID | `sqlite-parser` |
+| Base OS | Alpine Linux 3.20 |
+| Runtime | Node.js 22 |
+| Parser | node-sql-parser |
+| Rootfs Size | 500 MB |
+| Memory | 256 MB |
+| File Extension | `.sql` |
+| Execution Time | ~2.8s |
+
+## Infrastructure
+
+### Step 1: Create Docker Directory
+
+```bash
+mkdir -p /tmp/docker/sqlite-parser
+cd /tmp/docker/sqlite-parser
+```
+
+### Step 2: Create sqlite-run.js Script
+
+```bash
+cat > sqlite-run.js << 'EOF'
+#!/usr/bin/env node
+const fs = require('fs');
+const { Parser } = require('node-sql-parser');
+
+const parser = new Parser();
+const DATABASE = 'sqlite';
+
+function main() {
+    const args = process.argv.slice(2);
+    if (args.length === 0) {
+        console.error('Usage: sqlite-run.js <file.sql>');
+        process.exit(1);
+    }
+
+    const sqlFile = args[0];
+    let sql;
+    try {
+        sql = fs.readFileSync(sqlFile, 'utf8').trim();
+    } catch (err) {
+        console.error(`Error reading file: ${err.message}`);
+        process.exit(1);
+    }
+
+    if (!sql) {
+        console.error('Error: Empty SQL file');
+        process.exit(1);
+    }
+
+    try {
+        const ast = parser.astify(sql, { database: DATABASE });
+        const formatted = parser.sqlify(ast, { database: DATABASE });
+
+        console.log('=== SQL Validation Result ===');
+        console.log('Status: VALID');
+        console.log('Database: SQLite');
+        console.log('');
+        console.log('=== Formatted SQL ===');
+        console.log(formatted);
+        console.log('');
+
+        if (Array.isArray(ast)) {
+            console.log(`=== Statement Summary ===`);
+            console.log(`Total statements: ${ast.length}`);
+            ast.forEach((stmt, i) => {
+                console.log(`  ${i + 1}. ${stmt.type || 'unknown'}`);
+            });
+        } else {
+            console.log('=== Statement Summary ===');
+            console.log(`Statement type: ${ast.type || 'unknown'}`);
+        }
+        process.exit(0);
+    } catch (err) {
+        console.log('=== SQL Validation Result ===');
+        console.log('Status: INVALID');
+        console.log('Database: SQLite');
+        console.log('');
+        console.log('=== Error Details ===');
+        console.error(`Syntax Error: ${err.message}`);
+        if (err.location) {
+            console.error(`Location: Line ${err.location.start.line}, Column ${err.location.start.column}`);
+        }
+        process.exit(1);
+    }
+}
+
+main();
+EOF
+```
+
+### Step 3: Create Dockerfile
+
+```bash
+cat > Dockerfile << 'EOF'
+FROM node:22-alpine3.20
+
+WORKDIR /opt/sql-parser
+RUN npm init -y && npm install node-sql-parser --save
+
+COPY sqlite-run.js /usr/local/bin/sqlite-run
+RUN chmod +x /usr/local/bin/sqlite-run
+
+ENV NODE_PATH=/opt/sql-parser/node_modules
+
+CMD ["node", "--version"]
+EOF
+```
+
+### Step 4: Build and Push Docker Image
+
+```bash
+docker build -t ttl.sh/llm-fc-sqlite-parser:24h .
+docker push ttl.sh/llm-fc-sqlite-parser:24h
+```
+
+### Step 5: Create Rootfs
+
+```bash
+sudo infra.operator rootfs from-docker \
+    --name sqlite-parser \
+    --image ttl.sh/llm-fc-sqlite-parser:24h \
+    --size 500
+```
+
+### Step 6: Create Snapshot
+
+```bash
+sudo infra.operator snapshot create \
+    --lang sqlite-parser \
+    --mem 256 \
+    --vcpus 1
+```
+
+### Step 7: Upload to S3
+
+```bash
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_DEFAULT_REGION="us-east-1"
+
+sudo -E infra.operator rootfs upload --lang sqlite-parser --bucket llm-firecracker
+sudo -E infra.operator snapshot upload --lang sqlite-parser --bucket llm-firecracker
+```
+
+### Step 8: Test Execution
+
+```bash
+sudo infra.operator host \
+    --lang sqlite-parser \
+    --snapshot \
+    --mem 256 \
+    --vcpus 1 \
+    --code "SELECT * FROM notes WHERE created_at > datetime('now', '-7 days');"
+```
+
+## Examples
+
+### Hello World
+
+<CodeGroup>
+```json Request
+{
+  "trace_id": "sqlite-hello-001",
+  "lang": "sqlite-parser",
+  "code": "SELECT 'Hello from SQLite Parser!' AS message;",
+  "timeout": 30
+}
+```
+
+```json Response
+{
+  "trace_id": "sqlite-hello-001",
+  "stdout": "=== SQL Validation Result ===\nStatus: VALID\nDatabase: SQLite\n\n=== Formatted SQL ===\nSELECT 'Hello from SQLite Parser!' AS `message`\n\n=== Statement Summary ===\nTotal statements: 1\n  1. select\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+</CodeGroup>
+
+### CREATE TABLE with Constraints
+
+<CodeGroup>
+```json Request
+{
+  "trace_id": "sqlite-create-001",
+  "lang": "sqlite-parser",
+  "code": "CREATE TABLE IF NOT EXISTS tasks (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  completed BOOLEAN DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);",
+  "timeout": 30
+}
+```
+
+```json Response
+{
+  "trace_id": "sqlite-create-001",
+  "stdout": "=== SQL Validation Result ===\nStatus: VALID\nDatabase: SQLite\n\n=== Formatted SQL ===\nCREATE TABLE IF NOT EXISTS `tasks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `title` TEXT NOT NULL, `completed` BOOLEAN DEFAULT 0, `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP)\n\n=== Statement Summary ===\nTotal statements: 1\n  1. create\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+</CodeGroup>
+
+## Executor Configuration
+
+```go
+// pkg/guest/executor.go
+"sqlite-parser": {
+    Name:      "sqlite-parser",
+    Extension: ".sql",
+    Command:   "/usr/local/bin/node",
+    Args:      []string{"/usr/local/bin/sqlite-run"},
+    Env:       []string{"NODE_PATH=/opt/sql-parser/node_modules"},
+},
+```

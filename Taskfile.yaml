@@ -1,0 +1,4061 @@
+# LLM-FireSandbox Taskfile
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  FC_WORKDIR: '{{.FC_WORKDIR | default "/srv/firecracker"}}'
+  FC_VERSION: '{{.FC_VERSION | default "v1.7.0"}}'
+  GUEST_CID: '{{.GUEST_CID | default "3"}}'
+  VSOCK_PORT: '{{.VSOCK_PORT | default "5000"}}'
+  BIN_DIR: bin
+  ROOTFS_DIR: rootfs
+  # AWS Configuration
+  AWS_REGION: '{{.AWS_REGION | default "us-east-1"}}'
+  AWS_INSTANCE_TYPE: '{{.AWS_INSTANCE_TYPE | default "m5zn.metal"}}'
+  AWS_KEY_NAME: '{{.AWS_KEY_NAME | default "firesandbox-key"}}'
+  AWS_INSTANCE_NAME: '{{.AWS_INSTANCE_NAME | default "llm-firesandbox-test"}}'
+  AWS_VPC_ID: '{{.AWS_VPC_ID | default "vpc-0dd1e4d3c5ed4f3c7"}}'
+  AWS_SUBNET_ID: '{{.AWS_SUBNET_ID | default "subnet-004de53997864f0a3"}}'
+  PROJECT_DIR: '{{.PROJECT_DIR | default "/Users/andrebassi/works/.solutions/fly.io/llm-firesandbox"}}'
+  # S3 Configuration for rootfs storage
+  S3_BUCKET: '{{.S3_BUCKET | default "llm-firesandbox-rootfs"}}'
+  S3_REGION: '{{.S3_REGION | default "us-east-1"}}'
+
+tasks:
+  # ===========================================================================
+  # Build Tasks
+  # ===========================================================================
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:all:
+    desc: Build all components
+    cmds:
+      - task: build:host-agent
+      - task: build:guest-runner
+      - task: build:proxy
+    silent: false
+
+  build:host-agent:
+    desc: Build host-agent for current OS
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - cd host-agent && go build -ldflags="-s -w" -o ../{{.BIN_DIR}}/host-agent .
+      - echo "Built {{.BIN_DIR}}/host-agent"
+
+  build:guest-runner:
+    desc: Build guest-runner for Linux (auto-detect arch)
+    vars:
+      GOARCH:
+        sh: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then echo "amd64"
+          elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then echo "arm64"
+          else echo "amd64"; fi
+    cmds:
+      - mkdir -p {{.ROOTFS_DIR}}
+      - cd guest-runner && GOOS=linux GOARCH={{.GOARCH}} go build -ldflags="-s -w" -o ../{{.ROOTFS_DIR}}/guest-runner .
+      - echo "Built {{.ROOTFS_DIR}}/guest-runner ({{.GOARCH}})"
+
+  build:guest-runner-amd64:
+    desc: Build guest-runner for Linux/amd64
+    cmds:
+      - mkdir -p {{.ROOTFS_DIR}}
+      - cd guest-runner && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../{{.ROOTFS_DIR}}/guest-runner-amd64 .
+      - echo "Built {{.ROOTFS_DIR}}/guest-runner-amd64"
+
+  build:guest-runner-arm64:
+    desc: Build guest-runner for Linux/arm64
+    cmds:
+      - mkdir -p {{.ROOTFS_DIR}}
+      - cd guest-runner && GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o ../{{.ROOTFS_DIR}}/guest-runner-arm64 .
+      - echo "Built {{.ROOTFS_DIR}}/guest-runner-arm64"
+
+  build:proxy:
+    desc: Build vsock-proxy
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - cd proxy && go build -ldflags="-s -w" -o ../{{.BIN_DIR}}/vsock-proxy .
+      - echo "Built {{.BIN_DIR}}/vsock-proxy"
+
+  # ===========================================================================
+  # Setup Tasks
+  # ===========================================================================
+
+  setup:firecracker:
+    desc: Setup Firecracker on Ubuntu/Zorin (requires sudo)
+    cmds:
+      - sudo ./setup/setup-firecracker-ubuntu.sh
+    preconditions:
+      - test -f ./setup/setup-firecracker-ubuntu.sh
+
+  setup:deps:
+    desc: Download Go dependencies
+    cmds:
+      - cd host-agent && go mod download
+      - cd guest-runner && go mod download
+      - cd proxy && go mod download
+      - echo "Dependencies downloaded"
+
+  setup:check:
+    desc: Check if host is ready for Firecracker
+    cmds:
+      - |
+        echo "Checking Firecracker prerequisites..."
+        echo ""
+        echo "KVM:"
+        if [ -e /dev/kvm ]; then
+          echo "  /dev/kvm: OK"
+        else
+          echo "  /dev/kvm: NOT FOUND (run: sudo modprobe kvm)"
+        fi
+        echo ""
+        echo "vhost_vsock:"
+        if [ -e /dev/vhost_vsock ]; then
+          echo "  /dev/vhost_vsock: OK"
+        else
+          echo "  /dev/vhost_vsock: NOT FOUND (run: sudo modprobe vhost_vsock)"
+        fi
+        echo ""
+        echo "Firecracker binary:"
+        if command -v firecracker &> /dev/null; then
+          echo "  firecracker: $(which firecracker)"
+          firecracker --version
+        else
+          echo "  firecracker: NOT FOUND"
+        fi
+
+  # ===========================================================================
+  # Rootfs Tasks
+  # ===========================================================================
+
+  rootfs:prepare:
+    desc: Prepare rootfs with guest-runner (requires sudo)
+    deps:
+      - build:guest-runner
+    cmds:
+      - |
+        if [ ! -f {{.FC_WORKDIR}}/rootfs.ext4 ]; then
+          echo "Rootfs not found. Run 'task setup:firecracker' first."
+          exit 1
+        fi
+        echo "Mounting rootfs..."
+        sudo mount -o loop {{.FC_WORKDIR}}/rootfs.ext4 /mnt
+        echo "Copying guest-runner..."
+        sudo cp {{.ROOTFS_DIR}}/guest-runner /mnt/usr/local/bin/guest-runner
+        sudo chmod +x /mnt/usr/local/bin/guest-runner
+        echo "Unmounting..."
+        sudo umount /mnt
+        echo "Rootfs prepared with guest-runner"
+
+  rootfs:mount:
+    desc: Mount rootfs for inspection
+    cmds:
+      - sudo mount -o loop {{.FC_WORKDIR}}/rootfs.ext4 /mnt
+      - echo "Rootfs mounted at /mnt"
+      - echo "Run 'task rootfs:umount' when done"
+
+  rootfs:umount:
+    desc: Unmount rootfs
+    cmds:
+      - sudo umount /mnt
+      - echo "Rootfs unmounted"
+
+  # ===========================================================================
+  # Run Tasks
+  # ===========================================================================
+
+  run:test:
+    desc: Run a test execution (requires Firecracker running)
+    deps:
+      - build:host-agent
+    cmds:
+      - |
+        sudo ./{{.BIN_DIR}}/host-agent \
+          -kernel {{.FC_WORKDIR}}/vmlinux \
+          -rootfs {{.FC_WORKDIR}}/rootfs.ext4 \
+          -lang python \
+          -timeout 10
+
+  run:host-agent:
+    desc: Run host-agent with custom parameters
+    deps:
+      - build:host-agent
+    cmds:
+      - |
+        sudo ./{{.BIN_DIR}}/host-agent \
+          -kernel {{.KERNEL | default (printf "%s/vmlinux" .FC_WORKDIR)}} \
+          -rootfs {{.ROOTFS | default (printf "%s/rootfs.ext4" .FC_WORKDIR)}} \
+          -lang {{.LANG | default "python"}} \
+          -code '{{.CODE | default ""}}' \
+          -timeout {{.TIMEOUT | default "10"}} \
+          -cid {{.GUEST_CID}} \
+          -port {{.VSOCK_PORT}}
+
+  run:proxy:
+    desc: Run vsock-proxy
+    deps:
+      - build:proxy
+    cmds:
+      - |
+        sudo ./{{.BIN_DIR}}/vsock-proxy \
+          -socket /tmp/fc-proxy.sock \
+          -cid {{.GUEST_CID}} \
+          -port {{.VSOCK_PORT}}
+
+  # ===========================================================================
+  # Development Tasks
+  # ===========================================================================
+
+  dev:tidy:
+    desc: Tidy Go modules
+    cmds:
+      - cd host-agent && go mod tidy
+      - cd guest-runner && go mod tidy
+      - cd proxy && go mod tidy
+
+  dev:fmt:
+    desc: Format Go code
+    cmds:
+      - cd host-agent && go fmt ./...
+      - cd guest-runner && go fmt ./...
+      - cd proxy && go fmt ./...
+
+  dev:lint:
+    desc: Lint Go code
+    cmds:
+      - cd host-agent && go vet ./...
+      - cd guest-runner && go vet ./...
+      - cd proxy && go vet ./...
+
+  test:unit:
+    desc: Run unit tests for all packages
+    cmds:
+      - echo "Running unit tests..."
+      - go test -v ./pkg/host/...
+      - go test -v ./pkg/guest/...
+      - echo "All tests passed!"
+
+  test:coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - echo "Running tests with coverage..."
+      - go test -coverprofile=coverage.out ./pkg/...
+      - go tool cover -func=coverage.out
+      - echo "Coverage report generated: coverage.out"
+
+  test:coverage-html:
+    desc: Generate HTML coverage report
+    cmds:
+      - echo "Generating HTML coverage report..."
+      - go test -coverprofile=coverage.out ./pkg/...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "HTML report generated: coverage.html"
+      - |
+        if command -v open &> /dev/null; then
+          open coverage.html
+        elif command -v xdg-open &> /dev/null; then
+          xdg-open coverage.html
+        fi
+
+  test:all:
+    desc: Run all tests (unit + coverage)
+    cmds:
+      - task: lint
+      - task: test:unit
+      - task: test:coverage
+      - echo "All tests and coverage completed!"
+
+  test:short:
+    desc: Run quick tests (skip integration)
+    cmds:
+      - go test -short ./pkg/...
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./pkg/...
+
+  # ===========================================================================
+  # Clean Tasks
+  # ===========================================================================
+
+  clean:
+    desc: Clean built binaries
+    cmds:
+      - rm -rf {{.BIN_DIR}}
+      - rm -f {{.ROOTFS_DIR}}/guest-runner
+      - rm -f {{.ROOTFS_DIR}}/guest-runner-amd64
+      - rm -f {{.ROOTFS_DIR}}/guest-runner-arm64
+      - echo "Cleaned"
+
+  clean:all:
+    desc: Clean everything including Go cache
+    cmds:
+      - task: clean
+      - go clean -cache
+      - echo "All cleaned"
+
+  # ===========================================================================
+  # AWS Infrastructure Tasks
+  # ===========================================================================
+
+  aws:check-creds:
+    desc: Check AWS credentials are configured
+    cmds:
+      - |
+        echo "Checking AWS credentials..."
+        aws sts get-caller-identity || {
+          echo "ERROR: AWS credentials not configured"
+          echo "Run: export AWS_ACCESS_KEY_ID=xxx && export AWS_SECRET_ACCESS_KEY=xxx"
+          exit 1
+        }
+
+  aws:create-keypair:
+    desc: Create SSH key pair for EC2 access
+    cmds:
+      - |
+        echo "Creating SSH key pair..."
+        mkdir -p {{.PROJECT_DIR}}/aws/keys
+        if aws ec2 describe-key-pairs --key-names {{.AWS_KEY_NAME}} --region {{.AWS_REGION}} 2>/dev/null; then
+          echo "Key pair {{.AWS_KEY_NAME}} already exists"
+        else
+          aws ec2 create-key-pair \
+            --key-name {{.AWS_KEY_NAME}} \
+            --region {{.AWS_REGION}} \
+            --query 'KeyMaterial' \
+            --output text > {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+          chmod 400 {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+          echo "Key pair created: {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem"
+        fi
+
+  aws:create-security-group:
+    desc: Create security group for Firecracker test instance
+    cmds:
+      - |
+        echo "Creating security group..."
+        SG_ID=$(aws ec2 describe-security-groups \
+          --filters "Name=group-name,Values=firesandbox-sg" "Name=vpc-id,Values={{.AWS_VPC_ID}}" \
+          --region {{.AWS_REGION}} \
+          --query 'SecurityGroups[0].GroupId' \
+          --output text 2>/dev/null)
+
+        if [ "$SG_ID" != "None" ] && [ -n "$SG_ID" ]; then
+          echo "Security group already exists: $SG_ID"
+        else
+          SG_ID=$(aws ec2 create-security-group \
+            --group-name firesandbox-sg \
+            --description "LLM-FireSandbox test security group" \
+            --vpc-id {{.AWS_VPC_ID}} \
+            --region {{.AWS_REGION}} \
+            --query 'GroupId' \
+            --output text)
+
+          # Allow SSH
+          aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr 0.0.0.0/0 \
+            --region {{.AWS_REGION}}
+
+          echo "Security group created: $SG_ID"
+        fi
+        echo $SG_ID > {{.PROJECT_DIR}}/aws/.sg-id
+
+  aws:get-ami:
+    desc: Get latest Ubuntu 22.04 AMI ID
+    cmds:
+      - |
+        echo "Finding Ubuntu 22.04 AMI..."
+        AMI_ID=$(aws ec2 describe-images \
+          --owners 099720109477 \
+          --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" \
+                    "Name=state,Values=available" \
+          --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
+          --region {{.AWS_REGION}} \
+          --output text)
+        echo "Ubuntu 22.04 AMI: $AMI_ID"
+        echo $AMI_ID > {{.PROJECT_DIR}}/aws/.ami-id
+
+  aws:launch:
+    desc: Launch EC2 instance for Firecracker testing
+    deps:
+      - aws:check-creds
+      - aws:create-keypair
+      - aws:create-security-group
+      - aws:get-ami
+    cmds:
+      - |
+        echo "Launching EC2 instance..."
+        AMI_ID=$(cat {{.PROJECT_DIR}}/aws/.ami-id)
+        SG_ID=$(cat {{.PROJECT_DIR}}/aws/.sg-id)
+
+        # Check if instance already exists
+        EXISTING=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values={{.AWS_INSTANCE_NAME}}" \
+                    "Name=instance-state-name,Values=running,pending" \
+          --region {{.AWS_REGION}} \
+          --query 'Reservations[0].Instances[0].InstanceId' \
+          --output text 2>/dev/null)
+
+        if [ "$EXISTING" != "None" ] && [ -n "$EXISTING" ]; then
+          echo "Instance already running: $EXISTING"
+          echo $EXISTING > {{.PROJECT_DIR}}/aws/.instance-id
+          exit 0
+        fi
+
+        # Launch new instance
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id $AMI_ID \
+          --instance-type {{.AWS_INSTANCE_TYPE}} \
+          --key-name {{.AWS_KEY_NAME}} \
+          --security-group-ids $SG_ID \
+          --subnet-id {{.AWS_SUBNET_ID}} \
+          --associate-public-ip-address \
+          --user-data file://{{.PROJECT_DIR}}/aws/user-data.sh \
+          --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":50,"VolumeType":"gp3"}}]' \
+          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value={{.AWS_INSTANCE_NAME}}},{Key=Project,Value=llm-firesandbox}]" \
+          --region {{.AWS_REGION}} \
+          --query 'Instances[0].InstanceId' \
+          --output text)
+
+        echo "Instance launched: $INSTANCE_ID"
+        echo $INSTANCE_ID > {{.PROJECT_DIR}}/aws/.instance-id
+
+        echo "Waiting for instance to be running..."
+        aws ec2 wait instance-running --instance-ids $INSTANCE_ID --region {{.AWS_REGION}}
+
+        # Get public IP
+        PUBLIC_IP=$(aws ec2 describe-instances \
+          --instance-ids $INSTANCE_ID \
+          --region {{.AWS_REGION}} \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text)
+
+        echo $PUBLIC_IP > {{.PROJECT_DIR}}/aws/.public-ip
+        echo ""
+        echo "==================================="
+        echo "Instance ready!"
+        echo "Instance ID: $INSTANCE_ID"
+        echo "Public IP: $PUBLIC_IP"
+        echo ""
+        echo "Connect with:"
+        echo "  ssh -i {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem ubuntu@$PUBLIC_IP"
+        echo ""
+        echo "Wait ~3-5 minutes for user-data script to complete"
+        echo "==================================="
+
+  aws:status:
+    desc: Show EC2 instance status
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.instance-id ]; then
+          echo "No instance found. Run 'task aws:launch' first."
+          exit 1
+        fi
+
+        INSTANCE_ID=$(cat {{.PROJECT_DIR}}/aws/.instance-id)
+
+        echo "Instance Status:"
+        aws ec2 describe-instances \
+          --instance-ids $INSTANCE_ID \
+          --region {{.AWS_REGION}} \
+          --query 'Reservations[0].Instances[0].{ID:InstanceId,State:State.Name,Type:InstanceType,IP:PublicIpAddress}' \
+          --output table
+
+  aws:ssh:
+    desc: SSH into EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found. Run 'task aws:launch' first."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        echo "Connecting to $PUBLIC_IP..."
+        ssh -i {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP
+
+  aws:logs:
+    desc: View setup logs from EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        ssh -i {{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP \
+          "sudo cat /var/log/firesandbox-setup.log 2>/dev/null || echo 'Setup log not found yet...'"
+
+  aws:deploy:
+    desc: Deploy project code to EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Building guest-runner for amd64..."
+        cd {{.PROJECT_DIR}}/guest-runner && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../rootfs/guest-runner .
+
+        echo "Building host-agent for amd64..."
+        cd {{.PROJECT_DIR}}/host-agent && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../bin/host-agent .
+
+        echo "Deploying to $PUBLIC_IP..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "sudo mkdir -p /opt/llm-firesandbox/{bin,rootfs} && sudo chown -R ubuntu:ubuntu /opt/llm-firesandbox"
+
+        scp -i $KEY -o StrictHostKeyChecking=no \
+          {{.PROJECT_DIR}}/bin/host-agent \
+          ubuntu@$PUBLIC_IP:/opt/llm-firesandbox/bin/
+
+        scp -i $KEY -o StrictHostKeyChecking=no \
+          {{.PROJECT_DIR}}/rootfs/guest-runner \
+          ubuntu@$PUBLIC_IP:/opt/llm-firesandbox/rootfs/
+
+        echo "Deployment complete!"
+        echo ""
+        echo "Next steps on the instance:"
+        echo "  1. SSH: task aws:ssh"
+        echo "  2. Inject guest-runner into rootfs"
+        echo "  3. Run test: task aws:test"
+
+  aws:inject-guest-runner:
+    desc: Inject guest-runner into rootfs on EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Injecting guest-runner into rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        echo "Mounting rootfs..."
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        echo "Copying guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/rootfs/usr/local/bin/guest-runner
+        sudo chmod +x /mnt/rootfs/usr/local/bin/guest-runner
+
+        echo "Creating systemd service..."
+        echo -e "[Unit]\nDescription=LLM FireSandbox Guest Runner\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/guest-runner -port 5000\nRestart=always\nRestartSec=1\n\n[Install]\nWantedBy=multi-user.target" | sudo tee /mnt/rootfs/etc/systemd/system/guest-runner.service > /dev/null
+
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/rootfs/etc/systemd/system/multi-user.target.wants/guest-runner.service 2>/dev/null || true
+
+        echo "Unmounting..."
+        sudo umount /mnt/rootfs
+
+        echo "Guest-runner injected successfully!"
+        ENDSSH
+
+  aws:test:
+    desc: Run Firecracker test on EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Running Firecracker test on $PUBLIC_IP..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /opt/llm-firesandbox
+
+        echo "=== Checking prerequisites ==="
+        echo "KVM: $(ls -la /dev/kvm 2>/dev/null || echo 'NOT FOUND')"
+        echo "Vsock: $(ls -la /dev/vhost-vsock 2>/dev/null || echo 'NOT FOUND')"
+        echo "Firecracker: $(firecracker --version 2>/dev/null || echo 'NOT FOUND')"
+        echo ""
+
+        echo "=== Running host-agent test ==="
+        sudo ./bin/host-agent \
+          -kernel /srv/firecracker/vmlinux \
+          -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang python \
+          -code "print('Hello from Firecracker microVM!')" \
+          -timeout 30
+        ENDSSH
+
+  aws:test-languages:
+    desc: Test all supported languages on EC2
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Testing all languages on $PUBLIC_IP..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        cd /opt/llm-firesandbox
+
+        echo "=== Testing Python ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang python -code "import sys; print(f'Python {sys.version}')" -timeout 30
+        echo ""
+
+        echo "=== Testing Bash ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang bash -code "echo 'Bash version:' && bash --version | head -1" -timeout 30
+        echo ""
+
+        echo "=== Testing Node.js ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang node -code "console.log('Node.js ' + process.version)" -timeout 30 || echo "Node.js not available in rootfs"
+        echo ""
+        ENDSSH
+
+  aws:stop:
+    desc: Stop EC2 instance (keeps it for later)
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.instance-id ]; then
+          echo "No instance found."
+          exit 0
+        fi
+        INSTANCE_ID=$(cat {{.PROJECT_DIR}}/aws/.instance-id)
+        echo "Stopping instance $INSTANCE_ID..."
+        aws ec2 stop-instances --instance-ids $INSTANCE_ID --region {{.AWS_REGION}}
+        echo "Instance stopped. Run 'task aws:start' to start again."
+
+  aws:start:
+    desc: Start stopped EC2 instance
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.instance-id ]; then
+          echo "No instance found."
+          exit 1
+        fi
+        INSTANCE_ID=$(cat {{.PROJECT_DIR}}/aws/.instance-id)
+        echo "Starting instance $INSTANCE_ID..."
+        aws ec2 start-instances --instance-ids $INSTANCE_ID --region {{.AWS_REGION}}
+
+        echo "Waiting for instance to be running..."
+        aws ec2 wait instance-running --instance-ids $INSTANCE_ID --region {{.AWS_REGION}}
+
+        # Update public IP (may change after stop/start)
+        PUBLIC_IP=$(aws ec2 describe-instances \
+          --instance-ids $INSTANCE_ID \
+          --region {{.AWS_REGION}} \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text)
+        echo $PUBLIC_IP > {{.PROJECT_DIR}}/aws/.public-ip
+        echo "Instance running. New IP: $PUBLIC_IP"
+
+  aws:terminate:
+    desc: Terminate EC2 instance (permanent delete)
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.instance-id ]; then
+          echo "No instance found."
+          exit 0
+        fi
+        INSTANCE_ID=$(cat {{.PROJECT_DIR}}/aws/.instance-id)
+        echo "WARNING: This will permanently delete instance $INSTANCE_ID"
+        read -p "Are you sure? (yes/no): " confirm
+        if [ "$confirm" = "yes" ]; then
+          aws ec2 terminate-instances --instance-ids $INSTANCE_ID --region {{.AWS_REGION}}
+          rm -f {{.PROJECT_DIR}}/aws/.instance-id {{.PROJECT_DIR}}/aws/.public-ip
+          echo "Instance terminated."
+        else
+          echo "Cancelled."
+        fi
+
+  aws:cleanup:
+    desc: Clean up all AWS resources
+    cmds:
+      - |
+        echo "Cleaning up AWS resources..."
+
+        # Terminate instance
+        if [ -f {{.PROJECT_DIR}}/aws/.instance-id ]; then
+          INSTANCE_ID=$(cat {{.PROJECT_DIR}}/aws/.instance-id)
+          echo "Terminating instance $INSTANCE_ID..."
+          aws ec2 terminate-instances --instance-ids $INSTANCE_ID --region {{.AWS_REGION}} 2>/dev/null || true
+        fi
+
+        # Wait for termination
+        sleep 10
+
+        # Delete security group
+        SG_ID=$(aws ec2 describe-security-groups \
+          --filters "Name=group-name,Values=firesandbox-sg" \
+          --region {{.AWS_REGION}} \
+          --query 'SecurityGroups[0].GroupId' \
+          --output text 2>/dev/null)
+        if [ "$SG_ID" != "None" ] && [ -n "$SG_ID" ]; then
+          echo "Deleting security group $SG_ID..."
+          aws ec2 delete-security-group --group-id $SG_ID --region {{.AWS_REGION}} 2>/dev/null || true
+        fi
+
+        # Delete key pair
+        echo "Deleting key pair {{.AWS_KEY_NAME}}..."
+        aws ec2 delete-key-pair --key-name {{.AWS_KEY_NAME}} --region {{.AWS_REGION}} 2>/dev/null || true
+
+        # Clean local files
+        rm -f {{.PROJECT_DIR}}/aws/.instance-id {{.PROJECT_DIR}}/aws/.public-ip {{.PROJECT_DIR}}/aws/.ami-id {{.PROJECT_DIR}}/aws/.sg-id
+        rm -rf {{.PROJECT_DIR}}/aws/keys
+
+        echo "Cleanup complete."
+
+  # ===========================================================================
+  # Full Test Pipeline
+  # ===========================================================================
+
+  aws:full-test:
+    desc: Complete AWS test pipeline (launch, deploy, test)
+    cmds:
+      - task: aws:launch
+      - echo "Waiting 180 seconds for user-data to complete..."
+      - sleep 180
+      - task: aws:deploy
+      - task: aws:inject-guest-runner
+      - task: aws:test
+
+  # ===========================================================================
+  # Rootfs with Multi-Language Support
+  # ===========================================================================
+
+  aws:rootfs-expand:
+    desc: Expand rootfs to 2GB for installing languages
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Expanding rootfs to 2GB..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        # Backup original
+        sudo cp rootfs.ext4 rootfs.ext4.original
+
+        # Create new larger image
+        echo "Creating 2GB rootfs..."
+        sudo dd if=/dev/zero of=rootfs-2g.ext4 bs=1M count=2048
+
+        # Format as ext4
+        sudo mkfs.ext4 rootfs-2g.ext4
+
+        # Mount both
+        sudo mkdir -p /mnt/old /mnt/new
+        sudo mount -o loop rootfs.ext4 /mnt/old
+        sudo mount -o loop rootfs-2g.ext4 /mnt/new
+
+        # Copy contents
+        echo "Copying rootfs contents..."
+        sudo cp -a /mnt/old/* /mnt/new/
+
+        # Unmount
+        sudo umount /mnt/old
+        sudo umount /mnt/new
+
+        # Replace
+        sudo mv rootfs-2g.ext4 rootfs.ext4
+
+        echo "Rootfs expanded to 2GB!"
+        ls -lh /srv/firecracker/rootfs.ext4
+        ENDSSH
+
+  aws:rootfs-install-python3:
+    desc: Install Python 3.10 in rootfs
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Installing Python 3 in rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+
+        # Mount rootfs
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        # Setup resolv.conf for DNS
+        sudo cp /etc/resolv.conf /mnt/rootfs/etc/resolv.conf
+
+        # Mount required filesystems for chroot
+        sudo mount --bind /dev /mnt/rootfs/dev
+        sudo mount --bind /proc /mnt/rootfs/proc
+        sudo mount --bind /sys /mnt/rootfs/sys
+
+        echo "Installing Python 3..."
+        sudo chroot /mnt/rootfs /bin/bash -c "
+          apt-get update
+          apt-get install -y --no-install-recommends python3 python3-pip
+          python3 --version
+          pip3 --version
+        "
+
+        # Cleanup
+        sudo umount /mnt/rootfs/sys
+        sudo umount /mnt/rootfs/proc
+        sudo umount /mnt/rootfs/dev
+        sudo umount /mnt/rootfs
+
+        echo "Python 3 installed successfully!"
+        ENDSSH
+
+  aws:rootfs-install-nodejs:
+    desc: Install Node.js 20 LTS in rootfs
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Installing Node.js in rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+
+        # Mount rootfs
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        # Setup resolv.conf for DNS
+        sudo cp /etc/resolv.conf /mnt/rootfs/etc/resolv.conf
+
+        # Mount required filesystems for chroot
+        sudo mount --bind /dev /mnt/rootfs/dev
+        sudo mount --bind /proc /mnt/rootfs/proc
+        sudo mount --bind /sys /mnt/rootfs/sys
+
+        echo "Installing Node.js 20 LTS..."
+        sudo chroot /mnt/rootfs /bin/bash -c "
+          apt-get update
+          apt-get install -y curl gnupg
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
+          node --version
+          npm --version
+        "
+
+        # Cleanup
+        sudo umount /mnt/rootfs/sys
+        sudo umount /mnt/rootfs/proc
+        sudo umount /mnt/rootfs/dev
+        sudo umount /mnt/rootfs
+
+        echo "Node.js installed successfully!"
+        ENDSSH
+
+  aws:rootfs-install-go:
+    desc: Install Go 1.21 in rootfs
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Installing Go in rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+
+        # Mount rootfs
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        echo "Downloading Go 1.21..."
+        wget -q https://go.dev/dl/go1.21.13.linux-amd64.tar.gz -O /tmp/go.tar.gz
+
+        echo "Installing Go..."
+        sudo tar -C /mnt/rootfs/usr/local -xzf /tmp/go.tar.gz
+
+        # Add to PATH
+        echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /mnt/rootfs/etc/profile.d/go.sh
+        sudo chmod +x /mnt/rootfs/etc/profile.d/go.sh
+
+        # Create symlink
+        sudo ln -sf /usr/local/go/bin/go /mnt/rootfs/usr/bin/go
+
+        # Verify
+        sudo chroot /mnt/rootfs /usr/bin/go version
+
+        sudo umount /mnt/rootfs
+
+        echo "Go installed successfully!"
+        rm -f /tmp/go.tar.gz
+        ENDSSH
+
+  aws:rootfs-install-rust:
+    desc: Install Rust (rustc, cargo) in rootfs
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Installing Rust in rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+
+        # Mount rootfs
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        # Setup resolv.conf for DNS
+        sudo cp /etc/resolv.conf /mnt/rootfs/etc/resolv.conf
+
+        # Mount required filesystems for chroot
+        sudo mount --bind /dev /mnt/rootfs/dev
+        sudo mount --bind /proc /mnt/rootfs/proc
+        sudo mount --bind /sys /mnt/rootfs/sys
+
+        echo "Installing Rust via rustup..."
+        sudo chroot /mnt/rootfs /bin/bash -c "
+          apt-get update
+          apt-get install -y curl build-essential
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          source /root/.cargo/env
+          rustc --version
+          cargo --version
+        "
+
+        # Make rust available system-wide
+        sudo chroot /mnt/rootfs /bin/bash -c "
+          cp -r /root/.cargo /opt/cargo
+          cp -r /root/.rustup /opt/rustup
+          echo 'export CARGO_HOME=/opt/cargo' > /etc/profile.d/rust.sh
+          echo 'export RUSTUP_HOME=/opt/rustup' >> /etc/profile.d/rust.sh
+          echo 'export PATH=/opt/cargo/bin:\$PATH' >> /etc/profile.d/rust.sh
+          chmod +x /etc/profile.d/rust.sh
+          ln -sf /opt/cargo/bin/rustc /usr/bin/rustc
+          ln -sf /opt/cargo/bin/cargo /usr/bin/cargo
+        "
+
+        # Cleanup
+        sudo umount /mnt/rootfs/sys
+        sudo umount /mnt/rootfs/proc
+        sudo umount /mnt/rootfs/dev
+        sudo umount /mnt/rootfs
+
+        echo "Rust installed successfully!"
+        ENDSSH
+
+  aws:rootfs-install-all:
+    desc: Install all languages (Python3, Node.js, Go, Rust) in rootfs
+    cmds:
+      - task: aws:rootfs-expand
+      - task: aws:rootfs-install-python3
+      - task: aws:rootfs-install-nodejs
+      - task: aws:rootfs-install-go
+      - task: aws:rootfs-install-rust
+      - task: aws:inject-guest-runner
+      - echo ""
+      - echo "All languages installed! Run 'task aws:snapshot-create' to create snapshot."
+
+  aws:rootfs-verify:
+    desc: Verify all languages are installed in rootfs
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Verifying language installations..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        sudo mkdir -p /mnt/rootfs
+        sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt/rootfs
+
+        echo "=== Language Versions ==="
+        echo -n "Python:  "; sudo chroot /mnt/rootfs python3 --version 2>/dev/null || echo "NOT INSTALLED"
+        echo -n "Node.js: "; sudo chroot /mnt/rootfs node --version 2>/dev/null || echo "NOT INSTALLED"
+        echo -n "Go:      "; sudo chroot /mnt/rootfs go version 2>/dev/null || echo "NOT INSTALLED"
+        echo -n "Rust:    "; sudo chroot /mnt/rootfs rustc --version 2>/dev/null || echo "NOT INSTALLED"
+        echo -n "Bash:    "; sudo chroot /mnt/rootfs bash --version 2>/dev/null | head -1 || echo "NOT INSTALLED"
+        echo ""
+        echo "=== Disk Usage ==="
+        df -h /mnt/rootfs
+        echo ""
+        sudo umount /mnt/rootfs
+        ENDSSH
+
+  # ===========================================================================
+  # Snapshot Management
+  # ===========================================================================
+
+  aws:snapshot-create:
+    desc: Create Firecracker snapshot with all languages pre-booted
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Firecracker snapshot..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        # Create snapshot directory
+        sudo mkdir -p /srv/firecracker/snapshots
+
+        # Generate unique snapshot ID
+        SNAP_ID="snap-$(date +%Y%m%d-%H%M%S)"
+        SNAP_DIR="/srv/firecracker/snapshots/$SNAP_ID"
+        sudo mkdir -p "$SNAP_DIR"
+
+        echo "Starting Firecracker for snapshot..."
+
+        # Create API socket
+        SOCKET="/tmp/fc-snapshot.sock"
+        sudo rm -f $SOCKET
+
+        # Start Firecracker in background
+        sudo /usr/local/bin/firecracker --api-sock $SOCKET &
+        FC_PID=$!
+        sleep 1
+
+        # Configure VM
+        echo "Configuring VM..."
+        curl --unix-socket $SOCKET -X PUT "http://localhost/machine-config" \
+          -H "Content-Type: application/json" \
+          -d '{"vcpu_count": 1, "mem_size_mib": 512, "smt": false}'
+
+        curl --unix-socket $SOCKET -X PUT "http://localhost/boot-source" \
+          -H "Content-Type: application/json" \
+          -d "{\"kernel_image_path\": \"/srv/firecracker/vmlinux\", \"boot_args\": \"console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw\"}"
+
+        curl --unix-socket $SOCKET -X PUT "http://localhost/drives/rootfs" \
+          -H "Content-Type: application/json" \
+          -d "{\"drive_id\": \"rootfs\", \"path_on_host\": \"/srv/firecracker/rootfs.ext4\", \"is_root_device\": true, \"is_read_only\": false}"
+
+        curl --unix-socket $SOCKET -X PUT "http://localhost/vsock" \
+          -H "Content-Type: application/json" \
+          -d "{\"guest_cid\": 3, \"uds_path\": \"/tmp/fc-snapshot.vsock\"}"
+
+        # Start VM
+        echo "Starting VM..."
+        curl --unix-socket $SOCKET -X PUT "http://localhost/actions" \
+          -H "Content-Type: application/json" \
+          -d '{"action_type": "InstanceStart"}'
+
+        # Wait for boot
+        echo "Waiting for VM to boot (15 seconds)..."
+        sleep 15
+
+        # Pause VM
+        echo "Pausing VM..."
+        curl --unix-socket $SOCKET -X PATCH "http://localhost/vm" \
+          -H "Content-Type: application/json" \
+          -d '{"state": "Paused"}'
+
+        # Create snapshot
+        echo "Creating snapshot at $SNAP_DIR..."
+        curl --unix-socket $SOCKET -X PUT "http://localhost/snapshot/create" \
+          -H "Content-Type: application/json" \
+          -d "{\"snapshot_type\": \"Full\", \"snapshot_path\": \"$SNAP_DIR/vm.snap\", \"mem_file_path\": \"$SNAP_DIR/vm.mem\"}"
+
+        # Stop Firecracker
+        sudo kill $FC_PID 2>/dev/null || true
+        sudo rm -f $SOCKET /tmp/fc-snapshot.vsock
+
+        # Copy rootfs to snapshot directory
+        echo "Copying rootfs to snapshot..."
+        sudo cp /srv/firecracker/rootfs.ext4 "$SNAP_DIR/rootfs.ext4"
+
+        # Create metadata
+        echo "Creating metadata..."
+        cat << EOF | sudo tee "$SNAP_DIR/metadata.json"
+        {
+          "snapshot_id": "$SNAP_ID",
+          "created_at": "$(date -Iseconds)",
+          "vcpus": 1,
+          "memory_mib": 512,
+          "kernel": "vmlinux-4.14.174",
+          "languages": ["python3", "nodejs", "go", "rust", "bash"]
+        }
+        EOF
+
+        echo ""
+        echo "=== Snapshot Created ==="
+        echo "ID:       $SNAP_ID"
+        echo "Location: $SNAP_DIR"
+        ls -lh "$SNAP_DIR"
+        echo ""
+        echo "Total size:"
+        du -sh "$SNAP_DIR"
+        ENDSSH
+
+  aws:snapshot-list:
+    desc: List available snapshots
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Available snapshots:"
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        echo ""
+        for dir in /srv/firecracker/snapshots/snap-*; do
+          if [ -d "$dir" ]; then
+            SNAP_ID=$(basename $dir)
+            SIZE=$(du -sh "$dir" | cut -f1)
+            CREATED=$(cat "$dir/metadata.json" 2>/dev/null | grep created_at | cut -d'"' -f4 || echo "unknown")
+            echo "$SNAP_ID  |  $SIZE  |  $CREATED"
+          fi
+        done
+        echo ""
+        ENDSSH
+
+  aws:snapshot-restore:
+    desc: Restore and test from snapshot
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Restoring from latest snapshot..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        # Get latest snapshot
+        SNAP_DIR=$(ls -d /srv/firecracker/snapshots/snap-* 2>/dev/null | tail -1)
+        if [ -z "$SNAP_DIR" ]; then
+          echo "No snapshots found. Run 'task aws:snapshot-create' first."
+          exit 1
+        fi
+
+        SNAP_ID=$(basename $SNAP_DIR)
+        echo "Restoring from: $SNAP_ID"
+
+        # Create restore socket
+        SOCKET="/tmp/fc-restore.sock"
+        sudo rm -f $SOCKET
+
+        # Copy rootfs (Firecracker modifies it)
+        sudo cp "$SNAP_DIR/rootfs.ext4" /tmp/restore-rootfs.ext4
+
+        # Start Firecracker in background
+        echo "Starting Firecracker..."
+        sudo /usr/local/bin/firecracker --api-sock $SOCKET &
+        FC_PID=$!
+        sleep 1
+
+        # Restore from snapshot
+        echo "Loading snapshot..."
+        START_TIME=$(date +%s%N)
+
+        curl --unix-socket $SOCKET -X PUT "http://localhost/snapshot/load" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"snapshot_path\": \"$SNAP_DIR/vm.snap\",
+            \"mem_backend\": {
+              \"backend_type\": \"File\",
+              \"backend_path\": \"$SNAP_DIR/vm.mem\"
+            },
+            \"enable_diff_snapshots\": false
+          }"
+
+        # Resume VM
+        curl --unix-socket $SOCKET -X PATCH "http://localhost/vm" \
+          -H "Content-Type: application/json" \
+          -d '{"state": "Resumed"}'
+
+        END_TIME=$(date +%s%N)
+        RESTORE_MS=$(( (END_TIME - START_TIME) / 1000000 ))
+
+        echo ""
+        echo "=== Snapshot Restored ==="
+        echo "Restore time: ${RESTORE_MS}ms"
+        echo ""
+
+        # Wait a bit for VM to be ready
+        sleep 2
+
+        # Stop VM
+        curl --unix-socket $SOCKET -X PUT "http://localhost/actions" \
+          -H "Content-Type: application/json" \
+          -d '{"action_type": "SendCtrlAltDel"}'
+
+        sleep 2
+        sudo kill $FC_PID 2>/dev/null || true
+        sudo rm -f $SOCKET /tmp/restore-rootfs.ext4
+
+        echo "VM restored and stopped successfully!"
+        ENDSSH
+
+  aws:snapshot-download:
+    desc: Download snapshot to local machine
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        # Get latest snapshot ID
+        SNAP_ID=$(ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP \
+          'ls -d /srv/firecracker/snapshots/snap-* 2>/dev/null | tail -1 | xargs basename')
+
+        if [ -z "$SNAP_ID" ] || [ "$SNAP_ID" = "basename" ]; then
+          echo "No snapshots found on remote."
+          exit 1
+        fi
+
+        echo "Downloading snapshot: $SNAP_ID"
+        mkdir -p {{.PROJECT_DIR}}/snapshots/$SNAP_ID
+
+        # Create tarball on remote
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP \
+          "cd /srv/firecracker/snapshots && sudo tar -czf /tmp/$SNAP_ID.tar.gz $SNAP_ID"
+
+        # Download
+        scp -i $KEY -o StrictHostKeyChecking=no \
+          ubuntu@$PUBLIC_IP:/tmp/$SNAP_ID.tar.gz \
+          {{.PROJECT_DIR}}/snapshots/
+
+        # Extract locally
+        cd {{.PROJECT_DIR}}/snapshots && tar -xzf $SNAP_ID.tar.gz && rm $SNAP_ID.tar.gz
+
+        echo ""
+        echo "Snapshot downloaded to: {{.PROJECT_DIR}}/snapshots/$SNAP_ID"
+        ls -lh {{.PROJECT_DIR}}/snapshots/$SNAP_ID
+
+  aws:test-all-languages:
+    desc: Test all languages execute correctly in VM
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Testing all languages..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        cd /opt/llm-firesandbox
+
+        echo ""
+        echo "============================================="
+        echo "  Testing All Languages in Firecracker VM"
+        echo "============================================="
+        echo ""
+
+        echo "=== 1. Python 3 ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang python -code "import sys; print(f'Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" -timeout 30 2>&1 | grep -A5 "Execution Result"
+        echo ""
+
+        echo "=== 2. Node.js ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang node -code "console.log('Node.js ' + process.version)" -timeout 30 2>&1 | grep -A5 "Execution Result"
+        echo ""
+
+        echo "=== 3. Go ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang go -code 'package main; import ("fmt"; "runtime"); func main() { fmt.Println("Go", runtime.Version()) }' -timeout 30 2>&1 | grep -A5 "Execution Result"
+        echo ""
+
+        echo "=== 4. Rust ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang rust -code 'fn main() { println!("Rust compiled successfully!"); }' -timeout 60 2>&1 | grep -A5 "Execution Result"
+        echo ""
+
+        echo "=== 5. Bash ==="
+        sudo ./bin/host-agent -kernel /srv/firecracker/vmlinux -rootfs /srv/firecracker/rootfs.ext4 \
+          -lang bash -code "echo 'Bash '\$BASH_VERSION" -timeout 30 2>&1 | grep -A5 "Execution Result"
+        echo ""
+
+        echo "============================================="
+        echo "  All language tests completed!"
+        echo "============================================="
+        ENDSSH
+
+  # ===========================================================================
+  # S3 Rootfs Storage Tasks
+  # ===========================================================================
+
+  s3:list:
+    desc: List rootfs images in S3 bucket
+    cmds:
+      - |
+        echo "=== S3 bucket contents ({{.S3_BUCKET}}) ==="
+        aws s3 ls s3://{{.S3_BUCKET}}/ --human-readable --summarize
+
+  s3:upload:
+    desc: Upload rootfs images from EC2 to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Uploading rootfs images to S3..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker/images
+
+        echo "=== Uploading rootfs images to S3 ==="
+        for img in rootfs-*.ext4; do
+          if [ -f "$img" ]; then
+            echo "Uploading $img..."
+            aws s3 cp "$img" s3://{{.S3_BUCKET}}/ --only-show-errors
+            echo "$img uploaded"
+          fi
+        done
+
+        if [ -f "../vmlinux" ]; then
+          echo "Uploading vmlinux kernel..."
+          aws s3 cp ../vmlinux s3://{{.S3_BUCKET}}/ --only-show-errors
+          echo "vmlinux uploaded"
+        fi
+
+        echo ""
+        echo "=== S3 bucket contents ==="
+        aws s3 ls s3://{{.S3_BUCKET}}/ --human-readable
+        ENDSSH
+
+  s3:download:
+    desc: Download rootfs images from S3 to EC2
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Downloading rootfs images from S3..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Downloading rootfs images from S3 ==="
+        sudo mkdir -p /srv/firecracker/images
+
+        # Download vmlinux kernel
+        echo "Downloading vmlinux..."
+        sudo aws s3 cp s3://{{.S3_BUCKET}}/vmlinux /srv/firecracker/vmlinux --only-show-errors
+
+        # Download all rootfs images
+        echo "Downloading rootfs images..."
+        sudo aws s3 sync s3://{{.S3_BUCKET}}/ /srv/firecracker/images/ --exclude "*" --include "rootfs-*.ext4" --only-show-errors
+
+        # Create symlink to default rootfs (python)
+        if [ -f /srv/firecracker/images/rootfs-python.ext4 ]; then
+          sudo ln -sf /srv/firecracker/images/rootfs-python.ext4 /srv/firecracker/rootfs.ext4
+        fi
+
+        echo ""
+        echo "=== Downloaded files ==="
+        ls -lh /srv/firecracker/vmlinux
+        ls -lh /srv/firecracker/images/
+        ENDSSH
+
+  s3:upload-single:
+    desc: "Upload a single rootfs image to S3 (usage: task s3:upload-single LANG=python)"
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+        LANG={{.LANG | default "python"}}
+
+        echo "Uploading rootfs-${LANG}.ext4 to S3..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "aws s3 cp /srv/firecracker/images/rootfs-${LANG}.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors && echo 'Upload complete!'"
+
+  # ===========================================================================
+  # Per-Language Rootfs Creation with Auto-Upload to S3
+  # ===========================================================================
+
+  aws:create-rootfs-python:
+    desc: Create Python rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Python rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Python rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-python.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-python.ext4
+
+        sudo mkdir -p /mnt/python
+        sudo mount /tmp/rootfs-python.ext4 /mnt/python
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/python http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Python..."
+        sudo chroot /mnt/python apt-get update
+        sudo chroot /mnt/python apt-get install -y --no-install-recommends python3 python3-pip ca-certificates
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/python/usr/local/bin/
+        sudo chmod +x /mnt/python/usr/local/bin/guest-runner
+
+        # Create systemd service
+        sudo mkdir -p /mnt/python/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/python/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/python/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/python
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-python.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-python.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors
+
+        echo "=== Python rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-python.ext4
+        ENDSSH
+
+  aws:create-rootfs-nodejs:
+    desc: Create Node.js rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Node.js rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Node.js rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-nodejs.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-nodejs.ext4
+
+        sudo mkdir -p /mnt/nodejs
+        sudo mount /tmp/rootfs-nodejs.ext4 /mnt/nodejs
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/nodejs http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Node.js 20 LTS..."
+        sudo chroot /mnt/nodejs apt-get update
+        sudo chroot /mnt/nodejs apt-get install -y --no-install-recommends curl ca-certificates gnupg
+        sudo chroot /mnt/nodejs bash -c "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
+        sudo chroot /mnt/nodejs apt-get install -y nodejs
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/nodejs/usr/local/bin/
+        sudo chmod +x /mnt/nodejs/usr/local/bin/guest-runner
+
+        # Create systemd service
+        sudo mkdir -p /mnt/nodejs/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/nodejs/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/nodejs/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/nodejs
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-nodejs.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-nodejs.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors
+
+        echo "=== Node.js rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-nodejs.ext4
+        ENDSSH
+
+  aws:create-rootfs-go:
+    desc: Create Go rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Go rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Go rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-go.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-go.ext4
+
+        sudo mkdir -p /mnt/go
+        sudo mount /tmp/rootfs-go.ext4 /mnt/go
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/go http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Go 1.22.3..."
+        wget -q https://go.dev/dl/go1.22.3.linux-amd64.tar.gz -O /tmp/go.tar.gz
+        sudo tar -C /mnt/go/usr/local -xzf /tmp/go.tar.gz
+        rm /tmp/go.tar.gz
+
+        # Setup Go environment
+        echo 'export GOROOT=/usr/local/go' | sudo tee /mnt/go/etc/profile.d/go.sh
+        echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee -a /mnt/go/etc/profile.d/go.sh
+        sudo chmod +x /mnt/go/etc/profile.d/go.sh
+        sudo ln -sf /usr/local/go/bin/go /mnt/go/usr/bin/go
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/go/usr/local/bin/
+        sudo chmod +x /mnt/go/usr/local/bin/guest-runner
+
+        # Create systemd service
+        sudo mkdir -p /mnt/go/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/go/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="HOME=/tmp"
+Environment="GOCACHE=/tmp/go-cache"
+Environment="GOPATH=/tmp/go"
+Environment="GOROOT=/usr/local/go"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/go/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/go
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-go.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-go.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors
+
+        echo "=== Go rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-go.ext4
+        ENDSSH
+
+  aws:create-rootfs-rust:
+    desc: Create Rust rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Rust rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Rust rootfs (2GB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-rust.ext4 bs=1M count=2048
+        sudo mkfs.ext4 /tmp/rootfs-rust.ext4
+
+        sudo mkdir -p /mnt/rust
+        sudo mount /tmp/rootfs-rust.ext4 /mnt/rust
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/rust http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Rust build dependencies..."
+        sudo chroot /mnt/rust apt-get update
+        sudo chroot /mnt/rust apt-get install -y --no-install-recommends curl ca-certificates build-essential
+
+        echo "Installing Rust via rustup..."
+        sudo chroot /mnt/rust bash -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal"
+
+        # Move Rust to system location
+        sudo cp -r /mnt/rust/root/.cargo /mnt/rust/opt/cargo
+        sudo cp -r /mnt/rust/root/.rustup /mnt/rust/opt/rustup
+
+        # Setup Rust environment
+        cat << 'EOF' | sudo tee /mnt/rust/etc/profile.d/rust.sh
+export CARGO_HOME=/opt/cargo
+export RUSTUP_HOME=/opt/rustup
+export PATH=/opt/cargo/bin:$PATH
+EOF
+        sudo chmod +x /mnt/rust/etc/profile.d/rust.sh
+        sudo ln -sf /opt/cargo/bin/rustc /mnt/rust/usr/bin/rustc
+        sudo ln -sf /opt/cargo/bin/cargo /mnt/rust/usr/bin/cargo
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/rust/usr/local/bin/
+        sudo chmod +x /mnt/rust/usr/local/bin/guest-runner
+
+        # Create systemd service
+        sudo mkdir -p /mnt/rust/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/rust/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="HOME=/tmp"
+Environment="CARGO_HOME=/opt/cargo"
+Environment="RUSTUP_HOME=/opt/rustup"
+Environment="PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/rust/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/rust
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-rust.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-rust.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors
+
+        echo "=== Rust rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-rust.ext4
+        ENDSSH
+
+  aws:create-rootfs-bash:
+    desc: Create Bash rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Bash rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Bash rootfs (512MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-bash.ext4 bs=1M count=512
+        sudo mkfs.ext4 /tmp/rootfs-bash.ext4
+
+        sudo mkdir -p /mnt/bash
+        sudo mount /tmp/rootfs-bash.ext4 /mnt/bash
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/bash http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/bash/usr/local/bin/
+        sudo chmod +x /mnt/bash/usr/local/bin/guest-runner
+
+        # Create systemd service
+        sudo mkdir -p /mnt/bash/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/bash/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/bash/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/bash
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-bash.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-bash.ext4 s3://{{.S3_BUCKET}}/ --only-show-errors
+
+        echo "=== Bash rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-bash.ext4
+        ENDSSH
+
+  aws:create-all-rootfs:
+    desc: Create all language rootfs images and upload to S3
+    cmds:
+      - task: aws:create-rootfs-bash
+      - task: aws:create-rootfs-python
+      - task: aws:create-rootfs-nodejs
+      - task: aws:create-rootfs-go
+      - task: aws:create-rootfs-rust
+      - task: s3:list
+      - echo ""
+      - echo "=== All rootfs images created and uploaded to S3 ==="
+
+  # ===========================================================================
+  # Tier 1: High Priority Languages (Java, C, C++, TypeScript, PHP)
+  # ===========================================================================
+
+  aws:create-rootfs-java:
+    desc: Create Java rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Java rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Java rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-java.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-java.ext4
+
+        sudo mkdir -p /mnt/java
+        sudo mount /tmp/rootfs-java.ext4 /mnt/java
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/java http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Java 21..."
+        sudo chroot /mnt/java apt-get update
+        sudo chroot /mnt/java apt-get install -y --no-install-recommends openjdk-21-jdk ca-certificates
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/java/usr/local/bin/
+        sudo chmod +x /mnt/java/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/java/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/java/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-21-openjdk-amd64/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/java/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/java
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-java.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-java.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Java rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-java.ext4
+        ENDSSH
+
+  aws:create-rootfs-c:
+    desc: Create C (GCC) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating C rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating C rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-c.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-c.ext4
+
+        sudo mkdir -p /mnt/c
+        sudo mount /tmp/rootfs-c.ext4 /mnt/c
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/c http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing GCC..."
+        sudo chroot /mnt/c apt-get update
+        sudo chroot /mnt/c apt-get install -y --no-install-recommends gcc libc6-dev
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/c/usr/local/bin/
+        sudo chmod +x /mnt/c/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/c/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/c/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/c/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/c
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-c.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-c.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== C rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-c.ext4
+        ENDSSH
+
+  aws:create-rootfs-cpp:
+    desc: Create C++ (G++) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating C++ rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating C++ rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-cpp.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-cpp.ext4
+
+        sudo mkdir -p /mnt/cpp
+        sudo mount /tmp/rootfs-cpp.ext4 /mnt/cpp
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/cpp http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing G++..."
+        sudo chroot /mnt/cpp apt-get update
+        sudo chroot /mnt/cpp apt-get install -y --no-install-recommends g++ libc6-dev libstdc++-11-dev
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/cpp/usr/local/bin/
+        sudo chmod +x /mnt/cpp/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/cpp/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/cpp/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/cpp/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/cpp
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-cpp.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-cpp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== C++ rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-cpp.ext4
+        ENDSSH
+
+  aws:create-rootfs-typescript:
+    desc: Create TypeScript rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating TypeScript rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating TypeScript rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-typescript.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-typescript.ext4
+
+        sudo mkdir -p /mnt/typescript
+        sudo mount /tmp/rootfs-typescript.ext4 /mnt/typescript
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/typescript http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Node.js and TypeScript..."
+        sudo chroot /mnt/typescript apt-get update
+        sudo chroot /mnt/typescript apt-get install -y --no-install-recommends curl ca-certificates gnupg
+        sudo chroot /mnt/typescript bash -c "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
+        sudo chroot /mnt/typescript apt-get install -y nodejs
+        sudo chroot /mnt/typescript npm install -g typescript ts-node @types/node
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/typescript/usr/local/bin/
+        sudo chmod +x /mnt/typescript/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/typescript/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/typescript/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/typescript/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/typescript
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-typescript.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-typescript.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== TypeScript rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-typescript.ext4
+        ENDSSH
+
+  aws:create-rootfs-php:
+    desc: Create PHP rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating PHP rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating PHP rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-php.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-php.ext4
+
+        sudo mkdir -p /mnt/php
+        sudo mount /tmp/rootfs-php.ext4 /mnt/php
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/php http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing PHP 8.1..."
+        sudo chroot /mnt/php apt-get update
+        sudo chroot /mnt/php apt-get install -y --no-install-recommends php8.1-cli php8.1-common
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/php/usr/local/bin/
+        sudo chmod +x /mnt/php/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/php/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/php/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/php/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/php
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-php.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-php.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== PHP rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-php.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 2: Medium Priority Languages (Ruby, Perl, Scala, Kotlin, Swift)
+  # ===========================================================================
+
+  aws:create-rootfs-ruby:
+    desc: Create Ruby rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Ruby rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Ruby rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-ruby.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-ruby.ext4
+
+        sudo mkdir -p /mnt/ruby
+        sudo mount /tmp/rootfs-ruby.ext4 /mnt/ruby
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/ruby http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Ruby..."
+        sudo chroot /mnt/ruby apt-get update
+        sudo chroot /mnt/ruby apt-get install -y --no-install-recommends ruby ruby-bundler
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/ruby/usr/local/bin/
+        sudo chmod +x /mnt/ruby/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/ruby/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/ruby/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/ruby/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/ruby
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-ruby.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-ruby.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Ruby rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-ruby.ext4
+        ENDSSH
+
+  aws:create-rootfs-perl:
+    desc: Create Perl rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Perl rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Perl rootfs (500MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-perl.ext4 bs=1M count=500
+        sudo mkfs.ext4 /tmp/rootfs-perl.ext4
+
+        sudo mkdir -p /mnt/perl
+        sudo mount /tmp/rootfs-perl.ext4 /mnt/perl
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/perl http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Perl..."
+        sudo chroot /mnt/perl apt-get update
+        sudo chroot /mnt/perl apt-get install -y --no-install-recommends perl
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/perl/usr/local/bin/
+        sudo chmod +x /mnt/perl/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/perl/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/perl/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/perl/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/perl
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-perl.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-perl.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Perl rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-perl.ext4
+        ENDSSH
+
+  aws:create-rootfs-scala:
+    desc: Create Scala rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Scala rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Scala rootfs (900MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-scala.ext4 bs=1M count=900
+        sudo mkfs.ext4 /tmp/rootfs-scala.ext4
+
+        sudo mkdir -p /mnt/scala
+        sudo mount /tmp/rootfs-scala.ext4 /mnt/scala
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/scala http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Java and Scala..."
+        sudo chroot /mnt/scala apt-get update
+        sudo chroot /mnt/scala apt-get install -y --no-install-recommends openjdk-21-jdk scala ca-certificates
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/scala/usr/local/bin/
+        sudo chmod +x /mnt/scala/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/scala/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/scala/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/scala/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/scala
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-scala.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-scala.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Scala rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-scala.ext4
+        ENDSSH
+
+  aws:create-rootfs-kotlin:
+    desc: Create Kotlin rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Kotlin rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Kotlin rootfs (900MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-kotlin.ext4 bs=1M count=900
+        sudo mkfs.ext4 /tmp/rootfs-kotlin.ext4
+
+        sudo mkdir -p /mnt/kotlin
+        sudo mount /tmp/rootfs-kotlin.ext4 /mnt/kotlin
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/kotlin http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Java and Kotlin..."
+        sudo chroot /mnt/kotlin apt-get update
+        sudo chroot /mnt/kotlin apt-get install -y --no-install-recommends openjdk-21-jdk curl unzip ca-certificates
+
+        # Install Kotlin via SDKMAN-style direct download
+        sudo chroot /mnt/kotlin bash -c "curl -sL https://github.com/JetBrains/kotlin/releases/download/v1.9.22/kotlin-compiler-1.9.22.zip -o /tmp/kotlin.zip && unzip -q /tmp/kotlin.zip -d /opt && rm /tmp/kotlin.zip"
+        sudo ln -sf /opt/kotlinc/bin/kotlin /mnt/kotlin/usr/bin/kotlin
+        sudo ln -sf /opt/kotlinc/bin/kotlinc /mnt/kotlin/usr/bin/kotlinc
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/kotlin/usr/local/bin/
+        sudo chmod +x /mnt/kotlin/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/kotlin/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/kotlin/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kotlinc/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/kotlin/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/kotlin
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-kotlin.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-kotlin.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Kotlin rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-kotlin.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 3: Functional/Scientific Languages
+  # ===========================================================================
+
+  aws:create-rootfs-lua:
+    desc: Create Lua rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Lua rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Lua rootfs (400MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-lua.ext4 bs=1M count=400
+        sudo mkfs.ext4 /tmp/rootfs-lua.ext4
+
+        sudo mkdir -p /mnt/lua
+        sudo mount /tmp/rootfs-lua.ext4 /mnt/lua
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/lua http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Lua..."
+        sudo chroot /mnt/lua apt-get update
+        sudo chroot /mnt/lua apt-get install -y --no-install-recommends lua5.4
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/lua/usr/local/bin/
+        sudo chmod +x /mnt/lua/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/lua/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/lua/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/lua/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/lua
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-lua.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-lua.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Lua rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-lua.ext4
+        ENDSSH
+
+  aws:create-rootfs-r:
+    desc: Create R rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating R rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating R rootfs (1200MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-r.ext4 bs=1M count=1200
+        sudo mkfs.ext4 /tmp/rootfs-r.ext4
+
+        sudo mkdir -p /mnt/r
+        sudo mount /tmp/rootfs-r.ext4 /mnt/r
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/r http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing R..."
+        sudo chroot /mnt/r apt-get update
+        sudo chroot /mnt/r apt-get install -y --no-install-recommends r-base
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/r/usr/local/bin/
+        sudo chmod +x /mnt/r/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/r/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/r/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/r/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/r
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-r.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-r.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== R rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-r.ext4
+        ENDSSH
+
+  aws:create-rootfs-haskell:
+    desc: Create Haskell rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Haskell rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Haskell rootfs (1200MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-haskell.ext4 bs=1M count=1200
+        sudo mkfs.ext4 /tmp/rootfs-haskell.ext4
+
+        sudo mkdir -p /mnt/haskell
+        sudo mount /tmp/rootfs-haskell.ext4 /mnt/haskell
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/haskell http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Haskell (GHC)..."
+        sudo chroot /mnt/haskell apt-get update
+        sudo chroot /mnt/haskell apt-get install -y --no-install-recommends ghc
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/haskell/usr/local/bin/
+        sudo chmod +x /mnt/haskell/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/haskell/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/haskell/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/haskell/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/haskell
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-haskell.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-haskell.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Haskell rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-haskell.ext4
+        ENDSSH
+
+  aws:create-rootfs-elixir:
+    desc: Create Elixir rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Elixir rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Elixir rootfs (900MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-elixir.ext4 bs=1M count=900
+        sudo mkfs.ext4 /tmp/rootfs-elixir.ext4
+
+        sudo mkdir -p /mnt/elixir
+        sudo mount /tmp/rootfs-elixir.ext4 /mnt/elixir
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/elixir http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Erlang and Elixir..."
+        sudo chroot /mnt/elixir apt-get update
+        sudo chroot /mnt/elixir apt-get install -y --no-install-recommends erlang elixir
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/elixir/usr/local/bin/
+        sudo chmod +x /mnt/elixir/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/elixir/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/elixir/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/elixir/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/elixir
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-elixir.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-elixir.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Elixir rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-elixir.ext4
+        ENDSSH
+
+  aws:create-rootfs-erlang:
+    desc: Create Erlang rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Erlang rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Erlang rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-erlang.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-erlang.ext4
+
+        sudo mkdir -p /mnt/erlang
+        sudo mount /tmp/rootfs-erlang.ext4 /mnt/erlang
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/erlang http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Erlang..."
+        sudo chroot /mnt/erlang apt-get update
+        sudo chroot /mnt/erlang apt-get install -y --no-install-recommends erlang
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/erlang/usr/local/bin/
+        sudo chmod +x /mnt/erlang/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/erlang/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/erlang/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/erlang/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/erlang
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-erlang.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-erlang.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Erlang rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-erlang.ext4
+        ENDSSH
+
+  aws:create-rootfs-clojure:
+    desc: Create Clojure rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Clojure rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Clojure rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-clojure.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-clojure.ext4
+
+        sudo mkdir -p /mnt/clojure
+        sudo mount /tmp/rootfs-clojure.ext4 /mnt/clojure
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/clojure http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Java and Clojure..."
+        sudo chroot /mnt/clojure apt-get update
+        sudo chroot /mnt/clojure apt-get install -y --no-install-recommends openjdk-21-jdk clojure ca-certificates
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/clojure/usr/local/bin/
+        sudo chmod +x /mnt/clojure/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/clojure/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/clojure/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/clojure/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/clojure
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-clojure.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-clojure.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Clojure rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-clojure.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 4: Modern Languages (Dart, Deno, Bun)
+  # ===========================================================================
+
+  aws:create-rootfs-dart:
+    desc: Create Dart rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Dart rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Dart rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-dart.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-dart.ext4
+
+        sudo mkdir -p /mnt/dart
+        sudo mount /tmp/rootfs-dart.ext4 /mnt/dart
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/dart http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Dart SDK..."
+        sudo chroot /mnt/dart apt-get update
+        sudo chroot /mnt/dart apt-get install -y --no-install-recommends curl ca-certificates apt-transport-https gnupg
+        sudo chroot /mnt/dart bash -c "curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/dart.gpg"
+        sudo chroot /mnt/dart bash -c "echo 'deb [signed-by=/usr/share/keyrings/dart.gpg arch=amd64] https://storage.googleapis.com/download.dartlang.org/linux/debian stable main' > /etc/apt/sources.list.d/dart_stable.list"
+        sudo chroot /mnt/dart apt-get update
+        sudo chroot /mnt/dart apt-get install -y dart
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/dart/usr/local/bin/
+        sudo chmod +x /mnt/dart/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/dart/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/dart/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="PATH=/usr/lib/dart/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/dart/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/dart
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-dart.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-dart.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Dart rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-dart.ext4
+        ENDSSH
+
+  aws:create-rootfs-deno:
+    desc: Create Deno rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Deno rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Deno rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-deno.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-deno.ext4
+
+        sudo mkdir -p /mnt/deno
+        sudo mount /tmp/rootfs-deno.ext4 /mnt/deno
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/deno http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Deno..."
+        sudo chroot /mnt/deno apt-get update
+        sudo chroot /mnt/deno apt-get install -y --no-install-recommends curl ca-certificates unzip
+        sudo chroot /mnt/deno bash -c "curl -fsSL https://deno.land/install.sh | sh"
+        sudo mv /mnt/deno/root/.deno/bin/deno /mnt/deno/usr/bin/deno
+        sudo chmod +x /mnt/deno/usr/bin/deno
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/deno/usr/local/bin/
+        sudo chmod +x /mnt/deno/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/deno/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/deno/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/deno/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/deno
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-deno.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-deno.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Deno rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-deno.ext4
+        ENDSSH
+
+  aws:create-rootfs-bun:
+    desc: Create Bun rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Bun rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Bun rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-bun.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-bun.ext4
+
+        sudo mkdir -p /mnt/bun
+        sudo mount /tmp/rootfs-bun.ext4 /mnt/bun
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/bun http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Bun..."
+        sudo chroot /mnt/bun apt-get update
+        sudo chroot /mnt/bun apt-get install -y --no-install-recommends curl ca-certificates unzip
+        sudo chroot /mnt/bun bash -c "curl -fsSL https://bun.sh/install | bash"
+        sudo mv /mnt/bun/root/.bun/bin/bun /mnt/bun/usr/bin/bun
+        sudo chmod +x /mnt/bun/usr/bin/bun
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/bun/usr/local/bin/
+        sudo chmod +x /mnt/bun/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/bun/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/bun/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/bun/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/bun
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-bun.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-bun.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Bun rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-bun.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 5: Classic/Educational Languages (Pascal, Fortran, Cobol)
+  # ===========================================================================
+
+  aws:create-rootfs-pascal:
+    desc: Create Pascal (Free Pascal) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Pascal rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Pascal rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-pascal.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-pascal.ext4
+
+        sudo mkdir -p /mnt/pascal
+        sudo mount /tmp/rootfs-pascal.ext4 /mnt/pascal
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/pascal http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Free Pascal..."
+        sudo chroot /mnt/pascal apt-get update
+        sudo chroot /mnt/pascal apt-get install -y --no-install-recommends fpc
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/pascal/usr/local/bin/
+        sudo chmod +x /mnt/pascal/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/pascal/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/pascal/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/pascal/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/pascal
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-pascal.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-pascal.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Pascal rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-pascal.ext4
+        ENDSSH
+
+  aws:create-rootfs-fortran:
+    desc: Create Fortran (gfortran) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Fortran rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Fortran rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-fortran.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-fortran.ext4
+
+        sudo mkdir -p /mnt/fortran
+        sudo mount /tmp/rootfs-fortran.ext4 /mnt/fortran
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/fortran http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing gfortran..."
+        sudo chroot /mnt/fortran apt-get update
+        sudo chroot /mnt/fortran apt-get install -y --no-install-recommends gfortran
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/fortran/usr/local/bin/
+        sudo chmod +x /mnt/fortran/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/fortran/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/fortran/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/fortran/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/fortran
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-fortran.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-fortran.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Fortran rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-fortran.ext4
+        ENDSSH
+
+  aws:create-rootfs-cobol:
+    desc: Create COBOL (GnuCOBOL) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating COBOL rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating COBOL rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-cobol.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-cobol.ext4
+
+        sudo mkdir -p /mnt/cobol
+        sudo mount /tmp/rootfs-cobol.ext4 /mnt/cobol
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/cobol http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing GnuCOBOL..."
+        sudo chroot /mnt/cobol apt-get update
+        sudo chroot /mnt/cobol apt-get install -y --no-install-recommends gnucobol
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/cobol/usr/local/bin/
+        sudo chmod +x /mnt/cobol/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/cobol/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/cobol/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/cobol/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/cobol
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-cobol.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-cobol.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== COBOL rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-cobol.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 6: Logic/Specialized Languages (Prolog, Lisp, Racket)
+  # ===========================================================================
+
+  aws:create-rootfs-prolog:
+    desc: Create Prolog (SWI-Prolog) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Prolog rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Prolog rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-prolog.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-prolog.ext4
+
+        sudo mkdir -p /mnt/prolog
+        sudo mount /tmp/rootfs-prolog.ext4 /mnt/prolog
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/prolog http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing SWI-Prolog..."
+        sudo chroot /mnt/prolog apt-get update
+        sudo chroot /mnt/prolog apt-get install -y --no-install-recommends swi-prolog
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/prolog/usr/local/bin/
+        sudo chmod +x /mnt/prolog/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/prolog/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/prolog/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/prolog/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/prolog
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-prolog.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-prolog.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Prolog rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-prolog.ext4
+        ENDSSH
+
+  aws:create-rootfs-lisp:
+    desc: Create Common Lisp (SBCL) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Lisp rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Lisp rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-lisp.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-lisp.ext4
+
+        sudo mkdir -p /mnt/lisp
+        sudo mount /tmp/rootfs-lisp.ext4 /mnt/lisp
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/lisp http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing SBCL..."
+        sudo chroot /mnt/lisp apt-get update
+        sudo chroot /mnt/lisp apt-get install -y --no-install-recommends sbcl
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/lisp/usr/local/bin/
+        sudo chmod +x /mnt/lisp/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/lisp/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/lisp/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/lisp/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/lisp
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-lisp.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-lisp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Lisp rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-lisp.ext4
+        ENDSSH
+
+  aws:create-rootfs-racket:
+    desc: Create Racket rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Racket rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Racket rootfs (800MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-racket.ext4 bs=1M count=800
+        sudo mkfs.ext4 /tmp/rootfs-racket.ext4
+
+        sudo mkdir -p /mnt/racket
+        sudo mount /tmp/rootfs-racket.ext4 /mnt/racket
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/racket http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Racket..."
+        sudo chroot /mnt/racket apt-get update
+        sudo chroot /mnt/racket apt-get install -y --no-install-recommends racket
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/racket/usr/local/bin/
+        sudo chmod +x /mnt/racket/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/racket/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/racket/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/racket/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/racket
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-racket.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-racket.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Racket rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-racket.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 7: New Modern Languages (Zig, Nim, Crystal, V)
+  # ===========================================================================
+
+  aws:create-rootfs-zig:
+    desc: Create Zig rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Zig rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Zig rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-zig.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-zig.ext4
+
+        sudo mkdir -p /mnt/zig
+        sudo mount /tmp/rootfs-zig.ext4 /mnt/zig
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/zig http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Zig..."
+        sudo chroot /mnt/zig apt-get update
+        sudo chroot /mnt/zig apt-get install -y --no-install-recommends curl ca-certificates xz-utils
+        sudo chroot /mnt/zig bash -c "curl -sL https://ziglang.org/download/0.11.0/zig-linux-x86_64-0.11.0.tar.xz | tar -xJ -C /opt"
+        sudo ln -sf /opt/zig-linux-x86_64-0.11.0/zig /mnt/zig/usr/bin/zig
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/zig/usr/local/bin/
+        sudo chmod +x /mnt/zig/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/zig/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/zig/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/zig/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/zig
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-zig.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-zig.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Zig rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-zig.ext4
+        ENDSSH
+
+  aws:create-rootfs-nim:
+    desc: Create Nim rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Nim rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Nim rootfs (600MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-nim.ext4 bs=1M count=600
+        sudo mkfs.ext4 /tmp/rootfs-nim.ext4
+
+        sudo mkdir -p /mnt/nim
+        sudo mount /tmp/rootfs-nim.ext4 /mnt/nim
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/nim http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Nim..."
+        sudo chroot /mnt/nim apt-get update
+        sudo chroot /mnt/nim apt-get install -y --no-install-recommends nim
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/nim/usr/local/bin/
+        sudo chmod +x /mnt/nim/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/nim/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/nim/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/nim/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/nim
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-nim.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-nim.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Nim rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-nim.ext4
+        ENDSSH
+
+  aws:create-rootfs-crystal:
+    desc: Create Crystal rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Crystal rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Crystal rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-crystal.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-crystal.ext4
+
+        sudo mkdir -p /mnt/crystal
+        sudo mount /tmp/rootfs-crystal.ext4 /mnt/crystal
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/crystal http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Crystal..."
+        sudo chroot /mnt/crystal apt-get update
+        sudo chroot /mnt/crystal apt-get install -y --no-install-recommends crystal
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/crystal/usr/local/bin/
+        sudo chmod +x /mnt/crystal/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/crystal/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/crystal/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/crystal/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/crystal
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-crystal.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-crystal.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Crystal rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-crystal.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 8: .NET Languages (C#, F#, PowerShell)
+  # ===========================================================================
+
+  aws:create-rootfs-csharp:
+    desc: Create C# (.NET) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating C# rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating C# rootfs (1500MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-csharp.ext4 bs=1M count=1500
+        sudo mkfs.ext4 /tmp/rootfs-csharp.ext4
+
+        sudo mkdir -p /mnt/csharp
+        sudo mount /tmp/rootfs-csharp.ext4 /mnt/csharp
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/csharp http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing .NET SDK..."
+        sudo chroot /mnt/csharp apt-get update
+        sudo chroot /mnt/csharp apt-get install -y --no-install-recommends wget ca-certificates
+        sudo chroot /mnt/csharp bash -c "wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb && dpkg -i /tmp/packages-microsoft-prod.deb && rm /tmp/packages-microsoft-prod.deb"
+        sudo chroot /mnt/csharp apt-get update
+        sudo chroot /mnt/csharp apt-get install -y dotnet-sdk-8.0
+        sudo chroot /mnt/csharp dotnet tool install -g dotnet-script
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/csharp/usr/local/bin/
+        sudo chmod +x /mnt/csharp/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/csharp/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/csharp/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="DOTNET_ROOT=/usr/share/dotnet"
+Environment="PATH=/root/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/csharp/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/csharp
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-csharp.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-csharp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== C# rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-csharp.ext4
+        ENDSSH
+
+  aws:create-rootfs-fsharp:
+    desc: Create F# (.NET) rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating F# rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating F# rootfs (1500MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-fsharp.ext4 bs=1M count=1500
+        sudo mkfs.ext4 /tmp/rootfs-fsharp.ext4
+
+        sudo mkdir -p /mnt/fsharp
+        sudo mount /tmp/rootfs-fsharp.ext4 /mnt/fsharp
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/fsharp http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing .NET SDK (includes F#)..."
+        sudo chroot /mnt/fsharp apt-get update
+        sudo chroot /mnt/fsharp apt-get install -y --no-install-recommends wget ca-certificates
+        sudo chroot /mnt/fsharp bash -c "wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb && dpkg -i /tmp/packages-microsoft-prod.deb && rm /tmp/packages-microsoft-prod.deb"
+        sudo chroot /mnt/fsharp apt-get update
+        sudo chroot /mnt/fsharp apt-get install -y dotnet-sdk-8.0
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/fsharp/usr/local/bin/
+        sudo chmod +x /mnt/fsharp/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/fsharp/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/fsharp/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="DOTNET_ROOT=/usr/share/dotnet"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/fsharp/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/fsharp
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-fsharp.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-fsharp.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== F# rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-fsharp.ext4
+        ENDSSH
+
+  aws:create-rootfs-powershell:
+    desc: Create PowerShell rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating PowerShell rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating PowerShell rootfs (700MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-powershell.ext4 bs=1M count=700
+        sudo mkfs.ext4 /tmp/rootfs-powershell.ext4
+
+        sudo mkdir -p /mnt/powershell
+        sudo mount /tmp/rootfs-powershell.ext4 /mnt/powershell
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/powershell http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing PowerShell..."
+        sudo chroot /mnt/powershell apt-get update
+        sudo chroot /mnt/powershell apt-get install -y --no-install-recommends wget ca-certificates
+        sudo chroot /mnt/powershell bash -c "wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb && dpkg -i /tmp/packages-microsoft-prod.deb && rm /tmp/packages-microsoft-prod.deb"
+        sudo chroot /mnt/powershell apt-get update
+        sudo chroot /mnt/powershell apt-get install -y powershell
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/powershell/usr/local/bin/
+        sudo chmod +x /mnt/powershell/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/powershell/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/powershell/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/powershell/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/powershell
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-powershell.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-powershell.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== PowerShell rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-powershell.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Tier 9: Scientific/Data Languages (Julia, Octave)
+  # ===========================================================================
+
+  aws:create-rootfs-julia:
+    desc: Create Julia rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Julia rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Julia rootfs (1000MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-julia.ext4 bs=1M count=1000
+        sudo mkfs.ext4 /tmp/rootfs-julia.ext4
+
+        sudo mkdir -p /mnt/julia
+        sudo mount /tmp/rootfs-julia.ext4 /mnt/julia
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/julia http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing Julia..."
+        sudo chroot /mnt/julia apt-get update
+        sudo chroot /mnt/julia apt-get install -y --no-install-recommends curl ca-certificates
+        sudo chroot /mnt/julia bash -c "curl -fsSL https://install.julialang.org | sh -s -- -y"
+        sudo ln -sf /root/.juliaup/bin/julia /mnt/julia/usr/bin/julia
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/julia/usr/local/bin/
+        sudo chmod +x /mnt/julia/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/julia/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/julia/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Environment="PATH=/root/.juliaup/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/julia/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/julia
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-julia.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-julia.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Julia rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-julia.ext4
+        ENDSSH
+
+  aws:create-rootfs-octave:
+    desc: Create GNU Octave rootfs and upload to S3
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+
+        echo "Creating Octave rootfs..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP 'bash -s' << 'ENDSSH'
+        set -e
+        cd /srv/firecracker
+
+        echo "=== Creating Octave rootfs (1000MB) ==="
+        sudo dd if=/dev/zero of=/tmp/rootfs-octave.ext4 bs=1M count=1000
+        sudo mkfs.ext4 /tmp/rootfs-octave.ext4
+
+        sudo mkdir -p /mnt/octave
+        sudo mount /tmp/rootfs-octave.ext4 /mnt/octave
+
+        echo "Installing Ubuntu 22.04 base..."
+        sudo debootstrap --variant=minbase jammy /mnt/octave http://archive.ubuntu.com/ubuntu/
+
+        echo "Installing GNU Octave..."
+        sudo chroot /mnt/octave apt-get update
+        sudo chroot /mnt/octave apt-get install -y --no-install-recommends octave
+
+        echo "Installing guest-runner..."
+        sudo cp /opt/llm-firesandbox/rootfs/guest-runner /mnt/octave/usr/local/bin/
+        sudo chmod +x /mnt/octave/usr/local/bin/guest-runner
+
+        sudo mkdir -p /mnt/octave/etc/systemd/system
+        cat << 'EOF' | sudo tee /mnt/octave/etc/systemd/system/guest-runner.service
+[Unit]
+Description=LLM FireSandbox Guest Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/guest-runner -port 5000
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo ln -sf /etc/systemd/system/guest-runner.service /mnt/octave/etc/systemd/system/multi-user.target.wants/
+
+        sudo umount /mnt/octave
+        sudo mkdir -p /srv/firecracker/images
+        sudo mv /tmp/rootfs-octave.ext4 /srv/firecracker/images/
+
+        echo "Uploading to S3..."
+        aws s3 cp /srv/firecracker/images/rootfs-octave.ext4 s3://llm-firesandbox-rootfs/ --only-show-errors
+
+        echo "=== Octave rootfs created and uploaded to S3 ==="
+        ls -lh /srv/firecracker/images/rootfs-octave.ext4
+        ENDSSH
+
+  # ===========================================================================
+  # Snapshot Creation for All Languages
+  # ===========================================================================
+
+  aws:create-snapshot-for-lang:
+    desc: Create snapshot for a specific language (usage: task aws:create-snapshot-for-lang LANG=python)
+    cmds:
+      - |
+        if [ ! -f {{.PROJECT_DIR}}/aws/.public-ip ]; then
+          echo "No instance IP found."
+          exit 1
+        fi
+        PUBLIC_IP=$(cat {{.PROJECT_DIR}}/aws/.public-ip)
+        KEY={{.PROJECT_DIR}}/aws/keys/{{.AWS_KEY_NAME}}.pem
+        LANG={{.LANG | default "python"}}
+
+        echo "Creating snapshot for $LANG..."
+        ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "bash -s" << ENDSSH
+        set -e
+        cd /srv/firecracker
+
+        LANG="$LANG"
+        ROOTFS="/srv/firecracker/images/rootfs-\${LANG}.ext4"
+
+        if [ ! -f "\$ROOTFS" ]; then
+          echo "Rootfs not found: \$ROOTFS"
+          exit 1
+        fi
+
+        echo "=== Creating snapshot for \$LANG ==="
+        sudo mkdir -p /srv/firecracker/snapshots/\$LANG
+
+        # Create API socket
+        SOCKET="/tmp/fc-\$LANG.sock"
+        sudo rm -f \$SOCKET
+
+        # Start Firecracker in background
+        sudo /usr/local/bin/firecracker --api-sock \$SOCKET &
+        FC_PID=\$!
+        sleep 1
+
+        # Configure VM
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/machine-config" \
+          -H "Content-Type: application/json" \
+          -d '{"vcpu_count": 1, "mem_size_mib": 512, "smt": false}'
+
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/boot-source" \
+          -H "Content-Type: application/json" \
+          -d "{\"kernel_image_path\": \"/srv/firecracker/vmlinux\", \"boot_args\": \"console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw quiet\"}"
+
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/drives/rootfs" \
+          -H "Content-Type: application/json" \
+          -d "{\"drive_id\": \"rootfs\", \"path_on_host\": \"\$ROOTFS\", \"is_root_device\": true, \"is_read_only\": false}"
+
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/vsock" \
+          -H "Content-Type: application/json" \
+          -d "{\"guest_cid\": 3, \"uds_path\": \"/tmp/fc-\$LANG.vsock\"}"
+
+        # Start VM
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/actions" \
+          -H "Content-Type: application/json" \
+          -d '{"action_type": "InstanceStart"}'
+
+        # Wait for boot
+        echo "Waiting for VM to boot (10 seconds)..."
+        sleep 10
+
+        # Pause VM
+        curl --unix-socket \$SOCKET -X PATCH "http://localhost/vm" \
+          -H "Content-Type: application/json" \
+          -d '{"state": "Paused"}'
+
+        # Create snapshot
+        SNAP_DIR="/srv/firecracker/snapshots/\$LANG"
+        curl --unix-socket \$SOCKET -X PUT "http://localhost/snapshot/create" \
+          -H "Content-Type: application/json" \
+          -d "{\"snapshot_type\": \"Full\", \"snapshot_path\": \"\$SNAP_DIR/vm.snap\", \"mem_file_path\": \"\$SNAP_DIR/vm.mem\"}"
+
+        # Stop Firecracker
+        sudo kill \$FC_PID 2>/dev/null || true
+        sudo rm -f \$SOCKET /tmp/fc-\$LANG.vsock
+
+        # Upload to S3
+        echo "Uploading snapshot to S3..."
+        aws s3 cp \$SNAP_DIR/vm.snap s3://llm-firesandbox-rootfs/snapshots/\$LANG/ --only-show-errors
+        aws s3 cp \$SNAP_DIR/vm.mem s3://llm-firesandbox-rootfs/snapshots/\$LANG/ --only-show-errors
+
+        echo "=== Snapshot for \$LANG created and uploaded ==="
+        ls -lh \$SNAP_DIR/
+        ENDSSH
+
+  aws:create-all-snapshots:
+    desc: Create snapshots for all language rootfs images
+    cmds:
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "python"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "nodejs"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "go"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "rust"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "bash"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "java"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "c"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "cpp"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "typescript"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "php"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "ruby"}
+      - task: aws:create-snapshot-for-lang
+        vars: {LANG: "perl"}
+      - echo ""
+      - echo "=== All snapshots created ==="
+
+  # ===========================================================================
+  # Batch Rootfs Creation Tasks
+  # ===========================================================================
+
+  aws:create-tier1-rootfs:
+    desc: Create Tier 1 rootfs images (Java, C, C++, TypeScript, PHP)
+    cmds:
+      - task: aws:create-rootfs-java
+      - task: aws:create-rootfs-c
+      - task: aws:create-rootfs-cpp
+      - task: aws:create-rootfs-typescript
+      - task: aws:create-rootfs-php
+      - echo "=== Tier 1 rootfs images created ==="
+
+  aws:create-tier2-rootfs:
+    desc: Create Tier 2 rootfs images (Ruby, Perl, Scala, Kotlin)
+    cmds:
+      - task: aws:create-rootfs-ruby
+      - task: aws:create-rootfs-perl
+      - task: aws:create-rootfs-scala
+      - task: aws:create-rootfs-kotlin
+      - echo "=== Tier 2 rootfs images created ==="
+
+  aws:create-tier3-rootfs:
+    desc: Create Tier 3 rootfs images (Lua, R, Haskell, Elixir, Erlang, Clojure)
+    cmds:
+      - task: aws:create-rootfs-lua
+      - task: aws:create-rootfs-r
+      - task: aws:create-rootfs-haskell
+      - task: aws:create-rootfs-elixir
+      - task: aws:create-rootfs-erlang
+      - task: aws:create-rootfs-clojure
+      - echo "=== Tier 3 rootfs images created ==="
+
+  aws:create-tier4-rootfs:
+    desc: Create Tier 4 rootfs images (Dart, Deno, Bun)
+    cmds:
+      - task: aws:create-rootfs-dart
+      - task: aws:create-rootfs-deno
+      - task: aws:create-rootfs-bun
+      - echo "=== Tier 4 rootfs images created ==="
+
+  aws:create-tier5-rootfs:
+    desc: Create Tier 5 rootfs images (Pascal, Fortran, Cobol)
+    cmds:
+      - task: aws:create-rootfs-pascal
+      - task: aws:create-rootfs-fortran
+      - task: aws:create-rootfs-cobol
+      - echo "=== Tier 5 rootfs images created ==="
+
+  aws:create-tier6-rootfs:
+    desc: Create Tier 6 rootfs images (Prolog, Lisp, Racket)
+    cmds:
+      - task: aws:create-rootfs-prolog
+      - task: aws:create-rootfs-lisp
+      - task: aws:create-rootfs-racket
+      - echo "=== Tier 6 rootfs images created ==="
+
+  aws:create-tier7-rootfs:
+    desc: Create Tier 7 rootfs images (Zig, Nim, Crystal)
+    cmds:
+      - task: aws:create-rootfs-zig
+      - task: aws:create-rootfs-nim
+      - task: aws:create-rootfs-crystal
+      - echo "=== Tier 7 rootfs images created ==="
+
+  aws:create-tier8-rootfs:
+    desc: Create Tier 8 rootfs images (C#, F#, PowerShell)
+    cmds:
+      - task: aws:create-rootfs-csharp
+      - task: aws:create-rootfs-fsharp
+      - task: aws:create-rootfs-powershell
+      - echo "=== Tier 8 rootfs images created ==="
+
+  aws:create-tier9-rootfs:
+    desc: Create Tier 9 rootfs images (Julia, Octave)
+    cmds:
+      - task: aws:create-rootfs-julia
+      - task: aws:create-rootfs-octave
+      - echo "=== Tier 9 rootfs images created ==="
+
+  aws:create-all-new-rootfs:
+    desc: Create ALL new language rootfs images (Tier 1-9)
+    cmds:
+      - task: aws:create-tier1-rootfs
+      - task: aws:create-tier2-rootfs
+      - task: aws:create-tier3-rootfs
+      - task: aws:create-tier4-rootfs
+      - task: aws:create-tier5-rootfs
+      - task: aws:create-tier6-rootfs
+      - task: aws:create-tier7-rootfs
+      - task: aws:create-tier8-rootfs
+      - task: aws:create-tier9-rootfs
+      - task: s3:list
+      - echo ""
+      - echo "=== ALL language rootfs images created and uploaded to S3 ==="
+

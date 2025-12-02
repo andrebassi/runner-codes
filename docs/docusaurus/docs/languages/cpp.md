@@ -1,0 +1,210 @@
+---
+title: 'C++'
+description: 'C++ code execution with G++'
+---
+
+## Overview
+
+C++ is a powerful systems programming language with object-oriented features. LLM-Firecracker provides G++ for compiling and executing C++ programs.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Docker Image | `frolvlad/alpine-gxx` |
+| Compiler | G++ 14.2.0 (C++17) |
+| Rootfs Size | 350 MB |
+| Execution | Compiled (g++ + run) |
+| File Extension | `.cpp` |
+| Run Command | `g++ -o runbin {file} && ./runbin` |
+| Execution Time | ~349ms |
+
+```bash title="1. Create Rootfs from Docker"
+sudo infra.operator rootfs from-docker --name cpp --image frolvlad/alpine-gxx --size 350
+```
+
+```bash title="2. Create Snapshot"
+sudo infra.operator snapshot create --lang cpp --mem 512 --vcpus 1
+```
+
+```bash title="3. Upload rootfs to S3"
+sudo infra.operator rootfs upload --lang cpp --bucket llm-firecracker
+```
+
+```bash title="3. Upload snapshot to S3"
+sudo infra.operator snapshot upload --lang cpp --bucket llm-firecracker
+```
+
+```bash title="4. Test Execution"
+sudo infra.operator host --lang cpp --code '#include <iostream>
+int main() {
+    std::cout << "Hello from C++ (G++ " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << ")" << std::endl;
+    return 0;
+}' --mem 512 --vcpus 1 --snapshot
+```
+
+
+
+## Execution Flow
+
+![C++ Execution Flow](/img/execution-compiled.svg)
+
+## Examples
+
+### Hello World
+
+```json title="Request"
+{
+  "trace_id": "cpp-hello-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n\nint main() {\n    std::cout << \"Hello from C++!\" << std::endl;\n    return 0;\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-hello-001",
+  "stdout": "Hello from C++!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Classes and Objects
+
+```json title="Request"
+{
+  "trace_id": "cpp-class-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n#include <string>\n\nclass Person {\nprivate:\n    std::string name;\n    int age;\npublic:\n    Person(std::string n, int a) : name(n), age(a) {}\n    void greet() {\n        std::cout << \"Hello, I'm \" << name << \", \" << age << \" years old\" << std::endl;\n    }\n};\n\nint main() {\n    Person p(\"Alice\", 30);\n    p.greet();\n    return 0;\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-class-001",
+  "stdout": "Hello, I'm Alice, 30 years old\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### STL Containers
+
+```json title="Request"
+{
+  "trace_id": "cpp-stl-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n#include <vector>\n#include <algorithm>\n\nint main() {\n    std::vector<int> nums = {5, 2, 8, 1, 9};\n    std::sort(nums.begin(), nums.end());\n    \n    std::cout << \"Sorted: \";\n    for (int n : nums) {\n        std::cout << n << \" \";\n    }\n    std::cout << std::endl;\n    return 0;\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-stl-001",
+  "stdout": "Sorted: 1 2 5 8 9 \n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Smart Pointers
+
+```json title="Request"
+{
+  "trace_id": "cpp-smart-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n#include <memory>\n\nclass Resource {\npublic:\n    Resource() { std::cout << \"Resource created\" << std::endl; }\n    ~Resource() { std::cout << \"Resource destroyed\" << std::endl; }\n    void use() { std::cout << \"Resource used\" << std::endl; }\n};\n\nint main() {\n    auto ptr = std::make_unique<Resource>();\n    ptr->use();\n    return 0;\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-smart-001",
+  "stdout": "Resource created\nResource used\nResource destroyed\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Lambda Expressions
+
+```json title="Request"
+{
+  "trace_id": "cpp-lambda-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n#include <vector>\n#include <algorithm>\n\nint main() {\n    std::vector<int> nums = {1, 2, 3, 4, 5};\n    \n    int sum = 0;\n    std::for_each(nums.begin(), nums.end(), [&sum](int n) {\n        sum += n;\n    });\n    \n    std::cout << \"Sum: \" << sum << std::endl;\n    return 0;\n}",
+  "timeout": 15
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-lambda-001",
+  "stdout": "Sum: 15\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Complex Test: Comprehensive C++
+
+```json title="Request"
+{
+  "trace_id": "cpp-complex-001",
+  "lang": "cpp",
+  "code": "#include <iostream>\n#include <vector>\n#include <map>\n#include <algorithm>\n#include <memory>\n#include <string>\n#include <sstream>\n#include <numeric>\n#include <cmath>\n#include <optional>\n\nusing namespace std;\n\n// Memoized Fibonacci\nmap<int, long long> memo;\nlong long fib(int n) {\n    if (n <= 1) return n;\n    if (memo.count(n)) return memo[n];\n    return memo[n] = fib(n-1) + fib(n-2);\n}\n\n// QuickSort\nvoid quicksort(vector<int>& arr, int low, int high) {\n    if (low >= high) return;\n    int pivot = arr[high];\n    int i = low - 1;\n    for (int j = low; j < high; j++) {\n        if (arr[j] < pivot) {\n            swap(arr[++i], arr[j]);\n        }\n    }\n    swap(arr[i + 1], arr[high]);\n    int pi = i + 1;\n    quicksort(arr, low, pi - 1);\n    quicksort(arr, pi + 1, high);\n}\n\n// Base class for polymorphism\nclass Animal {\nprotected:\n    string name;\npublic:\n    Animal(const string& n) : name(n) {}\n    virtual string speak() const = 0;\n    virtual ~Animal() = default;\n};\n\nclass Dog : public Animal {\npublic:\n    Dog(const string& n) : Animal(n) {}\n    string speak() const override { return name + \" says Woof!\"; }\n};\n\nclass Cat : public Animal {\npublic:\n    Cat(const string& n) : Animal(n) {}\n    string speak() const override { return name + \" says Meow!\"; }\n};\n\n// Person struct\nstruct Person {\n    string name;\n    int age;\n    string city;\n};\n\nint main() {\n    cout << \"=== C++ Complex Test ===\" << endl << endl;\n    \n    // Test 1: Fibonacci with memoization\n    cout << \"1. Fibonacci with memoization:\" << endl;\n    cout << \"   First 15: \";\n    for (int i = 0; i < 15; i++) cout << fib(i) << \" \";\n    cout << endl << \"   Fib(50) = \" << fib(50) << endl;\n    \n    // Test 2: QuickSort\n    cout << endl << \"2. QuickSort:\" << endl;\n    vector<int> arr = {64, 34, 25, 12, 22, 11, 90};\n    cout << \"   Input:  \";\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    quicksort(arr, 0, arr.size() - 1);\n    cout << \"   Output: \";\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    \n    // Test 3: STL algorithms\n    cout << endl << \"3. STL algorithms:\" << endl;\n    vector<int> numbers(10);\n    iota(numbers.begin(), numbers.end(), 1);\n    vector<int> squares;\n    transform(numbers.begin(), numbers.end(), back_inserter(squares), [](int x) { return x * x; });\n    int sum = accumulate(squares.begin(), squares.end(), 0);\n    cout << \"   Numbers: \";\n    for (int x : numbers) cout << x << \" \";\n    cout << endl << \"   Squares: \";\n    for (int x : squares) cout << x << \" \";\n    cout << endl << \"   Sum: \" << sum << endl;\n    \n    // Test 4: Polymorphism with smart pointers\n    cout << endl << \"4. Polymorphism:\" << endl;\n    vector<unique_ptr<Animal>> animals;\n    animals.push_back(make_unique<Dog>(\"Rex\"));\n    animals.push_back(make_unique<Cat>(\"Whiskers\"));\n    animals.push_back(make_unique<Dog>(\"Buddy\"));\n    for (const auto& a : animals) {\n        cout << \"   \" << a->speak() << endl;\n    }\n    \n    // Test 5: Map operations\n    cout << endl << \"5. Map operations:\" << endl;\n    map<string, int> ages = {{\"Alice\", 30}, {\"Bob\", 25}, {\"Charlie\", 35}};\n    for (const auto& [name, age] : ages) {\n        cout << \"   \" << name << \": \" << age << endl;\n    }\n    \n    // Test 6: Lambdas and functional\n    cout << endl << \"6. Lambdas and functional:\" << endl;\n    auto factorial = [](int n) {\n        int result = 1;\n        for (int i = 2; i <= n; i++) result *= i;\n        return result;\n    };\n    cout << \"   5! = \" << factorial(5) << endl;\n    cout << \"   7! = \" << factorial(7) << endl;\n    \n    // Test 7: Optional\n    cout << endl << \"7. Optional handling:\" << endl;\n    optional<string> opt1 = \"Hello\";\n    optional<string> opt2 = nullopt;\n    cout << \"   Present: \" << opt1.value_or(\"default\") << endl;\n    cout << \"   Empty: \" << opt2.value_or(\"default\") << endl;\n    \n    // Test 8: String streams\n    cout << endl << \"8. String operations:\" << endl;\n    string text = \"Hello, World!\";\n    cout << \"   Original: \" << text << endl;\n    string upper = text;\n    transform(upper.begin(), upper.end(), upper.begin(), ::toupper);\n    cout << \"   Uppercase: \" << upper << endl;\n    cout << \"   Length: \" << text.length() << endl;\n    \n    cout << endl << \"=== All tests passed ===\" << endl;\n    return 0;\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "cpp-complex-001",
+  "stdout": "=== C++ Complex Test ===\n\n1. Fibonacci with memoization:\n   First 15: 0 1 1 2 3 5 8 13 21 34 55 89 144 233 377 \n   Fib(50) = 12586269025\n\n2. QuickSort:\n   Input:  64 34 25 12 22 11 90 \n   Output: 11 12 22 25 34 64 90 \n\n3. STL algorithms:\n   Numbers: 1 2 3 4 5 6 7 8 9 10 \n   Squares: 1 4 9 16 25 36 49 64 81 100 \n   Sum: 385\n\n4. Polymorphism:\n   Rex says Woof!\n   Whiskers says Meow!\n   Buddy says Woof!\n\n5. Map operations:\n   Alice: 30\n   Bob: 25\n   Charlie: 35\n\n6. Lambdas and functional:\n   5! = 120\n   7! = 5040\n\n7. Optional handling:\n   Present: Hello\n   Empty: default\n\n8. String operations:\n   Original: Hello, World!\n   Uppercase: HELLO, WORLD!\n   Length: 13\n\n=== All tests passed ===\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Performance
+
+| Operation | Time |
+|-----------|------|
+| Compilation | ~700ms |
+| Hello World (total) | ~1.2s |
+| STL sort (10k items) | ~5ms |
+| Vector operations | ~1ms |
+
+## Limitations
+
+:::warning
+
+  The C++ environment has the following limitations:
+
+:::
+
+1. **Single file only**: Must be self-contained
+2. **No external libraries**: Only standard library (STL)
+3. **C++17 standard**: Newer features may not work
+4. **No networking**: Socket operations will fail
+5. **Memory limit**: 512 MiB
+
+## Best Practices
+
+
+    Prefer smart pointers, range-based for loops, and auto keyword.
+
+
+
+    Include iostream, vector, string, algorithm as needed.
+
+
+
+    Either use std:: prefix or selective using declarations.
+
+

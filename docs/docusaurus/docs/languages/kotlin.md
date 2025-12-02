@@ -1,0 +1,193 @@
+---
+title: 'Kotlin'
+description: 'Kotlin code execution on JVM'
+---
+
+## Overview
+
+Kotlin is a modern, concise language fully interoperable with Java. LLM-Firecracker provides Kotlin with OpenJDK runtime.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Base OS | Debian Bookworm |
+| Version | Kotlin 1.9 |
+| Rootfs Size | 800 MB |
+| Execution | Compiled (kotlinc + kotlin) |
+| File Extension | `.kt` |
+| Compile Command | `kotlinc Main.kt` |
+| Run Command | `kotlin MainKt` |
+| Execution Time | ~4.3s |
+
+```bash title="1. Create Rootfs with infra.operator"
+sudo infra.operator rootfs create --name kotlin --size 800 --base debian --packages "kotlin"
+```
+
+```bash title="2. Create Snapshot"
+sudo infra.operator snapshot create --lang kotlin --mem 512 --vcpus 1
+```
+
+```bash title="3. Upload rootfs to S3"
+sudo infra.operator rootfs upload --lang kotlin --bucket llm-firecracker
+```
+
+```bash title="3. Upload snapshot to S3"
+sudo infra.operator snapshot upload --lang kotlin --bucket llm-firecracker
+```
+
+```bash title="4. Test Execution"
+sudo infra.operator host --lang kotlin --code "fun main() { println(\"Hello from Kotlin\") }" --mem 512 --vcpus 1 --snapshot
+```
+
+
+
+## Examples
+
+### Hello World
+
+```json title="Request"
+{
+  "trace_id": "kotlin-hello-001",
+  "lang": "kotlin",
+  "code": "fun main() {\n    println(\"Hello from Kotlin!\")\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-hello-001",
+  "stdout": "Hello from Kotlin!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Data Classes
+
+```json title="Request"
+{
+  "trace_id": "kotlin-data-001",
+  "lang": "kotlin",
+  "code": "data class Person(val name: String, val age: Int)\n\nfun main() {\n    val alice = Person(\"Alice\", 30)\n    println(\"Name: ${alice.name}\")\n    println(\"Age: ${alice.age}\")\n    println(alice)\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-data-001",
+  "stdout": "Name: Alice\nAge: 30\nPerson(name=Alice, age=30)\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Null Safety
+
+```json title="Request"
+{
+  "trace_id": "kotlin-null-001",
+  "lang": "kotlin",
+  "code": "fun main() {\n    val name: String? = null\n    println(name?.length ?: \"Name is null\")\n    \n    val validName: String? = \"Alice\"\n    println(validName?.length ?: \"Name is null\")\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-null-001",
+  "stdout": "Name is null\n5\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Collections
+
+```json title="Request"
+{
+  "trace_id": "kotlin-coll-001",
+  "lang": "kotlin",
+  "code": "fun main() {\n    val numbers = listOf(1, 2, 3, 4, 5)\n    val squares = numbers.map { it * it }\n    val sum = squares.sum()\n    \n    println(\"Numbers: $numbers\")\n    println(\"Squares: $squares\")\n    println(\"Sum: $sum\")\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-coll-001",
+  "stdout": "Numbers: [1, 2, 3, 4, 5]\nSquares: [1, 4, 9, 16, 25]\nSum: 55\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Extension Functions
+
+```json title="Request"
+{
+  "trace_id": "kotlin-ext-001",
+  "lang": "kotlin",
+  "code": "fun String.addExclamation(): String = \"$this!\"\n\nfun main() {\n    println(\"Hello\".addExclamation())\n    println(\"World\".addExclamation())\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-ext-001",
+  "stdout": "Hello!\nWorld!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Complex Test: Comprehensive Kotlin
+
+```json title="Request"
+{
+  "trace_id": "kotlin-complex-001",
+  "lang": "kotlin",
+  "code": "fun main() {\n    println(\"=== Kotlin Complex Test ===\")\n    println()\n    \n    // Test 1: Fibonacci with memoization\n    println(\"1. Fibonacci with memoization:\")\n    val memo = mutableMapOf<Int, Long>()\n    fun fib(n: Int): Long = memo.getOrPut(n) {\n        if (n <= 1) n.toLong() else fib(n - 1) + fib(n - 2)\n    }\n    val fibs = (0..14).map { fib(it) }\n    println(\"   First 15: $fibs\")\n    println(\"   Fib(50) = ${fib(50)}\")\n    \n    // Test 2: QuickSort\n    println()\n    println(\"2. QuickSort:\")\n    fun quicksort(arr: List<Int>): List<Int> {\n        if (arr.size <= 1) return arr\n        val pivot = arr[arr.size / 2]\n        return quicksort(arr.filter { it < pivot }) + arr.filter { it == pivot } + quicksort(arr.filter { it > pivot })\n    }\n    val unsorted = listOf(64, 34, 25, 12, 22, 11, 90)\n    println(\"   Input:  $unsorted\")\n    println(\"   Output: ${quicksort(unsorted)}\")\n    \n    // Test 3: Sealed classes and when\n    println()\n    println(\"3. Sealed classes and when:\")\n    sealed class Animal(val name: String) {\n        abstract fun speak(): String\n    }\n    class Dog(name: String) : Animal(name) {\n        override fun speak() = \"$name says Woof!\"\n    }\n    class Cat(name: String) : Animal(name) {\n        override fun speak() = \"$name says Meow!\"\n    }\n    val animals = listOf(Dog(\"Rex\"), Cat(\"Whiskers\"), Dog(\"Buddy\"))\n    animals.forEach { println(\"   ${it.speak()}\") }\n    \n    // Test 4: Collection operations\n    println()\n    println(\"4. Collection operations:\")\n    val numbers = (1..10).toList()\n    val squares = numbers.map { it * it }\n    val evens = numbers.filter { it % 2 == 0 }\n    val sum = squares.sum()\n    println(\"   Numbers: $numbers\")\n    println(\"   Squares: $squares\")\n    println(\"   Evens: $evens\")\n    println(\"   Sum of squares: $sum\")\n    \n    // Test 5: Data classes and destructuring\n    println()\n    println(\"5. Data classes:\")\n    data class Person(val name: String, val age: Int, val city: String)\n    val people = listOf(\n        Person(\"Alice\", 30, \"NYC\"),\n        Person(\"Bob\", 25, \"LA\"),\n        Person(\"Charlie\", 35, \"Chicago\")\n    )\n    people.forEach { (name, age, city) -> println(\"   $name ($age) from $city\") }\n    val byCity = people.associate { it.city to it.name }\n    println(\"   By city: $byCity\")\n    \n    // Test 6: Null safety\n    println()\n    println(\"6. Null safety:\")\n    fun divide(a: Int, b: Int): Int? = if (b == 0) null else a / b\n    println(\"   10 / 2 = ${divide(10, 2) ?: \"undefined\"}\")\n    println(\"   10 / 0 = ${divide(10, 0) ?: \"undefined\"}\")\n    val name: String? = null\n    println(\"   null?.length = ${name?.length ?: \"null\"}\")\n    \n    // Test 7: Extension functions\n    println()\n    println(\"7. Extension functions:\")\n    fun Int.factorial(): Long {\n        var result = 1L\n        for (i in 2..this) result *= i\n        return result\n    }\n    fun String.addExclamation() = \"$this!\"\n    println(\"   5! = ${5.factorial()}\")\n    println(\"   7! = ${7.factorial()}\")\n    println(\"   \\\"Hello\\\".addExclamation() = ${\"Hello\".addExclamation()}\")\n    \n    // Test 8: Lambda with receiver\n    println()\n    println(\"8. Scope functions:\")\n    val result = StringBuilder().apply {\n        append(\"Hello\")\n        append(\", \")\n        append(\"World\")\n        append(\"!\")\n    }.toString()\n    println(\"   Built string: $result\")\n    val lengths = listOf(\"a\", \"bb\", \"ccc\").map { it.length }\n    println(\"   Lengths: $lengths\")\n    \n    println()\n    println(\"=== All tests passed ===\")\n}",
+  "timeout": 60
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "kotlin-complex-001",
+  "stdout": "=== Kotlin Complex Test ===\n\n1. Fibonacci with memoization:\n   First 15: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377]\n   Fib(50) = 12586269025\n\n2. QuickSort:\n   Input:  [64, 34, 25, 12, 22, 11, 90]\n   Output: [11, 12, 22, 25, 34, 64, 90]\n\n3. Sealed classes and when:\n   Rex says Woof!\n   Whiskers says Meow!\n   Buddy says Woof!\n\n4. Collection operations:\n   Numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n   Squares: [1, 4, 9, 16, 25, 36, 49, 64, 81, 100]\n   Evens: [2, 4, 6, 8, 10]\n   Sum of squares: 385\n\n5. Data classes:\n   Alice (30) from NYC\n   Bob (25) from LA\n   Charlie (35) from Chicago\n   By city: {NYC=Alice, LA=Bob, Chicago=Charlie}\n\n6. Null safety:\n   10 / 2 = 5\n   10 / 0 = undefined\n   null?.length = null\n\n7. Extension functions:\n   5! = 120\n   7! = 5040\n   \"Hello\".addExclamation() = Hello!\n\n8. Scope functions:\n   Built string: Hello, World!\n   Lengths: [1, 2, 3]\n\n=== All tests passed ===\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Limitations
+
+:::warning
+
+  The Kotlin environment has the following limitations:
+
+:::
+
+1. **Compilation overhead**: kotlinc is slow (~5-7s)
+2. **No external libraries**: Only Kotlin standard library
+3. **Memory limit**: 512 MiB
+4. **Increase timeout**: Use 45+ seconds
+
+## Best Practices
+
+
+    Data classes provide equals, hashCode, toString automatically.
+
+
+
+    Use nullable types (?) and safe calls (?.) properly.
+
+
+
+    Kotlin compilation is slow; use 45+ second timeouts.
+
+

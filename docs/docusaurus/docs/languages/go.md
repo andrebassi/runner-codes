@@ -1,0 +1,401 @@
+---
+title: 'Go'
+description: 'Go 1.22 code execution'
+---
+
+## Overview
+
+Go is ideal for systems programming, concurrent operations, and performance-critical code. LLM-Firecracker provides Go 1.22.12 with the full standard library.
+
+## Specifications
+
+| Property | Value |
+|----------|-------|
+| Docker Image | `golang:1.22-alpine` |
+| Version | Go 1.22.12 |
+| Rootfs Size | 500 MB |
+| Execution | Compiled |
+| File Extension | `.go` |
+| Run Command | `go run {file}` |
+| Execution Time | ~6.7s |
+
+```bash title="1. Create Rootfs from Docker"
+sudo infra.operator rootfs from-docker --name go --image golang:1.22-alpine --size 500
+```
+
+```bash title="2. Create Snapshot"
+sudo infra.operator snapshot create --lang go --mem 512 --vcpus 1
+```
+
+```bash title="3. Upload rootfs to S3"
+sudo infra.operator rootfs upload --lang go --bucket llm-firecracker
+```
+
+```bash title="3. Upload snapshot to S3"
+sudo infra.operator snapshot upload --lang go --bucket llm-firecracker
+```
+
+```bash title="4. Test Execution"
+sudo infra.operator host --lang go --code "package main; import (\"fmt\"; \"runtime\"); func main() { fmt.Println(\"Go\", runtime.Version()) }" --mem 512 --vcpus 1 --snapshot
+```
+
+
+
+## Execution Flow
+
+![Go Execution Flow](/img/language-execution-flow.svg)
+
+## Examples
+
+### Hello World
+
+```json title="Request"
+{
+  "trace_id": "go-hello-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello from Go!\")\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-hello-001",
+  "stdout": "Hello from Go!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Complex Test: Concurrency and Data Processing
+
+```json title="Request"
+{
+  "trace_id": "go-complex-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n)\n\n// Fibonacci with memoization\nvar fibMemo = make(map[int]int64)\nvar fibMutex sync.Mutex\n\nfunc fibonacci(n int) int64 {\n\tif n <= 1 {\n\t\treturn int64(n)\n\t}\n\tfibMutex.Lock()\n\tif val, ok := fibMemo[n]; ok {\n\t\tfibMutex.Unlock()\n\t\treturn val\n\t}\n\tfibMutex.Unlock()\n\tresult := fibonacci(n-1) + fibonacci(n-2)\n\tfibMutex.Lock()\n\tfibMemo[n] = result\n\tfibMutex.Unlock()\n\treturn result\n}\n\n// QuickSort\nfunc quicksort(arr []int) []int {\n\tif len(arr) <= 1 {\n\t\treturn arr\n\t}\n\tpivot := arr[0]\n\tvar smaller, larger []int\n\tfor _, v := range arr[1:] {\n\t\tif v < pivot {\n\t\t\tsmaller = append(smaller, v)\n\t\t} else {\n\t\t\tlarger = append(larger, v)\n\t\t}\n\t}\n\tresult := quicksort(smaller)\n\tresult = append(result, pivot)\n\tresult = append(result, quicksort(larger)...)\n\treturn result\n}\n\n// Person struct\ntype Person struct {\n\tName string\n\tAge  int\n\tCity string\n}\n\nfunc main() {\n\tfmt.Println(\"=== Go Complex Test ===\")\n\tfmt.Println()\n\n\t// Test 1: Fibonacci\n\tfmt.Println(\"1. Fibonacci sequence:\")\n\tvar fibs []int64\n\tfor i := 0; i < 15; i++ {\n\t\tfibs = append(fibs, fibonacci(i))\n\t}\n\tfmt.Printf(\"   First 15: %v\\n\", fibs)\n\tfmt.Printf(\"   Fib(50) = %d\\n\", fibonacci(50))\n\n\t// Test 2: QuickSort\n\tfmt.Println()\n\tfmt.Println(\"2. QuickSort:\")\n\tunsorted := []int{64, 34, 25, 12, 22, 11, 90}\n\tsorted := quicksort(unsorted)\n\tfmt.Printf(\"   Input:  %v\\n\", unsorted)\n\tfmt.Printf(\"   Output: %v\\n\", sorted)\n\n\t// Test 3: Slices and maps\n\tfmt.Println()\n\tfmt.Println(\"3. Slice operations on 1..10:\")\n\tnumbers := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}\n\tvar squares []int\n\tvar evens []int\n\tsum := 0\n\tproduct := 1\n\tfor _, n := range numbers {\n\t\tsquares = append(squares, n*n)\n\t\tif n%2 == 0 {\n\t\t\tevens = append(evens, n)\n\t\t}\n\t\tsum += n\n\t\tproduct *= n\n\t}\n\tfmt.Printf(\"   Squares: %v\\n\", squares)\n\tfmt.Printf(\"   Evens: %v\\n\", evens)\n\tfmt.Printf(\"   Sum: %d\\n\", sum)\n\tfmt.Printf(\"   Product: %d\\n\", product)\n\n\t// Test 4: Structs and grouping\n\tfmt.Println()\n\tfmt.Println(\"4. People data processing:\")\n\tpeople := []Person{\n\t\t{\"Alice\", 30, \"NYC\"},\n\t\t{\"Bob\", 25, \"LA\"},\n\t\t{\"Charlie\", 35, \"NYC\"},\n\t\t{\"Diana\", 28, \"LA\"},\n\t\t{\"Eve\", 32, \"Chicago\"},\n\t}\n\t\n\tbyCity := make(map[string][]string)\n\ttotalAge := 0\n\tfor _, p := range people {\n\t\tbyCity[p.City] = append(byCity[p.City], p.Name)\n\t\ttotalAge += p.Age\n\t}\n\tfor city, names := range byCity {\n\t\tfmt.Printf(\"   %s: %v\\n\", city, names)\n\t}\n\tfmt.Printf(\"   Average age: %.1f\\n\", float64(totalAge)/float64(len(people)))\n\n\t// Test 5: Goroutines and channels\n\tfmt.Println()\n\tfmt.Println(\"5. Concurrent computation:\")\n\tch := make(chan int, 5)\n\tvar wg sync.WaitGroup\n\t\n\tfor i := 1; i <= 5; i++ {\n\t\twg.Add(1)\n\t\tgo func(n int) {\n\t\t\tdefer wg.Done()\n\t\t\tch <- n * n\n\t\t}(i)\n\t}\n\twg.Wait()\n\tclose(ch)\n\t\n\tvar results []int\n\tfor r := range ch {\n\t\tresults = append(results, r)\n\t}\n\tsort.Ints(results)\n\tfmt.Printf(\"   Squares computed concurrently: %v\\n\", results)\n\n\t// Test 6: String operations\n\tfmt.Println()\n\tfmt.Println(\"6. String operations:\")\n\ttext := \"Hello World from Go\"\n\tfmt.Printf(\"   Original: %s\\n\", text)\n\tfmt.Printf(\"   Upper: %s\\n\", strings.ToUpper(text))\n\tfmt.Printf(\"   Words: %d\\n\", len(strings.Fields(text)))\n\tfmt.Printf(\"   Contains 'Go': %v\\n\", strings.Contains(text, \"Go\"))\n\n\t// Test 7: Error handling\n\tfmt.Println()\n\tfmt.Println(\"7. Error handling:\")\n\tdivide := func(a, b float64) (float64, error) {\n\t\tif b == 0 {\n\t\t\treturn 0, fmt.Errorf(\"division by zero\")\n\t\t}\n\t\treturn a / b, nil\n\t}\n\tif result, err := divide(10, 2); err == nil {\n\t\tfmt.Printf(\"   10 / 2 = %.1f\\n\", result)\n\t}\n\tif _, err := divide(10, 0); err != nil {\n\t\tfmt.Printf(\"   10 / 0 = error: %v\\n\", err)\n\t}\n\n\tfmt.Println()\n\tfmt.Println(\"=== All tests passed ===\")\n}",
+  "timeout": 45
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-complex-001",
+  "stdout": "=== Go Complex Test ===\n\n1. Fibonacci sequence:\n   First 15: [0 1 1 2 3 5 8 13 21 34 55 89 144 233 377]\n   Fib(50) = 12586269025\n\n2. QuickSort:\n   Input:  [64 34 25 12 22 11 90]\n   Output: [11 12 22 25 34 64 90]\n\n3. Slice operations on 1..10:\n   Squares: [1 4 9 16 25 36 49 64 81 100]\n   Evens: [2 4 6 8 10]\n   Sum: 55\n   Product: 3628800\n\n4. People data processing:\n   NYC: [Alice Charlie]\n   LA: [Bob Diana]\n   Chicago: [Eve]\n   Average age: 30.0\n\n5. Concurrent computation:\n   Squares computed concurrently: [1 4 9 16 25]\n\n6. String operations:\n   Original: Hello World from Go\n   Upper: HELLO WORLD FROM GO\n   Words: 4\n   Contains 'Go': true\n\n7. Error handling:\n   10 / 2 = 5.0\n   10 / 0 = error: division by zero\n\n=== All tests passed ===\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Variables and Types
+
+```json title="Request"
+{
+  "trace_id": "go-vars-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar name string = \"Alice\"\n\tage := 30\n\tpi := 3.14159\n\tactive := true\n\n\tfmt.Printf(\"Name: %s\\n\", name)\n\tfmt.Printf(\"Age: %d\\n\", age)\n\tfmt.Printf(\"Pi: %.2f\\n\", pi)\n\tfmt.Printf(\"Active: %v\\n\", active)\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-vars-001",
+  "stdout": "Name: Alice\nAge: 30\nPi: 3.14\nActive: true\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Functions
+
+```json title="Request"
+{
+  "trace_id": "go-func-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc swap(a, b string) (string, string) {\n\treturn b, a\n}\n\nfunc main() {\n\tfmt.Println(\"Sum:\", add(10, 20))\n\tx, y := swap(\"hello\", \"world\")\n\tfmt.Println(\"Swapped:\", x, y)\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-func-001",
+  "stdout": "Sum: 30\nSwapped: world hello\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Slices
+
+```json title="Request"
+{
+  "trace_id": "go-slice-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnumbers := []int{1, 2, 3, 4, 5}\n\tfmt.Println(\"Original:\", numbers)\n\n\t// Append\n\tnumbers = append(numbers, 6, 7)\n\tfmt.Println(\"After append:\", numbers)\n\n\t// Slice\n\tfmt.Println(\"Slice [2:5]:\", numbers[2:5])\n\n\t// Length and capacity\n\tfmt.Printf(\"Len: %d, Cap: %d\\n\", len(numbers), cap(numbers))\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-slice-001",
+  "stdout": "Original: [1 2 3 4 5]\nAfter append: [1 2 3 4 5 6 7]\nSlice [2:5]: [3 4 5]\nLen: 7, Cap: 10\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Maps
+
+```json title="Request"
+{
+  "trace_id": "go-map-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tuser := map[string]interface{}{\n\t\t\"name\": \"Bob\",\n\t\t\"age\":  25,\n\t\t\"city\": \"NYC\",\n\t}\n\n\tfor key, value := range user {\n\t\tfmt.Printf(\"%s: %v\\n\", key, value)\n\t}\n\n\t// Check if key exists\n\tif email, ok := user[\"email\"]; ok {\n\t\tfmt.Println(\"Email:\", email)\n\t} else {\n\t\tfmt.Println(\"Email not found\")\n\t}\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-map-001",
+  "stdout": "name: Bob\nage: 25\ncity: NYC\nEmail not found\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Structs
+
+```json title="Request"
+{
+  "trace_id": "go-struct-001",
+  "lang": "go",
+  "code": "package main\n\nimport \"fmt\"\n\ntype Person struct {\n\tName string\n\tAge  int\n}\n\nfunc (p Person) Greet() string {\n\treturn fmt.Sprintf(\"Hello, I'm %s and I'm %d years old\", p.Name, p.Age)\n}\n\nfunc main() {\n\tperson := Person{Name: \"Alice\", Age: 30}\n\tfmt.Println(person.Greet())\n\n\t// Pointer receiver\n\tperson.Age = 31\n\tfmt.Println(\"Updated age:\", person.Age)\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-struct-001",
+  "stdout": "Hello, I'm Alice and I'm 30 years old\nUpdated age: 31\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Interfaces
+
+```json title="Request"
+{
+  "trace_id": "go-interface-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\ntype Shape interface {\n\tArea() float64\n}\n\ntype Circle struct {\n\tRadius float64\n}\n\ntype Rectangle struct {\n\tWidth, Height float64\n}\n\nfunc (c Circle) Area() float64 {\n\treturn math.Pi * c.Radius * c.Radius\n}\n\nfunc (r Rectangle) Area() float64 {\n\treturn r.Width * r.Height\n}\n\nfunc printArea(s Shape) {\n\tfmt.Printf(\"Area: %.2f\\n\", s.Area())\n}\n\nfunc main() {\n\tcircle := Circle{Radius: 5}\n\trect := Rectangle{Width: 4, Height: 3}\n\n\tprintArea(circle)\n\tprintArea(rect)\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-interface-001",
+  "stdout": "Area: 78.54\nArea: 12.00\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Goroutines and Channels
+
+```json title="Request"
+{
+  "trace_id": "go-goroutine-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"time\"\n)\n\nfunc worker(id int, ch chan string) {\n\ttime.Sleep(time.Millisecond * 100)\n\tch <- fmt.Sprintf(\"Worker %d done\", id)\n}\n\nfunc main() {\n\tch := make(chan string, 3)\n\n\tfor i := 1; i <= 3; i++ {\n\t\tgo worker(i, ch)\n\t}\n\n\tfor i := 0; i < 3; i++ {\n\t\tfmt.Println(<-ch)\n\t}\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-goroutine-001",
+  "stdout": "Worker 1 done\nWorker 2 done\nWorker 3 done\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### Error Handling
+
+```json title="Request"
+{
+  "trace_id": "go-error-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n)\n\nfunc divide(a, b float64) (float64, error) {\n\tif b == 0 {\n\t\treturn 0, errors.New(\"division by zero\")\n\t}\n\treturn a / b, nil\n}\n\nfunc main() {\n\tresult, err := divide(10, 2)\n\tif err != nil {\n\t\tfmt.Println(\"Error:\", err)\n\t} else {\n\t\tfmt.Println(\"Result:\", result)\n\t}\n\n\t_, err = divide(10, 0)\n\tif err != nil {\n\t\tfmt.Println(\"Error:\", err)\n\t}\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-error-001",
+  "stdout": "Result: 5\nError: division by zero\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### JSON Processing
+
+```json title="Request"
+{
+  "trace_id": "go-json-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n)\n\ntype User struct {\n\tName  string `json:\"name\"`\n\tEmail string `json:\"email\"`\n\tAge   int    `json:\"age\"`\n}\n\nfunc main() {\n\tuser := User{Name: \"Alice\", Email: \"alice@example.com\", Age: 30}\n\n\t// Marshal to JSON\n\tjsonBytes, _ := json.MarshalIndent(user, \"\", \"  \")\n\tfmt.Println(\"JSON:\")\n\tfmt.Println(string(jsonBytes))\n\n\t// Unmarshal from JSON\n\tjsonStr := `{\"name\":\"Bob\",\"email\":\"bob@test.com\",\"age\":25}`\n\tvar user2 User\n\tjson.Unmarshal([]byte(jsonStr), &user2)\n\tfmt.Printf(\"\\nParsed: %+v\\n\", user2)\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-json-001",
+  "stdout": "JSON:\n{\n  \"name\": \"Alice\",\n  \"email\": \"alice@example.com\",\n  \"age\": 30\n}\n\nParsed: {Name:Bob Email:bob@test.com Age:25}\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+### File Operations
+
+```json title="Request"
+{
+  "trace_id": "go-file-001",
+  "lang": "go",
+  "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\t// Write file\n\terr := os.WriteFile(\"/tmp/test.txt\", []byte(\"Hello from Go!\\nLine 2\"), 0644)\n\tif err != nil {\n\t\tfmt.Println(\"Write error:\", err)\n\t\treturn\n\t}\n\n\t// Read file\n\tcontent, err := os.ReadFile(\"/tmp/test.txt\")\n\tif err != nil {\n\t\tfmt.Println(\"Read error:\", err)\n\t\treturn\n\t}\n\n\tfmt.Println(\"Content:\")\n\tfmt.Println(string(content))\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-file-001",
+  "stdout": "Content:\nHello from Go!\nLine 2\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+## Available Standard Library Packages
+
+| Category | Packages |
+|----------|----------|
+| I/O | `fmt`, `io`, `bufio`, `os` |
+| Text | `strings`, `strconv`, `regexp`, `unicode` |
+| Data | `encoding/json`, `encoding/xml`, `encoding/csv` |
+| Math | `math`, `math/rand` |
+| Time | `time` |
+| Crypto | `crypto/md5`, `crypto/sha256`, `crypto/aes` |
+| Algorithms | `sort`, `container/heap`, `container/list` |
+| Concurrency | `sync`, `sync/atomic`, `context` |
+| Reflection | `reflect` |
+
+:::note
+
+  Network packages (`net`, `net/http`, etc.) are available but won't work since the VM has no network access.
+
+:::
+
+## Error Examples
+
+### Compile Error
+
+```json title="Request"
+{
+  "trace_id": "go-err-compile",
+  "lang": "go",
+  "code": "package main\n\nfunc main() {\n\tx := 10\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-err-compile",
+  "stdout": "",
+  "stderr": "# command-line-arguments\n./main.go:4:2: x declared and not used\n",
+  "exit_code": 1
+}
+```
+
+### Runtime Panic
+
+```json title="Request"
+{
+  "trace_id": "go-err-panic",
+  "lang": "go",
+  "code": "package main\n\nfunc main() {\n\tvar slice []int\n\t_ = slice[0]\n}",
+  "timeout": 30
+}
+```
+
+```json title="Response"
+{
+  "trace_id": "go-err-panic",
+  "stdout": "",
+  "stderr": "panic: runtime error: index out of range [0] with length 0\n\ngoroutine 1 [running]:\nmain.main()\n\t/tmp/job-go-err-panic/main.go:5 +0x...\nexit status 2\n",
+  "exit_code": 1
+}
+```
+
+## Performance
+
+| Operation | Time |
+|-----------|------|
+| Compile + Hello World | ~500ms |
+| Fibonacci(30) | ~10ms |
+| JSON parse/marshal (1KB) | ~1ms |
+| Goroutines (1000) | ~10ms |
+
+:::note
+
+  Go compilation adds ~400-500ms overhead. Consider using Rust if you need faster total execution time.
+
+:::
+
+## Limitations
+
+:::warning
+
+  The Go environment has the following limitations:
+
+:::
+
+1. **No go mod**: External packages cannot be downloaded
+2. **Single file only**: Code must be in a single file
+3. **No network**: Network operations will fail
+4. **Compilation time**: Adds ~500ms to execution
+5. **Memory limit**: 512 MiB default
+
+## Environment Variables
+
+Go execution uses these environment variables:
+
+```bash title="Go environment variables"
+HOME=/tmp
+GOCACHE=/tmp/go-cache
+GOPATH=/tmp/go
+GOROOT=/usr/local/go
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin
+```
+
+## Best Practices
+
+**Write code that only uses the standard library. No external dependencies:**
+
+Always check error returns. Go's error handling is explicit and important.
+
+**Ensure goroutines complete before main exits. Use channels or sync.WaitGroup:**
+
+All code must be in a single main.go file with package main.

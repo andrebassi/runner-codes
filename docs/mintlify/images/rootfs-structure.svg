@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <defs>
+    <linearGradient id="folderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D97706;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="fileGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1D4ED8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="400" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="400" y="35" text-anchor="middle" fill="white" font-family="system-ui" font-size="18" font-weight="600">Rootfs Image Structure (rootfs-python.ext4)</text>
+
+  <!-- Root folder -->
+  <rect x="50" y="60" width="700" height="320" rx="8" fill="#1E293B" stroke="#334155"/>
+
+  <!-- bin/ -->
+  <rect x="70" y="80" width="140" height="35" rx="4" fill="url(#folderGrad)"/>
+  <text x="90" y="103" fill="white" font-family="monospace" font-size="13" font-weight="600">📁 bin/</text>
+  <text x="80" y="135" fill="#94A3B8" font-family="system-ui" font-size="11">bash, cat, ls, cp...</text>
+
+  <!-- etc/ -->
+  <rect x="230" y="80" width="140" height="35" rx="4" fill="url(#folderGrad)"/>
+  <text x="250" y="103" fill="white" font-family="monospace" font-size="13" font-weight="600">📁 etc/</text>
+  <text x="240" y="135" fill="#94A3B8" font-family="system-ui" font-size="11">systemd configs</text>
+
+  <!-- lib/ -->
+  <rect x="390" y="80" width="140" height="35" rx="4" fill="url(#folderGrad)"/>
+  <text x="410" y="103" fill="white" font-family="monospace" font-size="13" font-weight="600">📁 lib/</text>
+  <text x="400" y="135" fill="#94A3B8" font-family="system-ui" font-size="11">shared libraries</text>
+
+  <!-- usr/ -->
+  <rect x="550" y="80" width="180" height="35" rx="4" fill="url(#folderGrad)"/>
+  <text x="570" y="103" fill="white" font-family="monospace" font-size="13" font-weight="600">📁 usr/</text>
+
+  <!-- usr children -->
+  <rect x="560" y="150" width="160" height="25" rx="4" fill="#334155"/>
+  <text x="575" y="168" fill="#10B981" font-family="monospace" font-size="11">usr/bin/python3</text>
+
+  <rect x="560" y="185" width="160" height="25" rx="4" fill="#334155"/>
+  <text x="575" y="203" fill="#10B981" font-family="monospace" font-size="11">usr/local/bin/</text>
+
+  <rect x="580" y="220" width="140" height="25" rx="4" fill="url(#fileGrad)"/>
+  <text x="595" y="238" fill="white" font-family="monospace" font-size="11">infra.operator</text>
+
+  <!-- etc systemd detail -->
+  <rect x="80" y="165" width="200" height="130" rx="6" fill="#0F172A" stroke="#334155"/>
+  <text x="95" y="188" fill="#F59E0B" font-family="monospace" font-size="11">etc/systemd/system/</text>
+  <text x="100" y="215" fill="#94A3B8" font-family="monospace" font-size="10">└── infra.operator.service</text>
+  <text x="100" y="240" fill="#64748B" font-family="system-ui" font-size="9">ExecStart=/usr/local/bin/infra.operator guest</text>
+  <text x="100" y="258" fill="#64748B" font-family="system-ui" font-size="9">Environment="HOME=/tmp"</text>
+  <text x="100" y="276" fill="#64748B" font-family="system-ui" font-size="9">WantedBy=multi-user.target</text>
+
+  <!-- Language runtime highlight -->
+  <rect x="310" y="165" width="220" height="130" rx="6" fill="#0F172A" stroke="#10B981"/>
+  <text x="325" y="188" fill="#10B981" font-family="system-ui" font-size="12" font-weight="600">Language Runtime</text>
+  <text x="325" y="215" fill="#94A3B8" font-family="system-ui" font-size="11">• Python 3.10 + pip</text>
+  <text x="325" y="238" fill="#94A3B8" font-family="system-ui" font-size="11">• Standard library</text>
+  <text x="325" y="261" fill="#94A3B8" font-family="system-ui" font-size="11">• CA certificates</text>
+  <text x="325" y="284" fill="#64748B" font-family="system-ui" font-size="10">Size: ~600 MB</text>
+
+  <!-- Size info -->
+  <rect x="70" y="320" width="660" height="45" rx="6" fill="#334155"/>
+  <text x="90" y="345" fill="white" font-family="system-ui" font-size="12" font-weight="500">Image Sizes:</text>
+  <text x="200" y="345" fill="#3B82F6" font-family="system-ui" font-size="11">Python: 600MB</text>
+  <text x="320" y="345" fill="#10B981" font-family="system-ui" font-size="11">Node.js: 700MB</text>
+  <text x="440" y="345" fill="#F59E0B" font-family="system-ui" font-size="11">Go: 700MB</text>
+  <text x="540" y="345" fill="#EC4899" font-family="system-ui" font-size="11">Rust: 2GB</text>
+  <text x="640" y="345" fill="#8B5CF6" font-family="system-ui" font-size="11">Bash: 512MB</text>
+</svg>

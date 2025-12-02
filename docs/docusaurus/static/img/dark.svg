@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 40">
+  <rect x="0" y="5" width="30" height="30" rx="5" fill="#3B82F6"/>
+  <path d="M6 12h18v2H6zM6 18h14v2H6zM6 24h16v2H6z" fill="white"/>
+  <circle cx="22" cy="25" r="2.5" fill="white"/>
+  <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="white">Runner Codes</text>
+</svg>

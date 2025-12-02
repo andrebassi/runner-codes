@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 550">
+  <defs>
+    <linearGradient id="devMachine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1E293B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0F172A;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="s3Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="ec2Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EA580C;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="execGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <filter id="detailShadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.25"/>
+    </filter>
+    <marker id="flowArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#3B82F6"/>
+    </marker>
+    <marker id="flowArrowGreen" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#10B981"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="850" height="550" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="425" y="30" text-anchor="middle" fill="white" font-family="system-ui" font-size="16" font-weight="600">Runner Codes Detailed Pipeline</text>
+
+  <!-- Development Machine Section -->
+  <g filter="url(#detailShadow)">
+    <rect x="20" y="50" width="350" height="230" rx="10" fill="url(#devMachine)" stroke="#334155" stroke-width="2"/>
+    <text x="45" y="80" fill="#94A3B8" font-family="system-ui" font-size="13" font-weight="600">DEVELOPMENT MACHINE</text>
+  </g>
+
+  <!-- Source folders -->
+  <rect x="40" y="95" width="100" height="35" rx="4" fill="#3B82F6"/>
+  <text x="90" y="117" text-anchor="middle" fill="white" font-family="monospace" font-size="10">pkg/host/</text>
+
+  <rect x="155" y="95" width="100" height="35" rx="4" fill="#10B981"/>
+  <text x="205" y="117" text-anchor="middle" fill="white" font-family="monospace" font-size="10">pkg/guest/</text>
+
+  <rect x="270" y="95" width="80" height="35" rx="4" fill="#F97316"/>
+  <text x="310" y="117" text-anchor="middle" fill="white" font-family="monospace" font-size="10">rootfs/</text>
+
+  <!-- Build command -->
+  <rect x="40" y="145" width="310" height="30" rx="4" fill="#0F172A"/>
+  <text x="195" y="165" text-anchor="middle" fill="#3B82F6" font-family="monospace" font-size="11">task build:all</text>
+
+  <!-- Build output -->
+  <rect x="40" y="190" width="310" height="75" rx="6" fill="#334155"/>
+  <text x="55" y="215" fill="#94A3B8" font-family="system-ui" font-size="10" font-weight="500">bin/</text>
+  <text x="65" y="235" fill="#64748B" font-family="monospace" font-size="9">├── infra.operator (darwin)</text>
+  <text x="65" y="255" fill="#64748B" font-family="monospace" font-size="9">└── infra.operator-linux</text>
+
+  <!-- AWS S3 Section -->
+  <g filter="url(#detailShadow)">
+    <rect x="480" y="50" width="350" height="120" rx="10" fill="url(#s3Grad)"/>
+    <text x="505" y="80" fill="white" font-family="system-ui" font-size="13" font-weight="600">AWS S3</text>
+  </g>
+
+  <!-- S3 bucket -->
+  <rect x="500" y="95" width="310" height="60" rx="6" fill="#0F172A"/>
+  <text x="515" y="115" fill="#8B5CF6" font-family="monospace" font-size="10">s3://llm-firecracker-rootfs/</text>
+  <text x="525" y="135" fill="#64748B" font-family="monospace" font-size="9">├── vmlinux, rootfs-python.ext4</text>
+  <text x="525" y="150" fill="#64748B" font-family="monospace" font-size="9">└── rootfs-nodejs.ext4, ...</text>
+
+  <!-- Arrow from Dev to S3 -->
+  <path d="M370 160 L400 160 L400 110 L480 110" stroke="#3B82F6" stroke-width="2" fill="none" marker-end="url(#flowArrow)"/>
+  <text x="395" y="95" fill="#3B82F6" font-family="system-ui" font-size="9">task s3:upload</text>
+
+  <!-- AWS EC2 Section -->
+  <g filter="url(#detailShadow)">
+    <rect x="480" y="190" width="350" height="200" rx="10" fill="url(#ec2Grad)"/>
+    <text x="505" y="220" fill="white" font-family="system-ui" font-size="13" font-weight="600">AWS EC2 (c5.metal)</text>
+  </g>
+
+  <!-- EC2 Filesystem -->
+  <rect x="500" y="235" width="310" height="140" rx="6" fill="#0F172A"/>
+  <text x="515" y="255" fill="#F97316" font-family="monospace" font-size="10">/srv/firecracker/</text>
+  <text x="525" y="275" fill="#64748B" font-family="monospace" font-size="9">├── images/</text>
+  <text x="535" y="290" fill="#64748B" font-family="monospace" font-size="9">│   ├── vmlinux</text>
+  <text x="535" y="305" fill="#64748B" font-family="monospace" font-size="9">│   └── rootfs-*.ext4</text>
+  <text x="525" y="320" fill="#64748B" font-family="monospace" font-size="9">└── infra.operator</text>
+  <text x="515" y="345" fill="#F97316" font-family="monospace" font-size="10">/usr/local/bin/</text>
+  <text x="525" y="360" fill="#64748B" font-family="monospace" font-size="9">└── infra.operator</text>
+
+  <!-- Arrow from S3 to EC2 -->
+  <path d="M655 170 L655 190" stroke="#8B5CF6" stroke-width="2" fill="none" marker-end="url(#flowArrow)"/>
+  <text x="680" y="185" fill="#8B5CF6" font-family="system-ui" font-size="9">download</text>
+
+  <!-- Arrow from Dev to EC2 -->
+  <path d="M370 245 L480 290" stroke="#3B82F6" stroke-width="2" fill="none" marker-end="url(#flowArrow)"/>
+  <text x="385" y="285" fill="#3B82F6" font-family="system-ui" font-size="9">task aws:deploy</text>
+
+  <!-- Code Execution Section -->
+  <g filter="url(#detailShadow)">
+    <rect x="20" y="410" width="810" height="120" rx="10" fill="url(#execGrad)"/>
+    <text x="45" y="440" fill="white" font-family="system-ui" font-size="13" font-weight="600">Code Execution</text>
+  </g>
+
+  <!-- Execution Steps -->
+  <rect x="40" y="455" width="120" height="50" rx="4" fill="#0F172A"/>
+  <text x="100" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">1. Start FC</text>
+  <text x="100" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">infra.operator →</text>
+  <text x="100" y="503" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">firecracker</text>
+
+  <rect x="175" y="455" width="120" height="50" rx="4" fill="#0F172A"/>
+  <text x="235" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">2. Boot VM</text>
+  <text x="235" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">rootfs-{lang}</text>
+
+  <rect x="310" y="455" width="120" height="50" rx="4" fill="#0F172A"/>
+  <text x="370" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">3. Connect</text>
+  <text x="370" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">vsock → guest</text>
+
+  <rect x="445" y="455" width="120" height="50" rx="4" fill="#0F172A"/>
+  <text x="505" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">4. Execute</text>
+  <text x="505" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">code in VM</text>
+
+  <rect x="580" y="455" width="120" height="50" rx="4" fill="#0F172A"/>
+  <text x="640" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">5. Return</text>
+  <text x="640" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">result via vsock</text>
+
+  <rect x="715" y="455" width="100" height="50" rx="4" fill="#0F172A"/>
+  <text x="765" y="478" text-anchor="middle" fill="#10B981" font-family="system-ui" font-size="9" font-weight="500">6. Cleanup</text>
+  <text x="765" y="493" text-anchor="middle" fill="#64748B" font-family="system-ui" font-size="8">terminate VM</text>
+
+  <!-- Arrow from EC2 to Execution -->
+  <path d="M655 390 L655 410" stroke="#10B981" stroke-width="2" fill="none" marker-end="url(#flowArrowGreen)"/>
+  <text x="680" y="405" fill="#10B981" font-family="system-ui" font-size="9">task aws:test</text>
+</svg>

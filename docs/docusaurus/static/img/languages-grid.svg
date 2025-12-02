@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA"/>
+      <stop offset="100%" style="stop-color:#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="600" rx="12" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="450" y="45" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#60A5FA" text-anchor="middle">45+ Supported Languages</text>
+
+  <!-- Category Labels -->
+  <text x="112" y="80" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">POPULAR</text>
+  <text x="292" y="80" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">SCRIPTING</text>
+  <text x="472" y="80" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">COMPILED</text>
+  <text x="652" y="80" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">JVM</text>
+  <text x="812" y="80" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">FUNCTIONAL</text>
+
+  <!-- Popular Languages (Column 1) -->
+  <g transform="translate(20, 95)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Python 3.12</text>
+  </g>
+  <g transform="translate(20, 133)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Node.js 20</text>
+  </g>
+  <g transform="translate(20, 171)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">TypeScript 5</text>
+  </g>
+  <g transform="translate(20, 209)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Go 1.22</text>
+  </g>
+  <g transform="translate(20, 247)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Rust stable</text>
+  </g>
+  <g transform="translate(20, 285)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Java 17</text>
+  </g>
+  <g transform="translate(20, 323)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">C# .NET 8</text>
+  </g>
+
+  <!-- Scripting Languages (Column 2) -->
+  <g transform="translate(200, 95)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">PHP 8.3</text>
+  </g>
+  <g transform="translate(200, 133)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Ruby 3.2</text>
+  </g>
+  <g transform="translate(200, 171)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Perl 5.38</text>
+  </g>
+  <g transform="translate(200, 209)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Lua 5.4</text>
+  </g>
+  <g transform="translate(200, 247)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Bash 5.2</text>
+  </g>
+  <g transform="translate(200, 285)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Tcl 8.6</text>
+  </g>
+  <g transform="translate(200, 323)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">AWK gawk</text>
+  </g>
+
+  <!-- Compiled Languages (Column 3) -->
+  <g transform="translate(380, 95)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">C GCC 13</text>
+  </g>
+  <g transform="translate(380, 133)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">C++ G++ 13</text>
+  </g>
+  <g transform="translate(380, 171)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Fortran</text>
+  </g>
+  <g transform="translate(380, 209)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Pascal FPC</text>
+  </g>
+  <g transform="translate(380, 247)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">COBOL</text>
+  </g>
+  <g transform="translate(380, 285)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Zig 0.11</text>
+  </g>
+  <g transform="translate(380, 323)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Nim 2.0</text>
+  </g>
+  <g transform="translate(380, 361)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Crystal</text>
+  </g>
+  <g transform="translate(380, 399)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">D LDC</text>
+  </g>
+
+  <!-- JVM Languages (Column 4) -->
+  <g transform="translate(560, 95)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Kotlin 1.9</text>
+  </g>
+  <g transform="translate(560, 133)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Scala 3</text>
+  </g>
+  <g transform="translate(560, 171)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Groovy 4</text>
+  </g>
+  <g transform="translate(560, 209)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Clojure 1.11</text>
+  </g>
+
+  <!-- Functional Languages (Column 5) -->
+  <g transform="translate(740, 95)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Haskell</text>
+  </g>
+  <g transform="translate(740, 133)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">OCaml</text>
+  </g>
+  <g transform="translate(740, 171)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Elixir</text>
+  </g>
+  <g transform="translate(740, 209)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Erlang</text>
+  </g>
+  <g transform="translate(740, 247)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Scheme</text>
+  </g>
+  <g transform="translate(740, 285)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Lisp SBCL</text>
+  </g>
+  <g transform="translate(740, 323)">
+    <rect width="140" height="32" rx="6" fill="#334155"/>
+    <text x="70" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Prolog</text>
+  </g>
+
+  <!-- Scientific Row -->
+  <text x="112" y="460" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">SCIENTIFIC</text>
+  <text x="380" y="460" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">DATABASE PARSERS</text>
+  <text x="700" y="460" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">RUNTIMES</text>
+
+  <g transform="translate(20, 475)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Julia 1.10</text>
+  </g>
+  <g transform="translate(20, 513)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">R 4.3</text>
+  </g>
+  <g transform="translate(20, 551)">
+    <rect width="165" height="32" rx="6" fill="#334155"/>
+    <text x="82" y="21" font-family="monospace" font-size="13" fill="#f8fafc" text-anchor="middle">Octave 8</text>
+  </g>
+
+  <!-- Database Parsers -->
+  <g transform="translate(250, 475)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">MySQL</text>
+  </g>
+  <g transform="translate(380, 475)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">PostgreSQL</text>
+  </g>
+  <g transform="translate(510, 475)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">SQLite</text>
+  </g>
+  <g transform="translate(250, 513)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">MariaDB</text>
+  </g>
+  <g transform="translate(380, 513)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">MongoDB</text>
+  </g>
+  <g transform="translate(510, 513)">
+    <rect width="120" height="32" rx="6" fill="#334155"/>
+    <text x="60" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">Redis</text>
+  </g>
+
+  <!-- Runtimes -->
+  <g transform="translate(660, 475)">
+    <rect width="110" height="32" rx="6" fill="#334155"/>
+    <text x="55" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">Bun</text>
+  </g>
+  <g transform="translate(780, 475)">
+    <rect width="110" height="32" rx="6" fill="#334155"/>
+    <text x="55" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">Deno</text>
+  </g>
+  <g transform="translate(660, 513)">
+    <rect width="110" height="32" rx="6" fill="#334155"/>
+    <text x="55" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">Swift</text>
+  </g>
+  <g transform="translate(780, 513)">
+    <rect width="110" height="32" rx="6" fill="#334155"/>
+    <text x="55" y="21" font-family="monospace" font-size="12" fill="#f8fafc" text-anchor="middle">Dart</text>
+  </g>
+</svg>
