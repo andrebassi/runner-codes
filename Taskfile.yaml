@@ -74,11 +74,6 @@ tasks:
       - task: test:cov
       - task: test:e2e
 
-  legacy:ec2:
-    desc: Check the legacy Firecracker EC2; -- --stop stops it (never terminates)
-    cmds:
-      - ./scripts/legacy-ec2.sh {{.CLI_ARGS}}
-
   clean:
     desc: Remove binaries (the image cache stays in ~/Library/Caches/runner-codes)
     cmds:
