@@ -33,6 +33,18 @@ var buildScript []byte
 //go:embed scripts/start.sh
 var startScript []byte
 
+// machineScript é o primeiro processo de uma máquina persistente: monta o disco dela e o
+// overlay sobre a imagem read-only (internal/adapters/oci/scripts/machine.sh).
+//
+//go:embed scripts/machine.sh
+var machineScript []byte
+
+// diskScript formata o modelo vazio do disco de máquina, dentro da VM de build (o host
+// não tem mkfs.ext4 sem Homebrew, e a VM de build já tem o e2fsprogs).
+//
+//go:embed scripts/mkdisk.sh
+var diskScript []byte
+
 //go:embed scripts/shell.sh
 var shellScript []byte
 
@@ -211,7 +223,7 @@ func (b *Builder) downloadVerified(ctx context.Context, root string) error {
 // (o guest vai dentro da imagem, então guest novo exige imagem nova).
 func cacheKey(digest, warmup string, guestSum []byte) string {
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte(digest), []byte(warmup), buildScript, startScript, shellScript, guestSum} {
+	for _, part := range [][]byte{[]byte(digest), []byte(warmup), buildScript, startScript, shellScript, machineScript, guestSum} {
 		h.Write(part)
 		h.Write([]byte{0})
 	}
@@ -280,6 +292,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	writes := map[string][]byte{
 		filepath.Join(inject, "start.sh"):           startScript,
 		filepath.Join(inject, "shell.sh"):           shellScript,
+		filepath.Join(inject, "machine.sh"):         machineScript,
 		filepath.Join(inject, "env"):                []byte(strings.Join(env, "\n") + "\n"),
 		filepath.Join(work, "build.sh"):             buildScript,
 		filepath.Join(work, lang.Name+".warmup.sh"): []byte(warmupScript(env, lang.Warmup)),
@@ -443,4 +456,38 @@ func (b *Builder) link(language, target string) error {
 		os.Remove(filepath.Join(b.imagesDir(), previous))
 	}
 	return nil
+}
+
+// DiskTemplate devolve o modelo vazio (ext4 esparso) do disco de máquina com gib GiB,
+// criando-o na VM de build na primeira vez. As máquinas recebem um clone dele.
+func (b *Builder) DiskTemplate(ctx context.Context, gib int) (string, error) {
+	if gib < 1 || gib > 1024 {
+		return "", fmt.Errorf("disk size %d GiB out of range [1, 1024]", gib)
+	}
+	out := filepath.Join(b.CacheDir, "disks", fmt.Sprintf("data-%dg.ext4", gib))
+	if _, err := os.Stat(out); err == nil {
+		return out, nil
+	}
+	if err := b.EnsureBuilder(ctx); err != nil {
+		return "", err
+	}
+	work := filepath.Join(b.builderRoot(), "work")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(work, "mkdisk.sh"), diskScript, 0o755); err != nil {
+		return "", err
+	}
+	name := fmt.Sprintf("data-%dg.ext4", gib)
+	b.logf("[disk] formatting an empty %d GiB ext4 in the build VM", gib)
+	if _, err := b.runBuildVM(ctx, "/work/mkdisk.sh", []string{"/work/" + name, fmt.Sprint(gib)}, filepath.Join(work, "mkdisk.console")); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.Rename(filepath.Join(work, name), out); err != nil {
+		return "", fmt.Errorf("move disk template: %w", err)
+	}
+	return out, nil
 }

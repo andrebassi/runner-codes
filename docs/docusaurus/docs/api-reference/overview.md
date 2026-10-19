@@ -154,6 +154,47 @@ data: {"status":"success","exitCode":0,"exception":null,"executionTime":1534,"ti
 | nome de arquivo | sem `/`, sem `..`, sem começar com `.`, ≤ 255 bytes |
 | timeout | padrão 10 s, máximo 300 s |
 
+## Máquinas
+
+Ciclo de vida das [máquinas persistentes](/cli/machine), com os nomes de rota do smolvm.
+
+| Método | Caminho | Corpo / query | Resposta |
+|--------|---------|---------------|----------|
+| POST | `/api/v1/machines` | `{"name","stack","cpus","memory_mib","disk_gib","gpu"}` | 201 + máquina (`state: stopped`) |
+| GET | `/api/v1/machines` | — | lista com `state` e `pid` |
+| GET | `/api/v1/machines/:name` | — | a máquina |
+| DELETE | `/api/v1/machines/:name` | `?force=true` mata se ligada | 204 |
+| POST | `/api/v1/machines/:name/start` | — | 200 + máquina (`state: running`) |
+| POST | `/api/v1/machines/:name/stop` | `?timeout=N` em segundos (0–300; 0 mata na hora) | 204 |
+| POST | `/api/v1/machines/:name/exec` | `{"command":["argv",...],"env":["K=V"],"workdir","stdin","timeout"}` | `{"exitCode","stdout","stderr","timedOut","executionTime"}` |
+| POST | `/api/v1/machines/:name/exec/stream` | mesmo corpo | SSE: `stdout`, `stderr` e `exit` (`{"exitCode":N}`) |
+| PUT | `/api/v1/machines/:name/files?path=/abs[&mode=644]` | corpo cru = conteúdo | `{"path","bytes"}` |
+| GET | `/api/v1/machines/:name/files?path=/abs` | — | conteúdo cru (`application/octet-stream`) |
+| GET | `/api/v1/machines/:name/logs?tail=N` | — | console em texto |
+
+```bash
+curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'
+curl -s -X POST localhost:8080/api/v1/machines/dev/start
+curl -s -X POST localhost:8080/api/v1/machines/dev/exec -d '{"command":["python3","-c","print(42)"]}'
+# {"exitCode":0,"stdout":"42\n","stderr":"","timedOut":false,"executionTime":31}
+curl -s -X PUT --data-binary @app.py 'localhost:8080/api/v1/machines/dev/files?path=/workspace/app.py'
+```
+
+O `command` é um argv **sem shell implícito**. Para usar shell, mande `["sh","-c","..."]`.
+
+Erros das rotas de máquina:
+
+```json
+{"error":{"code":"INVALID_STATE","message":"INVALID_STATE: machine dev is not running; start it first"}}
+```
+
+| Código | HTTP |
+|--------|------|
+| `NOT_FOUND` | 404 |
+| `CONFLICT`, `INVALID_STATE` | 409 |
+| `CONFIG_ERROR` | 400 |
+| `RUNNER_ERROR` (infraestrutura) | 500 |
+
 ## Protocolo interno
 
 Entre o host e o guest, o job viaja por vsock em frames de tamanho + JSON. Veja [Job request](/api-reference/job-request), [Job response](/api-reference/job-response) e [Protocolo vsock](/api-reference/vsock-protocol).

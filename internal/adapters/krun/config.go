@@ -78,6 +78,10 @@ func Configure(api API, s Spec) (uint32, error) {
 	if s.RootDisk != "" {
 		add("krun_add_disk2", func() int32 { return api.AddDisk2(ctx, "root", s.RootDisk, diskFormatRaw, true) })
 		add("krun_set_root_disk_remount", func() int32 { return api.SetRootDiskRemount(ctx, "/dev/vda", "ext4", "ro") })
+		if s.DataDisk != "" {
+			// Segundo disco = /dev/vdb, gravável: é o disco da máquina persistente.
+			add("krun_add_disk2_data", func() int32 { return api.AddDisk2(ctx, "data", s.DataDisk, diskFormatRaw, false) })
+		}
 	} else {
 		add("krun_set_root", func() int32 { return api.SetRoot(ctx, s.RootDir) })
 	}

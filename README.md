@@ -48,6 +48,8 @@ cliente ──HTTP──▶ rc serve ──▶ pool (N VMs prontas por linguagem
 
 Detalhes em [docs/architecture.md](docs/architecture.md); requisitos em [docs/prd.md](docs/prd.md).
 
+Para testar à mão, passo a passo: [docs/runbook.md](docs/runbook.md) (`task runbook` executa e confere a mesma sequência).
+
 Referência para agentes (cada comando, flag, rota e erro, a comparação com o smolvm e o plano de evolução):
 [docs/docusaurus/docs/agents.md](docs/docusaurus/docs/agents.md). GPU de ponta a ponta:
 [docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md).

@@ -150,7 +150,9 @@ func TestStreamJobHostGone(t *testing.T) {
 	client.Close()
 	done := make(chan struct{})
 	go func() {
-		NewServer(DefaultServerConfig()).streamJob(server, Job{Lang: "sh", Code: "echo a; echo b; echo c", Timeout: 10, Stream: true})
+		s := NewServer(DefaultServerConfig())
+		job := Job{Lang: "sh", Code: "echo a; echo b; echo c", Timeout: 10, Stream: true}
+		s.streamJob(server, job, func(sink Sink) Result { return s.executor.ExecuteStream(job, sink) })
 		close(done)
 	}()
 	select {

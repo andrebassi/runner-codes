@@ -22,6 +22,9 @@ type fakeAPI struct {
 	consoleFDs  [3]int32
 	gpuFlags    uint32
 	gpuShm      uint64
+	// dataDisk e dataRO guardam o segundo disco (o da máquina persistente).
+	dataDisk string
+	dataRO   bool
 }
 
 // rec anota a chamada e devolve -22 (EINVAL) se for a escolhida para falhar.
@@ -51,7 +54,11 @@ func (f *fakeAPI) SetVMConfig(uint32, uint8, uint32) int32 { return f.rec("krun_
 func (f *fakeAPI) SetRoot(uint32, string) int32 { return f.rec("krun_set_root") }
 
 // AddDisk2 anota a chamada e guarda formato e modo do disco.
-func (f *fakeAPI) AddDisk2(_ uint32, _, _ string, format uint32, ro bool) int32 {
+func (f *fakeAPI) AddDisk2(_ uint32, id, path string, format uint32, ro bool) int32 {
+	if id == "data" {
+		f.dataDisk, f.dataRO = path, ro
+		return f.rec("krun_add_disk2_data")
+	}
 	f.disk.format, f.disk.readOnly = format, ro
 	return f.rec("krun_add_disk2")
 }
@@ -198,6 +205,30 @@ func TestConfigureTTY(t *testing.T) {
 	Configure(f, jobSpec())
 	if strings.Contains(strings.Join(f.calls, ","), "console_default") {
 		t.Fatal("a VM without tty must keep the implicit console")
+	}
+}
+
+// TestConfigureDataDisk: o disco da máquina entra como segundo disco (/dev/vdb), gravável,
+// depois do root; VM de job não ganha disco nenhum além do root.
+func TestConfigureDataDisk(t *testing.T) {
+	f := &fakeAPI{}
+	s := jobSpec()
+	s.DataDisk = "/m/disk.ext4"
+	if _, err := Configure(f, s); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(f.calls, ",")
+	if f.dataDisk != "/m/disk.ext4" || f.dataRO || !strings.Contains(got, "krun_set_root_disk_remount,krun_add_disk2_data") {
+		t.Fatalf("data disk: %q ro=%v calls=%s", f.dataDisk, f.dataRO, got)
+	}
+	f = &fakeAPI{}
+	Configure(f, jobSpec())
+	if f.dataDisk != "" {
+		t.Fatal("a job VM must not get a data disk")
+	}
+	f = &fakeAPI{failOn: "krun_add_disk2_data"}
+	if _, err := Configure(f, s); err == nil || !strings.Contains(err.Error(), "krun_add_disk2_data") {
+		t.Fatalf("data disk failure must name the call: %v", err)
 	}
 }
 
