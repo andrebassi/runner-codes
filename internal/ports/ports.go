@@ -28,10 +28,15 @@ type VMSpec struct {
 	// TTY liga o stdin/stdout/stderr do processo vmm a uma porta de console virtio no
 	// guest (/dev/hvc0), que o guest enxerga como terminal: Ctrl+C, job control e
 	// tamanho da janela funcionam. Só faz sentido com um terminal de verdade no host.
-	TTY  bool     `json:"tty,omitempty"`
-	Exec string   `json:"exec"`
-	Args []string `json:"args,omitempty"`
-	Env  []string `json:"env,omitempty"`
+	TTY bool `json:"tty,omitempty"`
+	// GPU liga um virtio-gpu com Venus: o guest vê um device Vulkan servido pela GPU do
+	// host (MoltenVK no macOS). GPUVRAMMiB é a janela de memória do host que o guest usa
+	// como VRAM; 0 usa o padrão do adapter.
+	GPU        bool     `json:"gpu,omitempty"`
+	GPUVRAMMiB uint32   `json:"gpu_vram_mib,omitempty"`
+	Exec       string   `json:"exec"`
+	Args       []string `json:"args,omitempty"`
+	Env        []string `json:"env,omitempty"`
 	// UID e GID trocam o usuário do processo vmm antes do boot (Linux). Nil mantém o atual.
 	UID *uint32 `json:"uid,omitempty"`
 	GID *uint32 `json:"gid,omitempty"`
@@ -51,6 +56,10 @@ func (s VMSpec) Validate() error {
 	if s.TTY && s.Console != "" {
 		// O console vira o terminal: gravar em arquivo ao mesmo tempo não tem destino.
 		return errors.New("spec: tty and console are mutually exclusive")
+	}
+	if s.GPUVRAMMiB > 0 && !s.GPU {
+		// VRAM sem GPU é erro de quem montou a spec, não algo a ignorar.
+		return errors.New("spec: gpu_vram_mib requires gpu")
 	}
 	if (s.VsockSocket == "") != (s.VsockPort == 0) {
 		return errors.New("spec: vsock_socket and vsock_port must be set together")

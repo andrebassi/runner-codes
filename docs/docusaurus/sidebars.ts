@@ -7,7 +7,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Primeiros passos',
       collapsed: false,
-      items: ['introduction', 'quickstart', 'architecture'],
+      items: ['introduction', 'quickstart', 'agents', 'architecture'],
     },
     {
       type: 'category',
@@ -71,7 +71,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Avançado',
-      items: ['advanced/performance', 'advanced/security', 'advanced/test-report', 'advanced/troubleshooting'],
+      items: ['advanced/performance', 'advanced/gpu', 'advanced/security', 'advanced/test-report', 'advanced/troubleshooting'],
     },
     {
       type: 'category',

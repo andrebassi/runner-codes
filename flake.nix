@@ -26,14 +26,16 @@
         let
           libkrunfw =
             if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/libkrunfw-darwin.nix { } else pkgs.libkrunfw;
+          virglrenderer =
+            if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/virglrenderer-darwin.nix { } else pkgs.virglrenderer;
           libkrun =
             if pkgs.stdenv.hostPlatform.isDarwin then
-              pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw; }
+              pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw virglrenderer; }
             else
               pkgs.libkrun.override { withBlk = true; };
         in
         {
-          inherit libkrun libkrunfw;
+          inherit libkrun libkrunfw virglrenderer;
           # Um diretório lib/ só com as duas: é o que vai para o perfil.
           krun = pkgs.runCommand "krun-${libkrun.version}" { } ''
             mkdir -p $out/lib

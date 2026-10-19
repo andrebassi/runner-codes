@@ -25,6 +25,12 @@ func TestValidate(t *testing.T) {
 		"empty argv":          mut(func(s *VMSpec) { s.Args = []string{""} }),
 		"exec with newline":   mut(func(s *VMSpec) { s.Exec = "/a\nb" }),
 		"tty with console":    mut(func(s *VMSpec) { s.TTY, s.Console = true, "/r/c.log" }),
+		"vram without gpu":    mut(func(s *VMSpec) { s.GPUVRAMMiB = 1024 }),
+	}
+	gpu := valid()
+	gpu.GPU, gpu.GPUVRAMMiB = true, 1024
+	if err := gpu.Validate(); err != nil {
+		t.Fatalf("gpu with vram must be accepted: %v", err)
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {

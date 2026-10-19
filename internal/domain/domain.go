@@ -37,6 +37,14 @@ type ErrUnsupportedLanguage struct{ Name string }
 // Error segue o formato E006 do contrato.
 func (e ErrUnsupportedLanguage) Error() string { return "E006: unsupported language " + e.Name }
 
+// ErrNoGPU é devolvido quando o job pede GPU numa stack que não a declara no catálogo.
+// Código novo (E007): recusar é melhor que rodar na CPU em silêncio, porque quem pediu GPU
+// mede tempo esperando GPU.
+type ErrNoGPU struct{ Name string }
+
+// Error segue o formato dos códigos do contrato.
+func (e ErrNoGPU) Error() string { return "E007: stack " + e.Name + " has no GPU support" }
+
 // Language descreve como uma linguagem roda: imagem OCI de origem, teto de recursos
 // (contra abuso, não por concorrência: a memória da libkrun é elástica) e o warmup
 // gravado na imagem no build.
@@ -46,6 +54,10 @@ type Language struct {
 	CPUs      uint8  `yaml:"cpus"`
 	MemoryMiB uint32 `yaml:"memory_mib"`
 	Warmup    string `yaml:"warmup"`
+	// GPU diz que a imagem traz o driver Vulkan do guest (Venus) e aceita job com GPU.
+	// GPUVRAMMiB é a VRAM do guest; 0 usa o padrão do adapter.
+	GPU        bool   `yaml:"gpu"`
+	GPUVRAMMiB uint32 `yaml:"gpu_vram_mib"`
 }
 
 // File é um arquivo-fonte do job.
@@ -62,6 +74,8 @@ type Job struct {
 	Files    []File
 	Stdin    string
 	Timeout  time.Duration
+	// GPU pede uma VM com virtio-gpu; só vale em stack com gpu no catálogo.
+	GPU bool
 }
 
 // Result é o desfecho de um job. TimedOut distingue timeout de falha do programa.
@@ -94,6 +108,14 @@ func (e ValidationError) Error() string { return e.Err.Error() }
 
 // Unwrap expõe o erro original.
 func (e ValidationError) Unwrap() error { return e.Err }
+
+// CheckGPU recusa job com GPU numa stack sem GPU; job sem GPU passa em qualquer stack.
+func (j Job) CheckGPU(l Language) error {
+	if j.GPU && !l.GPU {
+		return ValidationError{Err: ErrNoGPU{Name: l.Name}}
+	}
+	return nil
+}
 
 // Validate decide se o job pode ir para uma VM; toda recusa vem como ValidationError.
 func (j Job) Validate(known func(string) bool) error {
@@ -164,6 +186,8 @@ func (l Language) ValidateLanguage() error {
 		return fmt.Errorf("language %s has no image", l.Name)
 	case l.CPUs == 0 || l.MemoryMiB < 128:
 		return fmt.Errorf("language %s has invalid resources (cpus=%d memory_mib=%d; minimum 1 and 128)", l.Name, l.CPUs, l.MemoryMiB)
+	case l.GPUVRAMMiB > 0 && !l.GPU:
+		return fmt.Errorf("language %s sets gpu_vram_mib without gpu", l.Name)
 	}
 	return nil
 }

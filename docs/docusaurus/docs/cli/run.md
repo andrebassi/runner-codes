@@ -16,6 +16,7 @@ rc run --stack <linguagem> (--code '<código>' | --file <arquivo>) [--stdin '<te
 | `--file` | — | lê o código de um arquivo local (substitui `--code`) |
 | `--stdin` | vazio | entrada padrão do programa |
 | `--timeout` | `10s` | duração no formato Go (`500ms`, `5s`, `2m`); máximo 300 s |
+| `--gpu` | desligado | VM com a GPU do host por Vulkan (virtio-gpu/Venus); só em stack com `gpu` no catálogo, senão E007. Veja [GPU](/advanced/gpu) |
 
 ## O que acontece
 

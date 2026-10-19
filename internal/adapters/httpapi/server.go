@@ -72,6 +72,8 @@ type ExecuteRequest struct {
 	Files    []FileRequest `json:"files,omitempty"`
 	Stdin    interface{}   `json:"stdin,omitempty"`
 	Timeout  int           `json:"timeout"`
+	// GPU pede VM com virtio-gpu (Venus); stack sem GPU no catálogo responde 400 (E007).
+	GPU bool `json:"gpu,omitempty"`
 }
 
 // RunResponse é a resposta de uma execução. Stderr e Exception são null quando vazios.
@@ -120,7 +122,7 @@ func (s *Server) executeStream(c *gin.Context) {
 		return
 	}
 	job := domain.Job{Language: req.Language, Code: req.Code, Files: toFiles(req.Files),
-		Stdin: stdinString(req.Stdin), Timeout: time.Duration(req.Timeout) * time.Second}
+		Stdin: stdinString(req.Stdin), Timeout: time.Duration(req.Timeout) * time.Second, GPU: req.GPU}
 
 	w := c.Writer
 	started := false
@@ -193,7 +195,7 @@ func (s *Server) execute(c *gin.Context) {
 		return
 	}
 	job := domain.Job{Language: req.Language, Code: req.Code, Files: toFiles(req.Files),
-		Stdin: stdinString(req.Stdin), Timeout: time.Duration(req.Timeout) * time.Second}
+		Stdin: stdinString(req.Stdin), Timeout: time.Duration(req.Timeout) * time.Second, GPU: req.GPU}
 	resp, code := s.exec(c.Request.Context(), job)
 	c.JSON(code, resp)
 }

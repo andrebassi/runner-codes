@@ -20,6 +20,8 @@ type fakeAPI struct {
 	argv        []string
 	uid, gid    uint32
 	consoleFDs  [3]int32
+	gpuFlags    uint32
+	gpuShm      uint64
 }
 
 // rec anota a chamada e devolve -22 (EINVAL) se for a escolhida para falhar.
@@ -96,6 +98,12 @@ func (f *fakeAPI) DisableImplicitConsole(uint32) int32 { return f.rec("krun_disa
 func (f *fakeAPI) AddVirtioConsoleDefault(_ uint32, in, out, errFD int32) int32 {
 	f.consoleFDs = [3]int32{in, out, errFD}
 	return f.rec("krun_add_virtio_console_default")
+}
+
+// SetGPUOptions2 guarda os flags e o tamanho da janela de VRAM.
+func (f *fakeAPI) SetGPUOptions2(_ uint32, flags uint32, shm uint64) int32 {
+	f.gpuFlags, f.gpuShm = flags, shm
+	return f.rec("krun_set_gpu_options2")
 }
 
 // StartEnter anota a chamada; o fake "volta" como se a VM tivesse falhado ao iniciar.
@@ -193,6 +201,35 @@ func TestConfigureTTY(t *testing.T) {
 	}
 }
 
+// TestConfigureGPU trava a chamada de GPU: Venus sem virgl (1<<6|1<<7, o que o MoltenVK
+// aceita), VRAM em bytes, 4 GiB por padrão; e VM sem GPU não chama nada de GPU.
+func TestConfigureGPU(t *testing.T) {
+	f := &fakeAPI{}
+	s := jobSpec()
+	s.GPU, s.GPUVRAMMiB = true, 2048
+	if _, err := Configure(f, s); err != nil {
+		t.Fatal(err)
+	}
+	if f.gpuFlags != 0xC0 || f.gpuShm != 2048<<20 {
+		t.Fatalf("gpu flags %#x shm %d", f.gpuFlags, f.gpuShm)
+	}
+	got := strings.Join(f.calls, ",")
+	if strings.Index(got, "krun_set_gpu_options2") > strings.Index(got, "krun_set_exec") {
+		t.Fatalf("gpu must be configured before exec: %s", got)
+	}
+	f = &fakeAPI{}
+	s.GPUVRAMMiB = 0
+	Configure(f, s)
+	if f.gpuShm != DefaultGPUVRAMMiB<<20 {
+		t.Fatalf("default vram %d", f.gpuShm)
+	}
+	f = &fakeAPI{}
+	Configure(f, jobSpec())
+	if strings.Contains(strings.Join(f.calls, ","), "gpu") {
+		t.Fatal("a VM without gpu must not touch the gpu device")
+	}
+}
+
 // TestConfigureFailsOnEachCall garante que toda chamada C que falha vira erro com o nome dela.
 func TestConfigureFailsOnEachCall(t *testing.T) {
 	uid, gid := uint32(1), uint32(1)
@@ -201,8 +238,11 @@ func TestConfigureFailsOnEachCall(t *testing.T) {
 	dir := Spec{CPUs: 1, MemoryMiB: 1, RootDir: "/r", Exec: "/x"}
 	tty := jobSpec()
 	tty.Console, tty.TTY = "", true
+	gpu := jobSpec()
+	gpu.GPU = true
 	names := map[string]Spec{
-		"krun_create_ctx": full, "krun_set_vm_config": full, "krun_add_disk2": full,
+		"krun_set_gpu_options2": gpu,
+		"krun_create_ctx":       full, "krun_set_vm_config": full, "krun_add_disk2": full,
 		"krun_set_root_disk_remount": full, "krun_disable_implicit_vsock": full, "krun_add_vsock": full,
 		"krun_add_vsock_port2": full, "krun_set_console_output": full, "krun_setgid": full,
 		"krun_setuid": full, "krun_set_exec": full, "krun_set_root": dir,

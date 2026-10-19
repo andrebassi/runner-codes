@@ -118,6 +118,8 @@ Rodada duas vezes seguidas (`-count=2`), verde nas duas. Cada teste trava um com
 | `TestServePool` | o `serve` enche os pools, atende `/run` e, no SIGTERM, não deixa VM viva |
 | `TestRunStreams` | `rc run` com Python que escreve, dorme 1,5 s e escreve de novo: a 1ª linha chega ao stdout do host ≥ 1 s antes da 2ª (medido: 0,25 s e 1,75 s depois do início). **Prova de falha:** com o `rc run` acumulando a saída, as duas linhas chegaram com 3,8 µs de distância e o teste reprovou |
 | `TestServeStream` | `POST /api/v1/execute/stream` com a VM real: `text/event-stream`, eventos `stdout` com a 1ª linha ≥ 1 s antes da 2ª, `result` final com `exitCode` 0; job recusado responde 400 antes do stream |
+| `TestGPUVulkan` | `--gpu` na stack `llama`: `vulkaninfo` mostra `Virtio-GPU Venus (Apple M1 Pro)`; sem `--gpu` não existe `/dev/dri`; `--gpu` em stack sem GPU é recusado com E007. **Prova de falha:** com o `Configure` sem a chamada `krun_set_gpu_options2`, o teste reprovou (`no Venus device with --gpu`) |
+| `TestGPULlama` | `llama-bench` com o mesmo modelo na GPU (`-ngl 99 -dev Vulkan0`) e na CPU: o device usado é o Venus e o prompt sai ≥ 2× mais rápido (medido 893–1.365 t/s contra 193–264 t/s, 4 rodadas) |
 
 ### `rc shell`
 

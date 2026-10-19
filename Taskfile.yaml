@@ -74,6 +74,11 @@ tasks:
       - task: test:cov
       - task: test:e2e
 
+  ship:
+    desc: 'Push the current branch, open the PR and merge it (GitHub API; -- "<title>" <body-file>)'
+    cmds:
+      - ./scripts/ship-pr.sh {{.CLI_ARGS}}
+
   clean:
     desc: Remove binaries (the image cache stays in ~/Library/Caches/runner-codes)
     cmds:

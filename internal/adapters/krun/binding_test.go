@@ -3,6 +3,7 @@ package krun
 import (
 	"os"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
@@ -56,6 +57,14 @@ func TestLoadRealLibrary(t *testing.T) {
 	api.AddVsock(ctx, 0)
 	api.AddVsockPort2(ctx, 5000, t.TempDir()+"/v.sock", true)
 	api.SetConsoleOutput(ctx, t.TempDir()+"/c.log")
+	// A libkrun do `.#krun` (macOS) é compilada com GPU=1; o Venus precisa aceitar os flags.
+	if l := api.(*libAPI); l.HasGPU() {
+		if rc := api.SetGPUOptions2(ctx, gpuVenusFlags, 1<<30); rc < 0 {
+			t.Fatalf("set_gpu_options2: %d", rc)
+		}
+	} else if rc := api.SetGPUOptions2(ctx, gpuVenusFlags, 1<<30); rc != -int32(syscall.ENOTSUP) {
+		t.Fatalf("without GPU support the call must be ENOTSUP, got %d", rc)
+	}
 	api.SetGID(ctx, uint32(os.Getgid()))
 	api.SetUID(ctx, uint32(os.Getuid()))
 	if rc := api.DisableImplicitConsole(ctx); rc < 0 {

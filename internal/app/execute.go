@@ -23,6 +23,7 @@ const guestTimeoutException = "Timeout"
 // VMSource entrega e destrói VMs; o Pool implementa.
 type VMSource interface {
 	Take(ctx context.Context, lang string) (*ReadyVM, error)
+	TakeGPU(ctx context.Context, lang string) (*ReadyVM, error)
 	Destroy(r *ReadyVM)
 }
 
@@ -62,7 +63,15 @@ func (e *Executor) run(ctx context.Context, job domain.Job, onOutput func(stream
 	if err := job.Validate(e.Known); err != nil {
 		return domain.Result{TraceID: job.TraceID}, err
 	}
-	vm, err := e.VMs.Take(ctx, job.Language)
+	take := e.VMs.Take
+	if job.GPU {
+		l, _ := e.Catalog.Get(job.Language) // Validate já garantiu que a stack existe
+		if err := job.CheckGPU(l); err != nil {
+			return domain.Result{TraceID: job.TraceID}, err
+		}
+		take = e.VMs.TakeGPU
+	}
+	vm, err := take(ctx, job.Language)
 	if err != nil {
 		return domain.Result{TraceID: job.TraceID}, fmt.Errorf("get VM: %w", err)
 	}

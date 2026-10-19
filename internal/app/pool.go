@@ -33,6 +33,11 @@ const maxBootsPerLanguage = 2
 // (pool_controller.rs:19).
 const DefaultMaxConcurrentBoots = 4
 
+// DefaultMaxGPUVMs é o teto de VMs com GPU vivas ao mesmo tempo. Todas dividem a mesma GPU
+// do host, e cada uma reserva a janela de VRAM; duas cobrem um job e uma comparação sem que
+// um laço de pedidos esgote a GPU de quem está usando o Mac.
+const DefaultMaxGPUVMs = 2
+
 // retryBackoff é a espera depois de um boot que falhou, antes de tentar repor de novo;
 // sem ela um defeito de imagem viraria um laço de boot consumindo CPU.
 var retryBackoff = 2 * time.Second
@@ -48,6 +53,8 @@ type ReadyVM struct {
 	Language string
 	Socket   string
 	Console  string
+	// GPU marca VM com virtio-gpu: ela ocupa uma vaga de GPU até o Destroy.
+	GPU bool
 }
 
 // Pool mantém VMs prontas por linguagem. Cada VM é entregue uma única vez.
@@ -61,9 +68,12 @@ type Pool struct {
 	// MaxConcurrentBoots limita a reposição no total; 0 usa DefaultMaxConcurrentBoots.
 	// O boot frio do caminho do pedido não passa por aqui: esperar fila somaria latência.
 	MaxConcurrentBoots int
-	Log                io.Writer
+	// MaxGPUVMs limita VMs com GPU vivas; 0 usa DefaultMaxGPUVMs.
+	MaxGPUVMs int
+	Log       io.Writer
 
 	bootSlots chan struct{}
+	gpuSlots  chan struct{}
 
 	mu     sync.Mutex
 	ready  map[string]chan *ReadyVM
@@ -93,6 +103,11 @@ func (p *Pool) Start(languages []string) {
 		limit = DefaultMaxConcurrentBoots
 	}
 	p.bootSlots = make(chan struct{}, limit)
+	gpu := p.MaxGPUVMs
+	if gpu <= 0 {
+		gpu = DefaultMaxGPUVMs
+	}
+	p.gpuSlots = make(chan struct{}, gpu)
 	if p.Size <= 0 {
 		return
 	}
@@ -152,6 +167,28 @@ func (p *Pool) refill(lang string, ready chan *ReadyVM, tokens chan struct{}) {
 // Boot sobe uma VM da linguagem e espera o guest responder. Se a VM morrer antes de
 // ficar pronta, o erro traz o fim do console (onde aparece o motivo do guest).
 func (p *Pool) Boot(ctx context.Context, lang string) (*ReadyVM, error) {
+	return p.boot(ctx, lang, false)
+}
+
+// TakeGPU sobe, a frio, uma VM com GPU. Não passa pelo pool: VM com GPU segura a janela de
+// VRAM e uma vaga da GPU do host, então não fica parada esperando pedido. Espera vaga
+// (DefaultMaxGPUVMs) até o ctx vencer; a vaga volta no Destroy.
+func (p *Pool) TakeGPU(ctx context.Context, lang string) (*ReadyVM, error) {
+	select {
+	case p.gpuSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("wait for a free GPU slot: %w", ctx.Err())
+	}
+	r, err := p.boot(ctx, lang, true)
+	if err != nil {
+		<-p.gpuSlots
+		return nil, err
+	}
+	return r, nil
+}
+
+// boot é o boot comum; gpu liga o virtio-gpu com a VRAM do catálogo.
+func (p *Pool) boot(ctx context.Context, lang string, gpu bool) (*ReadyVM, error) {
 	l, ok := p.Catalog.Get(lang)
 	if !ok {
 		return nil, domain.ErrUnsupportedLanguage{Name: lang}
@@ -170,11 +207,15 @@ func (p *Pool) Boot(ctx context.Context, lang string) (*ReadyVM, error) {
 		return nil, err
 	}
 	r := &ReadyVM{Language: lang, Socket: filepath.Join(vmDir, "v.sock"), Console: filepath.Join(vmDir, "console")}
-	vm, err := p.Launcher.StartVM(ports.VMSpec{
+	spec := ports.VMSpec{
 		CPUs: l.CPUs, MemoryMiB: l.MemoryMiB, RootDisk: image,
 		VsockSocket: r.Socket, VsockPort: protocol.DefaultPort, Console: r.Console,
 		Exec: "/opt/runner/start.sh",
-	})
+	}
+	if gpu {
+		spec.GPU, spec.GPUVRAMMiB = true, l.GPUVRAMMiB
+	}
+	vm, err := p.Launcher.StartVM(spec)
 	if err != nil {
 		os.RemoveAll(vmDir)
 		return nil, err
@@ -194,9 +235,11 @@ func (p *Pool) Boot(ctx context.Context, lang string) (*ReadyVM, error) {
 	if err := p.Guest.WaitReady(readyCtx, r.Socket); err != nil {
 		// Lê o console antes do Destroy, que apaga o arquivo: é ali que está o motivo.
 		console := tailFile(r.Console, 400)
+		// Destroy sem a marca de GPU: quem segura a vaga é o TakeGPU, que a devolve no erro.
 		p.Destroy(r)
 		return nil, fmt.Errorf("VM for %s did not become ready: %w; console: %s", lang, err, console)
 	}
+	r.GPU = gpu
 	return r, nil
 }
 
@@ -228,6 +271,10 @@ func (p *Pool) Take(ctx context.Context, lang string) (*ReadyVM, error) {
 func (p *Pool) Destroy(r *ReadyVM) {
 	r.VM.Kill()
 	os.RemoveAll(filepath.Dir(r.Socket))
+	if r.GPU {
+		r.GPU = false // Destroy idempotente: a vaga volta uma vez só
+		<-p.gpuSlots
+	}
 }
 
 // Close para a reposição e mata todas as VMs paradas no pool.

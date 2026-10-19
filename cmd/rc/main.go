@@ -211,6 +211,7 @@ func imageCmd() *cobra.Command {
 func runCmd() *cobra.Command {
 	var lang, code, file, stdin string
 	var timeout time.Duration
+	var gpu bool
 	c := &cobra.Command{
 		Use: "run", Short: "Run code in a fresh microVM",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -231,7 +232,7 @@ func runCmd() *cobra.Command {
 			start := time.Now()
 			// A saída aparece enquanto o programa roda: cada pedaço vai direto para o
 			// stdout/stderr do host, e o Result final só traz o status.
-			res, err := exec.RunStream(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout},
+			res, err := exec.RunStream(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout, GPU: gpu},
 				func(stream, data string) {
 					if stream == protocol.EventStderr {
 						fmt.Fprint(os.Stderr, data)
@@ -257,6 +258,7 @@ func runCmd() *cobra.Command {
 	c.Flags().StringVar(&file, "file", "", "file with the source code")
 	c.Flags().StringVar(&stdin, "stdin", "", "stdin for the program")
 	c.Flags().DurationVar(&timeout, "timeout", domain.DefaultTimeout, "job timeout")
+	c.Flags().BoolVar(&gpu, "gpu", false, "give the VM the host GPU through Vulkan (virtio-gpu/Venus); the stack must declare gpu")
 	return c
 }
 
@@ -266,6 +268,7 @@ func runCmd() *cobra.Command {
 // acha a libkrunfw (DYLD_LIBRARY_PATH/LD_LIBRARY_PATH) quando o processo nasce.
 func shellCmd() *cobra.Command {
 	var stack string
+	var gpu bool
 	c := &cobra.Command{
 		Use: "shell", Short: "Open an interactive shell inside a fresh microVM of a stack",
 		RunE: func(*cobra.Command, []string) error {
@@ -281,12 +284,18 @@ func shellCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("image for %s not built (run `rc image build --stack %s`)", stack, stack)
 			}
+			if err := (domain.Job{GPU: gpu}).CheckGPU(l); err != nil {
+				return err
+			}
 			// Com terminal de verdade no stdin a VM ganha console TTY (/dev/hvc0): Ctrl+C,
 			// job control e tamanho da janela funcionam. Com pipe (script, teste) fica o
 			// console implícito, que entrega stdin/stdout como fluxo.
 			interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 			spec := ports.VMSpec{CPUs: l.CPUs, MemoryMiB: l.MemoryMiB, RootDisk: image, Exec: "/opt/runner/shell.sh",
 				Env: []string{"TERM=" + env("TERM", "xterm")}, TTY: interactive}
+			if gpu {
+				spec.GPU, spec.GPUVRAMMiB = true, l.GPUVRAMMiB
+			}
 			if err := os.MkdirAll(d.launcher.WorkDir, 0o700); err != nil {
 				return err
 			}
@@ -321,6 +330,7 @@ func shellCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&stack, "stack", "", "stack whose image the VM boots (python, go, rust, ...)")
+	c.Flags().BoolVar(&gpu, "gpu", false, "give the VM the host GPU through Vulkan (virtio-gpu/Venus)")
 	c.MarkFlagRequired("stack")
 	return c
 }
@@ -444,8 +454,14 @@ func doctorCmd() *cobra.Command {
 				fmt.Printf("ok    %s\n", name)
 			}
 			check("platform", platformOK())
-			_, err = krun.Load(d.launcher.LibPath)
+			api, err := krun.Load(d.launcher.LibPath)
 			check("libkrun", err)
+			// GPU é opcional: a libkrun sem GPU=1 (a do nixpkgs no Linux) só não aceita --gpu.
+			if g, ok := api.(interface{ HasGPU() bool }); ok && g.HasGPU() {
+				fmt.Println("ok    gpu: libkrun built with virtio-gpu (Venus); use --gpu on a stack with gpu")
+			} else if err == nil {
+				fmt.Println("info  gpu: this libkrun has no virtio-gpu; --gpu is unavailable")
+			}
 			_, err = os.Stat(d.builder.GuestBinary)
 			check("guest", err)
 			// O confinamento do processo vmm depende do kernel: diz o que ele cobre aqui.
