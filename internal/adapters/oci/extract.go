@@ -17,7 +17,7 @@ import (
 func extractTarGz(r io.Reader, dest string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("abrir gzip: %w", err)
+		return fmt.Errorf("open gzip: %w", err)
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
@@ -27,7 +27,7 @@ func extractTarGz(r io.Reader, dest string) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("ler tar: %w", err)
+			return fmt.Errorf("read tar: %w", err)
 		}
 		target, err := safeJoin(dest, h.Name)
 		if err != nil {
@@ -83,7 +83,7 @@ func safeJoin(dest, name string) (string, error) {
 	clean := filepath.Clean("/" + name)
 	target := filepath.Join(dest, clean)
 	if target != dest && !strings.HasPrefix(target, dest+string(os.PathSeparator)) {
-		return "", fmt.Errorf("entrada %q escapa do destino", name)
+		return "", fmt.Errorf("entry %q escapes the destination", name)
 	}
 	return target, nil
 }

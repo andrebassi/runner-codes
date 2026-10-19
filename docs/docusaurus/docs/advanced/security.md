@@ -7,7 +7,7 @@ description: 'O que isola o código não confiável, o que é provado por teste 
 
 O código do job é tratado como hostil. A barreira principal é a VM; a segunda é o confinamento do processo que roda a VM.
 
-A documentação da libkrun é explícita: **o guest e o VMM ficam no mesmo contexto de segurança.** Uma fuga da VM cai dentro do processo `runner.code vmm`, com os privilégios dele. Por isso o isolamento é a VM **mais** o confinamento desse processo — e esse confinamento hoje é diferente por plataforma.
+A documentação da libkrun é explícita: **o guest e o VMM ficam no mesmo contexto de segurança.** Uma fuga da VM cai dentro do processo `rc vmm`, com os privilégios dele. Por isso o isolamento é a VM **mais** o confinamento desse processo — e esse confinamento hoje é diferente por plataforma.
 
 ## Camadas que valem nas duas plataformas
 
@@ -31,10 +31,36 @@ A documentação da libkrun é explícita: **o guest e o VMM ficam no mesmo cont
 | VM morre com o pai | pipe de vigia no fd 3 | `Pdeathsig` |
 | timeout | SIGKILL no grupo do processo | SIGKILL no grupo do processo |
 | uid/gid sem privilégio no processo da VM | — | suportado pela spec (`krun_setuid`/`krun_setgid`) |
-| Landlock | não existe no macOS | **planejado, não implementado** |
-| seccomp | não existe no macOS | **planejado, não implementado** |
+| Landlock | não existe no macOS | aplicado ao processo `vmm` de cada VM de job |
+| seccomp | não existe no macOS | denylist aplicada a todas as threads (TSYNC) |
 
-No macOS o confinamento do processo `vmm` se resume ao entitlement e ao grupo de processo. No Linux, Landlock e seccomp ainda não estão implementados: até lá, o confinamento do processo `vmm` se resume a `Pdeathsig`, ao grupo de processo e, quando configurado na spec, a uid/gid sem privilégio.
+No macOS o confinamento do processo `vmm` se resume ao entitlement e ao grupo de processo.
+
+### Confinamento no Linux
+
+Antes de entregar o processo à libkrun, o `vmm` de uma VM de job (root em disco, sem rede) aplica:
+
+| Mecanismo | O que fica liberado | O que fica negado |
+|---|---|---|
+| Landlock (arquivos) | leitura do disco root e das bibliotecas já carregadas, `/proc`, `/sys`; escrita no console e no diretório próprio da VM (`run/<id>/`); `/dev/kvm` com ioctl | todo o resto do sistema de arquivos |
+| Landlock (rede, ABI ≥ 4) | nada | todo `bind` e `connect` TCP (e UDP na ABI 10) |
+| Landlock (escopo, ABI ≥ 6) | — | sinais e sockets abstratos fora do próprio processo |
+| Landlock (socket Unix, ABI ≥ 9) | o socket da própria VM | `connect` no socket de outra VM |
+| seccomp | o resto | `execve`, `ptrace`, `mount`, `unshare`/`setns`, módulos de kernel, `kexec`, `bpf`, `perf_event_open`, chaveiro, relógio, swap, reboot, `userfaultfd` e afins (`EPERM`) |
+
+A libkrunfw é carregada antes do Landlock, porque a libkrun só a abre dentro de `krun_start_enter` e esse `open`
+falharia depois do confinamento. O seccomp é uma denylist, e não uma allowlist, de propósito: a allowlist exigiria
+medir cada syscall da libkrun num Linux com KVM, e uma que faltasse derrubaria todas as VMs.
+
+**Medido** no Ubuntu 26.04 (kernel 7.0, aarch64, Landlock ABI 8), com o próprio processo confinado: leitura de
+arquivo fora da política, gravação ao lado do disco, TCP, `execve` e `personality` negados; leitura do disco e
+criação do próprio socket permitidas. Sem o confinamento, a mesma sonda consegue tudo (prova de falha).
+
+**Não medido:** uma microVM completa sob o confinamento num Linux com KVM (a VM de teste não tem `/dev/kvm`).
+
+**Lacuna conhecida:** com Landlock ABI < 9 o kernel não controla `connect` em socket Unix por caminho; o processo
+de uma VM ainda alcança o socket de outra. O `rc doctor` avisa. `RUNNER_SANDBOX=off` desliga o confinamento para
+diagnóstico, com aviso no stderr.
 
 ## O que o teste ponta a ponta prova
 
@@ -56,5 +82,5 @@ O pull da imagem acontece no host. O resto do build roda numa VM própria, com r
 
 ## Pendências
 
-- Landlock e seccomp no Linux;
+- validar uma microVM completa sob Landlock + seccomp num Linux com KVM;
 - autenticação na API (hoje delegada a um proxy).

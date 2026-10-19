@@ -13,8 +13,8 @@ t0=$(ms)
 # --numeric-owner preserva uid/gid da imagem; extrair no host perderia dono e caixa das letras.
 tar -xpf "$in" -C /build --numeric-owner --xattrs
 mkdir -p /build/opt/runner /build/proc /build/sys /build/dev /build/tmp
-cp /work/inject/guest /work/inject/start.sh /work/inject/env /build/opt/runner/
-chmod 755 /build/opt/runner/guest /build/opt/runner/start.sh
+cp /work/inject/guest /work/inject/start.sh /work/inject/shell.sh /work/inject/env /build/opt/runner/
+chmod 755 /build/opt/runner/guest /build/opt/runner/start.sh /build/opt/runner/shell.sh
 t1=$(ms)
 
 if [ -s "$warm" ]; then

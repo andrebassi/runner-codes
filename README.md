@@ -17,7 +17,7 @@ e no **Linux x86_64/aarch64** (KVM). As linguagens saem de **imagens OCI oficiai
 
 ## Números medidos
 
-macOS 27.0.1, Apple Silicon, 19/10/2026. O Linux ainda não foi medido.
+macOS 27.0.1, Apple Silicon, 19/10/2026. Testes por plataforma (macOS de ponta a ponta, Linux com Landlock + seccomp, Windows) e o que não foi testado: [relatório de testes](docs/docusaurus/docs/advanced/test-report.md).
 
 | Medida | Valor |
 |---|---|
@@ -25,15 +25,15 @@ macOS 27.0.1, Apple Silicon, 19/10/2026. O Linux ainda não foi medido.
 | job Python pela CLI, boot frio | ~240 ms no total |
 | job pela API com pool pré-bootado | **26–43 ms** de requisição HTTP |
 | VM parada no pool | 44 MB de footprint |
-| `image build --lang python` | 8–10 s |
+| `image build --stack python` | 8–10 s |
 
 ## Como funciona
 
 ```
-cliente ──HTTP──▶ runner.code serve ──▶ pool (N VMs prontas por linguagem, cada uma usada uma vez)
+cliente ──HTTP──▶ rc serve ──▶ pool (N VMs prontas por linguagem, cada uma usada uma vez)
                                                 │ spawn
                                                 ▼
-                                   runner.code vmm  ── libkrun ── libkrunfw (Linux 6.12)
+                                   rc vmm  ── libkrun ── libkrunfw (Linux 6.12)
                                                 │ socket Unix ⇄ vsock 5000
                                                 ▼
                                    runner-guest (root ext4 read-only, /tmp em tmpfs)
@@ -50,30 +50,27 @@ Detalhes em [docs/architecture.md](docs/architecture.md); requisitos em [docs/pr
 
 ## Instalação
 
-### macOS (Apple Silicon)
+Tudo pelo [Nix](https://nixos.org), sem Homebrew nem Docker. O `flake.nix` do repo expõe `.#krun` (libkrun +
+libkrunfw), e o `rc` procura a libkrun em `~/.nix-profile/lib` por padrão.
 
 ```bash
-brew tap slp/krun && brew trust slp/krun
-brew install slp/krun/libkrunfw slp/krun/libkrun
-task build                        # compila host + guest e assina com o entitlement do hypervisor
-task image:build -- --lang python
+task krun:install                 # nix profile add .#krun
+task build                        # compila host + guest; no macOS assina com o entitlement do hypervisor
+task image:build -- --stack python
 ```
 
-### Linux (KVM)
+- **macOS (Apple Silicon):** libkrun 1.19.6 e libkrunfw 5.6.2 de derivações próprias em `nix/` (o nixpkgs só
+  empacota a libkrun para Linux). A 1ª instalação compila a libkrun, ~10 min.
+- **Linux (KVM):** libkrun e libkrunfw do nixpkgs, com virtio-blk ligado. O usuário precisa de leitura e escrita em
+  `/dev/kvm`.
 
-```bash
-nix profile install nixpkgs#libkrun nixpkgs#libkrunfw
-task build
-task image:build -- --lang python
-```
-
-O usuário precisa de leitura e escrita em `/dev/kvm`. `./bin/runner.code doctor` confere o host.
+`./bin/rc doctor` confere o host.
 
 ## Uso
 
 ```bash
-./bin/runner.code run --lang python --code 'print(2**10)'
-./bin/runner.code serve --listen 127.0.0.1:8080 --pool-size 2
+./bin/rc run --stack python --code 'print(2**10)'
+./bin/rc serve --listen 127.0.0.1:8080 --pool-size 2
 
 curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/json' \
   -d '{"language":"python","stdin":"oi","files":[{"name":"main.py","content":"print(input().upper())"}]}'
@@ -84,6 +81,16 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/j
 aparece como `exception: "Timeout"`.
 
 A API **não tem autenticação**. Por isso o padrão é escutar só em `127.0.0.1`.
+
+### Shell dentro da VM
+
+```bash
+./bin/rc shell --stack python     # ou: task shell -- --stack python
+```
+
+Abre um shell interativo numa VM nova da stack, com a mesma imagem dos jobs: root read-only, sem rede e `/tmp`
+gravável. Num terminal, o guest recebe um TTY de verdade: Ctrl+C interrompe só o comando e o tamanho da janela
+chega ao guest. A VM some no `exit`.
 
 ## Linguagens
 
@@ -110,8 +117,10 @@ Um teste confere que toda linguagem do catálogo existe no executor.
 ## Fora do escopo
 
 - **Windows:** a libkrun upstream não tem backend WHP. O build para Windows falha de propósito.
-- **Landlock e seccomp no processo `vmm` (Linux):** estão planejados e ainda não implementados. No macOS esses
-  mecanismos não existem.
+- **Confinamento no macOS:** não existe Landlock nem seccomp; o processo `vmm` fica só com o entitlement e o grupo de
+  processo. No Linux o processo `vmm` de cada VM de job roda com Landlock + seccomp (veja a doc de segurança).
+- **Socket de outra VM em kernel com Landlock ABI < 9:** o controle de `connect` em socket Unix por caminho só existe
+  a partir da ABI 9. O `rc doctor` avisa quando o kernel não tem.
 
 ## Licença
 

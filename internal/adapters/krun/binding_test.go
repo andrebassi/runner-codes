@@ -6,13 +6,16 @@ import (
 	"testing"
 )
 
-// realLib é onde o brew `slp/krun` instala a libkrun no macOS arm64.
-const realLib = "/opt/homebrew/lib/libkrun.dylib"
+// realLib é onde `task krun:install` (perfil do Nix, `.#krun`) deixa a libkrun no macOS arm64.
+var realLib = func() string {
+	home, _ := os.UserHomeDir()
+	return home + "/.nix-profile/lib/libkrun.dylib"
+}()
 
 // TestLoadMissingLibrary: caminho inexistente vira erro, não pânico.
 func TestLoadMissingLibrary(t *testing.T) {
-	if _, err := Load("/nao/existe/libkrun.so"); err == nil {
-		t.Fatal("esperava erro")
+	if _, err := Load("/does/not/exist/libkrun.so"); err == nil {
+		t.Fatal("expected an error")
 	}
 }
 
@@ -23,7 +26,7 @@ func TestLoadWrongLibrary(t *testing.T) {
 		lib = "libc.so.6"
 	}
 	if _, err := Load(lib); err == nil {
-		t.Fatal("esperava erro de símbolo ausente")
+		t.Fatal("expected a missing-symbol error")
 	}
 }
 
@@ -31,7 +34,7 @@ func TestLoadWrongLibrary(t *testing.T) {
 // Nenhuma chamada sobe VM: start_enter recebe contexto inválido e só devolve erro.
 func TestLoadRealLibrary(t *testing.T) {
 	if _, err := os.Stat(realLib); err != nil {
-		t.Skip("libkrun não instalada neste host")
+		t.Skip("libkrun not installed on this host")
 	}
 	api, err := Load(realLib)
 	if err != nil {
@@ -47,7 +50,7 @@ func TestLoadRealLibrary(t *testing.T) {
 		t.Fatalf("set_vm_config: %d", rc)
 	}
 	api.SetRoot(ctx, t.TempDir())
-	api.AddDisk2(ctx, "x", "/nao/existe.ext4", 0, true)
+	api.AddDisk2(ctx, "x", "/does/not/exist.ext4", 0, true)
 	api.SetRootDiskRemount(ctx, "/dev/vda", "ext4", "ro")
 	api.DisableImplicitVsock(ctx)
 	api.AddVsock(ctx, 0)
@@ -55,11 +58,17 @@ func TestLoadRealLibrary(t *testing.T) {
 	api.SetConsoleOutput(ctx, t.TempDir()+"/c.log")
 	api.SetGID(ctx, uint32(os.Getgid()))
 	api.SetUID(ctx, uint32(os.Getuid()))
+	if rc := api.DisableImplicitConsole(ctx); rc < 0 {
+		t.Fatalf("disable_implicit_console: %d", rc)
+	}
+	if rc := api.AddVirtioConsoleDefault(ctx, 0, 1, 2); rc < 0 {
+		t.Fatalf("add_virtio_console_default: %d", rc)
+	}
 	if rc := api.SetExec(ctx, "/bin/true", []string{"a"}, []string{"K=V"}); rc < 0 {
 		t.Fatalf("set_exec: %d", rc)
 	}
 	// Contexto inexistente: a libkrun recusa antes de tocar no hypervisor.
 	if rc := api.StartEnter(ctx + 1000); rc >= 0 {
-		t.Fatalf("start_enter com contexto inválido deveria falhar, veio %d", rc)
+		t.Fatalf("start_enter with an invalid context should fail, got %d", rc)
 	}
 }

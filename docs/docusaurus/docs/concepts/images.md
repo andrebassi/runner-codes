@@ -14,8 +14,8 @@ Cada linguagem do catálogo roda sobre um arquivo ext4 read-only, que vira o roo
 ## Como o build funciona
 
 ```bash
-runner.code image build --lang python
-runner.code image build --all
+rc image build --stack python
+rc image build --all
 ```
 
 1. **Pull sem Docker.** O host baixa a imagem com go-containerregistry, para a arquitetura do host.

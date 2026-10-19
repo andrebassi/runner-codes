@@ -17,12 +17,12 @@ jobs:
         include:
           # host: CLI/serve/vmm. darwin/arm64 sai sem assinatura: o entitlement do
           # hypervisor é aplicado pelo usuário (codesign ad-hoc), descrito no release.
-          - { goos: linux, goarch: amd64, pkg: ./cmd/runner.code, name: runner.code }
-          - { goos: linux, goarch: arm64, pkg: ./cmd/runner.code, name: runner.code }
-          - { goos: darwin, goarch: arm64, pkg: ./cmd/runner.code, name: runner.code }
+          - { goos: linux, goarch: amd64, pkg: ./cmd/rc, name: rc }
+          - { goos: linux, goarch: arm64, pkg: ./cmd/rc, name: rc }
+          - { goos: darwin, goarch: arm64, pkg: ./cmd/rc, name: rc }
           # guest: roda dentro da VM, sempre Linux e estático, da arquitetura do host.
-          - { goos: linux, goarch: amd64, pkg: ./cmd/runner-guest, name: runner.code-guest }
-          - { goos: linux, goarch: arm64, pkg: ./cmd/runner-guest, name: runner.code-guest }
+          - { goos: linux, goarch: amd64, pkg: ./cmd/runner-guest, name: rc-guest }
+          - { goos: linux, goarch: arm64, pkg: ./cmd/runner-guest, name: rc-guest }
 
     steps:
       - name: Checkout code
@@ -43,7 +43,7 @@ jobs:
           out=dist/${{ matrix.name }}-${{ matrix.goos }}-${{ matrix.goarch }}
           go build -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o "$out" ${{ matrix.pkg }}
           # O guest tem de sair estático: dinâmico não roda na imagem Alpine (musl).
-          if [ "${{ matrix.name }}" = "runner.code-guest" ] && file "$out" | grep -q 'dynamically linked'; then
+          if [ "${{ matrix.name }}" = "rc-guest" ] && file "$out" | grep -q 'dynamically linked'; then
             echo "guest saiu dinâmico" >&2; exit 1
           fi
           chmod +x "$out"
@@ -72,7 +72,7 @@ jobs:
         run: |
           cp build/hv.entitlements dist/
           cd dist
-          sha256sum runner.code-* hv.entitlements > checksums.txt
+          sha256sum rc-* hv.entitlements > checksums.txt
           cat checksums.txt
 
       - name: Create Release
@@ -83,7 +83,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            dist/runner.code-*
+            dist/rc-*
             dist/hv.entitlements
             dist/checksums.txt
           body: |
@@ -93,16 +93,16 @@ jobs:
 
             | Host | Binário do host | Guest (ao lado do host) |
             |---|---|---|
-            | Linux x86_64 | `runner.code-linux-amd64` | `runner.code-guest-linux-amd64` |
-            | Linux ARM64 | `runner.code-linux-arm64` | `runner.code-guest-linux-arm64` |
-            | macOS Apple Silicon | `runner.code-darwin-arm64` | `runner.code-guest-linux-arm64` |
+            | Linux x86_64 | `rc-linux-amd64` | `rc-guest-linux-amd64` |
+            | Linux ARM64 | `rc-linux-arm64` | `rc-guest-linux-arm64` |
+            | macOS Apple Silicon | `rc-darwin-arm64` | `rc-guest-linux-arm64` |
 
-            Pré-requisito: libkrun + libkrunfw (macOS: `brew tap slp/krun && brew trust slp/krun && brew install slp/krun/libkrunfw slp/krun/libkrun`; Linux: `nix profile install nixpkgs#libkrun nixpkgs#libkrunfw`).
+            Pré-requisito: libkrun + libkrunfw pelo Nix, no clone do repo: `nix profile add .#krun` (macOS e Linux).
 
             No macOS, assine o host com o entitlement do hypervisor (sem ele a VM não sobe):
 
             ```bash
-            codesign --force --sign - --entitlements hv.entitlements runner.code-darwin-arm64
+            codesign --force --sign - --entitlements hv.entitlements rc-darwin-arm64
             ```
 
             Conferir: `sha256sum -c checksums.txt`

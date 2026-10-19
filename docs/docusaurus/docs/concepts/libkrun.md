@@ -9,8 +9,8 @@ A [libkrun](https://github.com/containers/libkrun) é um VMM em forma de bibliot
 
 | Componente | Versão |
 |------------|--------|
-| libkrun | 1.19.6 (macOS, brew `slp/krun`); 1.19.5 no nixpkgs |
-| libkrunfw | 5.6.2, kernel Linux 6.12.109 (macOS); 5.5.0 no nixpkgs |
+| libkrun | 1.19.6 (macOS, derivação própria em `nix/`); 1.19.5 no nixpkgs (Linux) |
+| libkrunfw | 5.6.2, kernel Linux 6.12.109 (macOS, `nix/`); 5.5.0 no nixpkgs (Linux) |
 
 O Runner Codes chama a libkrun diretamente, sem camada intermediária, e a carrega em tempo de execução com purego — não há cgo no host.
 
@@ -22,7 +22,7 @@ O Runner Codes chama a libkrun diretamente, sem camada intermediária, e a carre
 
 ## Um processo por VM
 
-`krun_start_enter` não retorna enquanto a VM roda: ele assume o processo. Por isso cada VM é um processo próprio, `runner.code vmm --spec <arquivo>`, criado pelo launcher.
+`krun_start_enter` não retorna enquanto a VM roda: ele assume o processo. Por isso cada VM é um processo próprio, `rc vmm --spec <arquivo>`, criado pelo launcher.
 
 - **Spawn, nunca fork.** Fork de um processo Go (multi-thread) é morto pelo HVF cerca de 2 s depois.
 - **Timeout:** SIGKILL no grupo do processo da VM.

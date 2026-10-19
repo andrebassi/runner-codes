@@ -98,7 +98,7 @@ func (g *guest) WaitReady(ctx context.Context, socket string) error {
 }
 
 // errBlock faz o WaitReady falso esperar o ctx, como um guest que nunca sobe.
-var errBlock = errors.New("bloqueia")
+var errBlock = errors.New("blocks")
 
 // images falso: python sempre construído; o resto conforme o mapa.
 type images map[string]string
@@ -135,7 +135,7 @@ func eventually(t *testing.T, what string, cond func() bool) {
 			return
 		}
 	}
-	t.Fatalf("não aconteceu: %s", what)
+	t.Fatalf("did not happen: %s", what)
 }
 
 // TestPoolFillsAndRefills: enche até Size, nunca passa, e repõe o que foi entregue.
@@ -143,14 +143,14 @@ func TestPoolFillsAndRefills(t *testing.T) {
 	p, l, _ := fixtures(t, 2)
 	p.Start([]string{"python"})
 	defer p.Close()
-	eventually(t, "pool cheio", func() bool { return p.Ready("python") == 2 })
+	eventually(t, "pool full", func() bool { return p.Ready("python") == 2 })
 	time.Sleep(30 * time.Millisecond)
 	if l.count() != 2 {
-		t.Fatalf("pool de 2 lançou %d VMs", l.count())
+		t.Fatalf("pool of 2 launched %d VMs", l.count())
 	}
 	spec := l.spec(0)
 	if spec.RootDisk != "/img/python.ext4" || spec.VsockPort != 5000 || spec.Exec != "/opt/runner/start.sh" || spec.Network {
-		t.Fatalf("spec de job errada: %+v", spec)
+		t.Fatalf("wrong job spec: %+v", spec)
 	}
 	a, err := p.Take(context.Background(), "python")
 	if err != nil {
@@ -158,9 +158,50 @@ func TestPoolFillsAndRefills(t *testing.T) {
 	}
 	b, _ := p.Take(context.Background(), "python")
 	if a.VM == b.VM {
-		t.Fatal("a mesma VM foi entregue duas vezes")
+		t.Fatal("the same VM was handed out twice")
 	}
-	eventually(t, "reposição", func() bool { return p.Ready("python") == 2 && l.count() == 4 })
+	eventually(t, "refill", func() bool { return p.Ready("python") == 2 && l.count() == 4 })
+}
+
+// TestGlobalBootLimit trava o conserto da tempestade de boot: com várias linguagens, a
+// reposição nunca passa de MaxConcurrentBoots VMs bootando ao mesmo tempo.
+func TestGlobalBootLimit(t *testing.T) {
+	p, _, g := fixtures(t, 2)
+	langs := []string{"python", "ruby"}
+	p.Images = images{"python": "/img/p.ext4", "ruby": "/img/r.ext4"}
+	p.MaxConcurrentBoots = 1
+	var inFlight, peak atomic.Int32
+	g.readyErr = func(string) error {
+		n := inFlight.Add(1)
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		inFlight.Add(-1)
+		return nil
+	}
+	p.Start(langs)
+	defer p.Close()
+	eventually(t, "pools full", func() bool { return p.Ready("python") == 2 && p.Ready("ruby") == 2 })
+	if peak.Load() != 1 {
+		t.Fatalf("peak of %d concurrent boots with a ceiling of 1", peak.Load())
+	}
+	if st := p.Status(); st["python"] != 2 || st["ruby"] != 2 {
+		t.Fatalf("status: %v", st)
+	}
+}
+
+// TestDefaultBootLimit: sem configurar, vale o teto padrão.
+func TestDefaultBootLimit(t *testing.T) {
+	p, _, _ := fixtures(t, 1)
+	p.Start([]string{"python"})
+	defer p.Close()
+	if cap(p.bootSlots) != DefaultMaxConcurrentBoots {
+		t.Fatalf("ceiling %d, want %d", cap(p.bootSlots), DefaultMaxConcurrentBoots)
+	}
 }
 
 // TestTakeColdBootWhenEmpty: sem pool, o job faz boot na hora (nunca é recusado).
@@ -169,11 +210,11 @@ func TestTakeColdBootWhenEmpty(t *testing.T) {
 	p.Start([]string{"python"})
 	r, err := p.Take(context.Background(), "python")
 	if err != nil || l.count() != 1 {
-		t.Fatalf("boot frio: err=%v vms=%d", err, l.count())
+		t.Fatalf("cold boot: err=%v vms=%d", err, l.count())
 	}
 	p.Destroy(r)
 	if !l.vm(0).killed.Load() {
-		t.Fatal("Destroy deveria matar a VM")
+		t.Fatal("Destroy should kill the VM")
 	}
 	p.Close()
 }
@@ -183,14 +224,14 @@ func TestTakeSkipsDeadVM(t *testing.T) {
 	p, l, _ := fixtures(t, 1)
 	p.Start([]string{"python"})
 	defer p.Close()
-	eventually(t, "pool cheio", func() bool { return p.Ready("python") == 1 })
+	eventually(t, "pool full", func() bool { return p.Ready("python") == 1 })
 	l.vm(0).die()
 	r, err := p.Take(context.Background(), "python")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r.VM == ports.VM(l.vm(0)) {
-		t.Fatal("entregou VM morta")
+		t.Fatal("handed out a dead VM")
 	}
 }
 
@@ -200,40 +241,40 @@ func TestBootErrors(t *testing.T) {
 	ctx := context.Background()
 	p, _, _ := fixtures(t, 0)
 	if _, err := p.Boot(ctx, "cobol"); err == nil {
-		t.Fatal("fora do catálogo")
+		t.Fatal("outside the catalog")
 	}
 	if _, err := p.Boot(ctx, "ruby"); err == nil || !strings.Contains(err.Error(), "image build") {
-		t.Fatalf("imagem ausente deveria orientar o build: %v", err)
+		t.Fatalf("missing image should point to the build: %v", err)
 	}
 	p, l, _ := fixtures(t, 0)
-	l.fail = errors.New("sem hypervisor")
+	l.fail = errors.New("no hypervisor")
 	if _, err := p.Boot(ctx, "python"); err == nil {
-		t.Fatal("launcher que falha")
+		t.Fatal("failing launcher")
 	}
 	p, l, g := fixtures(t, 0)
-	g.readyErr = func(string) error { return errors.New("recusado") }
+	g.readyErr = func(string) error { return errors.New("refused") }
 	if _, err := p.Boot(ctx, "python"); err == nil || !l.vm(0).killed.Load() {
-		t.Fatal("guest que não responde: erro e VM morta")
+		t.Fatal("unresponsive guest: error and dead VM")
 	}
 	p, l, g = fixtures(t, 0)
 	g.readyErr = func(string) error { return errBlock }
 	go func() {
-		eventually(t, "vm lançada", func() bool { return l.count() == 1 })
+		eventually(t, "vm launched", func() bool { return l.count() == 1 })
 		os.WriteFile(l.spec(0).Console, []byte("kernel panic"), 0o644)
 		l.vm(0).die()
 	}()
 	start := time.Now()
 	_, err := p.Boot(ctx, "python")
 	if err == nil || !strings.Contains(err.Error(), "kernel panic") {
-		t.Fatalf("VM morta no boot deveria trazer o console: %v", err)
+		t.Fatalf("VM that dies at boot should include the console: %v", err)
 	}
 	if time.Since(start) > 5*time.Second {
-		t.Fatal("esperou o ReadyTimeout em vez de reagir à morte da VM")
+		t.Fatal("waited for ReadyTimeout instead of reacting to the VM death")
 	}
 	p, _, _ = fixtures(t, 0)
 	p.WorkDir = "/dev/null/x"
 	if _, err := p.Boot(ctx, "python"); err == nil {
-		t.Fatal("workdir impossível")
+		t.Fatal("impossible workdir")
 	}
 }
 
@@ -243,27 +284,27 @@ func TestRefillRetriesAfterFailure(t *testing.T) {
 	var n atomic.Int32
 	g.readyErr = func(string) error {
 		if n.Add(1) == 1 {
-			return errors.New("primeiro boot falhou")
+			return errors.New("first boot failed")
 		}
 		return nil
 	}
 	p.Start([]string{"python"})
 	defer p.Close()
-	eventually(t, "pool recuperado", func() bool { return p.Ready("python") == 1 })
+	eventually(t, "pool recovered", func() bool { return p.Ready("python") == 1 })
 }
 
 // TestCloseKillsParkedVMs: fechar o serviço não deixa VM viva.
 func TestCloseKillsParkedVMs(t *testing.T) {
 	p, l, _ := fixtures(t, 2)
 	p.Start([]string{"python"})
-	eventually(t, "pool cheio", func() bool { return p.Ready("python") == 2 })
+	eventually(t, "pool full", func() bool { return p.Ready("python") == 2 })
 	p.Close()
 	l.mu.Lock()
 	all := append([]*vm(nil), l.vms...)
 	l.mu.Unlock()
 	for _, v := range all {
 		if !v.killed.Load() {
-			t.Fatalf("VM %d sobreviveu ao Close", v.id)
+			t.Fatalf("VM %d survived Close", v.id)
 		}
 	}
 	(&Pool{}).Close() // Close sem Start não pode entrar em pânico
@@ -273,7 +314,7 @@ func TestCloseKillsParkedVMs(t *testing.T) {
 func TestCloseDuringBootRetry(t *testing.T) {
 	p, _, g := fixtures(t, 1)
 	retryBackoff = time.Hour
-	g.readyErr = func(string) error { return errors.New("sempre falha") }
+	g.readyErr = func(string) error { return errors.New("always fails") }
 	p.Start([]string{"python"})
 	time.Sleep(30 * time.Millisecond)
 	done := make(chan struct{})
@@ -281,7 +322,7 @@ func TestCloseDuringBootRetry(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close travou esperando backoff")
+		t.Fatal("Close hung waiting for backoff")
 	}
 }
 
@@ -296,14 +337,14 @@ func TestCloseDuringBoot(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close travou com boot em andamento")
+		t.Fatal("Close hung with a boot in progress")
 	}
 }
 
 // TestTailFile cobre arquivo ausente e corte do fim.
 func TestTailFile(t *testing.T) {
-	if tailFile("/nao/existe", 10) != "(sem console)" {
-		t.Fatal("ausente")
+	if tailFile("/does/not/exist", 10) != "(no console)" {
+		t.Fatal("missing")
 	}
 	f := filepath.Join(t.TempDir(), "c")
 	os.WriteFile(f, []byte("0123456789abcdef"), 0o644)
@@ -340,10 +381,10 @@ func TestExecuteSuccessDestroysVM(t *testing.T) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 	if got.Lang != "python" || got.Timeout != 1 || got.Stdin != "in" || len(got.Files) != 1 {
-		t.Fatalf("job convertido errado: %+v", got)
+		t.Fatalf("wrongly converted job: %+v", got)
 	}
 	if !l.vm(0).killed.Load() {
-		t.Fatal("VM não foi destruída depois do job")
+		t.Fatal("VM was not destroyed after the job")
 	}
 }
 
@@ -358,10 +399,10 @@ func TestExecuteTimeout(t *testing.T) {
 	j.Timeout = 50 * time.Millisecond
 	res, err := e.Run(context.Background(), j)
 	if err != nil || !res.TimedOut || !strings.HasPrefix(res.Error, "E001") {
-		t.Fatalf("esperava timeout E001: res=%+v err=%v", res, err)
+		t.Fatalf("expected timeout E001: res=%+v err=%v", res, err)
 	}
 	if !l.vm(0).killed.Load() {
-		t.Fatal("VM sobreviveu ao timeout")
+		t.Fatal("VM survived the timeout")
 	}
 }
 
@@ -397,21 +438,21 @@ func TestExecuteErrors(t *testing.T) {
 	bad.Language = "ruby" // no catálogo, sem imagem
 	var ul domain.ErrUnsupportedLanguage
 	if _, err := e.Run(context.Background(), bad); !errors.As(err, &ul) {
-		t.Fatalf("sem imagem deveria ser E006: %v", err)
+		t.Fatalf("missing image should be E006: %v", err)
 	}
 	if l.count() != 0 {
-		t.Fatal("job inválido não pode subir VM")
+		t.Fatal("invalid job must not boot a VM")
 	}
-	l.fail = errors.New("sem hypervisor")
+	l.fail = errors.New("no hypervisor")
 	if _, err := e.Run(context.Background(), job()); err == nil {
-		t.Fatal("sem VM deveria falhar")
+		t.Fatal("no VM should fail")
 	}
 	l.fail = nil
 	g.run = func(context.Context, string, protocol.Job) (protocol.Result, error) {
-		return protocol.Result{}, errors.New("conexão resetada")
+		return protocol.Result{}, errors.New("connection reset")
 	}
 	if _, err := e.Run(context.Background(), job()); err == nil {
-		t.Fatal("erro do guest deveria subir")
+		t.Fatal("guest error should propagate")
 	}
 	g.run = func(ctx context.Context, _ string, _ protocol.Job) (protocol.Result, error) {
 		<-ctx.Done()
@@ -421,6 +462,6 @@ func TestExecuteErrors(t *testing.T) {
 	defer cancel()
 	res, err := e.Run(ctx, job())
 	if err == nil || res.TimedOut {
-		t.Fatalf("cancelamento do chamador não é timeout do job: res=%+v err=%v", res, err)
+		t.Fatalf("caller cancellation is not a job timeout: res=%+v err=%v", res, err)
 	}
 }

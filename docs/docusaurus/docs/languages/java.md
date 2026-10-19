@@ -29,7 +29,7 @@ Com `code` solto em `/api/v1/execute`, o guest grava `Main.java` sozinho. Erro d
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang java
+rc image build --stack java
 ```
 
 ## Exemplo

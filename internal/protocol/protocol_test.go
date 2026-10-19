@@ -16,14 +16,14 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := binary.BigEndian.Uint32(buf.Bytes()[:4]); int(got) != buf.Len()-4 {
-		t.Fatalf("prefixo %d não bate com o corpo %d", got, buf.Len()-4)
+		t.Fatalf("prefix %d does not match body %d", got, buf.Len()-4)
 	}
 	var out Job
 	if err := ReadFrame(&buf, &out); err != nil {
 		t.Fatal(err)
 	}
 	if out.TraceID != in.TraceID || out.Code != in.Code || len(out.Files) != 1 || out.Files[0].Name != "a.py" {
-		t.Fatalf("frame lido diferente do escrito: %+v", out)
+		t.Fatalf("frame read differs from frame written: %+v", out)
 	}
 }
 
@@ -35,7 +35,7 @@ func TestNullFieldsStayNull(t *testing.T) {
 	}
 	body := buf.String()[4:]
 	if !strings.Contains(body, `"stderr":null`) || !strings.Contains(body, `"exception":null`) {
-		t.Fatalf("stderr/exception deveriam ser null: %s", body)
+		t.Fatalf("stderr/exception should be null: %s", body)
 	}
 }
 
@@ -48,16 +48,16 @@ func TestReadFrameErrors(t *testing.T) {
 	badJSON := append(make([]byte, 4), []byte("{x")...)
 	binary.BigEndian.PutUint32(badJSON, 2)
 	cases := map[string][]byte{
-		"sem prefixo":      {0x00, 0x01},
-		"prefixo hostil":   huge,
-		"corpo incompleto": append(short, []byte("abc")...),
-		"json inválido":    badJSON,
+		"no prefix":      {0x00, 0x01},
+		"hostile prefix": huge,
+		"truncated body": append(short, []byte("abc")...),
+		"invalid json":   badJSON,
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
 			var r Result
 			if err := ReadFrame(bytes.NewReader(raw), &r); err == nil {
-				t.Fatal("esperava erro")
+				t.Fatal("expected an error")
 			}
 		})
 	}
@@ -67,18 +67,18 @@ func TestReadFrameErrors(t *testing.T) {
 type failWriter struct{}
 
 // Write sempre falha.
-func (failWriter) Write([]byte) (int, error) { return 0, errors.New("conexão fechada") }
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("connection closed") }
 
 // TestWriteFrameErrors cobre valor não serializável, frame grande demais e escrita que falha.
 func TestWriteFrameErrors(t *testing.T) {
 	if err := WriteFrame(&bytes.Buffer{}, make(chan int)); err == nil {
-		t.Fatal("canal não é serializável; esperava erro")
+		t.Fatal("channel is not serializable; expected an error")
 	}
 	big := Result{Stdout: strings.Repeat("a", MaxFrameBytes)}
 	if err := WriteFrame(&bytes.Buffer{}, big); err == nil {
-		t.Fatal("esperava recusa de frame acima do limite")
+		t.Fatal("expected rejection of a frame above the limit")
 	}
 	if err := WriteFrame(failWriter{}, Job{}); err == nil {
-		t.Fatal("esperava o erro do writer")
+		t.Fatal("expected the writer error")
 	}
 }

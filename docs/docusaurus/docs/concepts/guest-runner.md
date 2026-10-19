@@ -5,7 +5,7 @@ description: 'O binário estático que roda dentro da VM e executa o código do 
 
 ## O que é
 
-O `runner-guest` é o processo que executa o código dentro da microVM. Ele é compilado estático para Linux e injetado em toda imagem como `/opt/runner/guest`. No host, fica em `bin/runner.code-guest-linux-<arch>`.
+O `runner-guest` é o processo que executa o código dentro da microVM. Ele é compilado estático para Linux e injetado em toda imagem como `/opt/runner/guest`. No host, fica em `bin/rc-guest-linux-<arch>`.
 
 **Por que estático e separado do host:** o host carrega a libkrun por purego, o que força link dinâmico contra a glibc no Linux. As imagens das linguagens são Alpine (musl); um binário dinâmico ali falha com `/opt/runner/guest: not found`.
 

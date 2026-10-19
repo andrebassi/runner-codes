@@ -29,14 +29,14 @@ O pool mantém VMs bootadas, cada uma usada uma única vez.
 
 | Alvo | Hypervisor | libkrun / libkrunfw | Situação |
 |---|---|---|---|
-| macOS arm64 | Hypervisor.framework | brew `slp/krun`: 1.19.6 / 5.6.2 | medido (spike) |
+| macOS arm64 | Hypervisor.framework | Nix, derivação própria (`nix/`): 1.19.6 / 5.6.2 | medido |
 | Linux x86_64 / aarch64 | KVM | nixpkgs: 1.19.5 / 5.5.0 | não medido ainda |
 | Windows | — | sem backend WHP no upstream | fora do escopo |
 
 ### Repository Structure
 
 ```
-cmd/runner.code/      host: serve, run, vmm, image build, languages, doctor
+cmd/rc/      host: serve, run, vmm, image build, languages, doctor
 cmd/runner-guest/        guest estático (roda dentro da VM)
 internal/domain/         Job, Result, Language, validação
 internal/ports/          interfaces VMLauncher, Pool, ImageStore, Catalog, GuestClient
@@ -52,7 +52,7 @@ internal/guest/          servidor e executor dentro da VM (ex-pkg/guest)
 ### Diagram
 
 ```
- cliente ──HTTP──▶ serve ──▶ ExecuteService ──▶ PoolManager ──spawn──▶ runner.code vmm (1 por VM)
+ cliente ──HTTP──▶ serve ──▶ ExecuteService ──▶ PoolManager ──spawn──▶ rc vmm (1 por VM)
                                   │                                        │ purego
                                   │                                        ▼
                                   │                                   libkrun ── libkrunfw (kernel 6.12)
@@ -124,7 +124,7 @@ cliente → POST /run → ExecuteService.Validate → Pool.Take(lang) → VM pro
 
 ### Boot de uma VM (medido)
 
-1. `os/exec` de `runner.code vmm --spec <json>`, com `Setpgid`, `DYLD_LIBRARY_PATH` no mac e `Pdeathsig` no Linux.
+1. `os/exec` de `rc vmm --spec <json>`, com `Setpgid`, `DYLD_LIBRARY_PATH` no mac e `Pdeathsig` no Linux.
 2. `vmm`: `krun_create_ctx` → `set_vm_config` → `add_disk2(root, ro)` + `set_root_disk_remount(/dev/vda, ext4, ro)`
    → `disable_implicit_vsock` + `add_vsock(0)` → `add_vsock_port2(5000, sock, listen=true)`
    → `set_exec(/opt/runner/start.sh)` → `start_enter`.
@@ -157,7 +157,7 @@ VM de build (Alpine, virtiofs, TSI só aqui): tar -xp em tmpfs → injeta guest 
 
 | Medida | Valor |
 |---|---|
-| `image build --lang python` (bootstrap já feito) | 8,4–10,2 s; warmup ~1 s; ext4 de 128–138 MiB |
+| `image build --stack python` (bootstrap já feito) | 8,4–10,2 s; warmup ~1 s; ext4 de 128–138 MiB |
 | job Python pela CLI, boot frio | ~240 ms no total (execução 31–38 ms) |
 | job pela API com pool cheio | 26–43 ms de requisição HTTP completa |
 | e2e (6 testes) | verde em duas rodadas seguidas |
@@ -193,8 +193,11 @@ com `images/`, `build/` e `run/` (sockets). Na memória do serviço ficam só as
   reposição por linguagem faz no máximo 2 boots simultâneos por linguagem (o smolvm limita a 4 no total,
   `pool_controller.rs:19`). Pool vazio → boot síncrono.
 - **Sandbox do processo `vmm`:**
-  - Linux: `Setpgid`, `Pdeathsig=SIGKILL`, uid/gid sem privilégio (`krun_setuid/setgid`), Landlock
-    restrito ao disco root (leitura) e ao diretório do socket, seccomp em modo log na primeira versão.
+  - Linux: `Setpgid`, `Pdeathsig=SIGKILL`, Landlock (disco root e bibliotecas só leitura; console e
+    `run/<id>/` da VM com escrita; `/dev/kvm` com ioctl; rede TCP/UDP negada; escopo de sinais; socket Unix de
+    outra VM negado a partir da ABI 9) e seccomp denylist com TSYNC (`internal/adapters/krun/sandbox*.go`).
+    Medido no Ubuntu 26.04 (ABI 8) com o processo confinado de verdade; microVM completa sob confinamento
+    não medida (sem KVM aninhado no M1).
   - macOS: `Setpgid` + pipe de vigia (o `vmm` sai quando o pipe do pai fecha) e assinatura com
     entitlement. O macOS não oferece Landlock nem seccomp, e isso fica dito na doc de segurança.
 
@@ -205,7 +208,7 @@ Não se aplica.
 ## Deployment Architecture
 
 - O release gera `runner.code` para `darwin/arm64`, `linux/amd64` e `linux/arm64`, e o guest
-  `runner.code-guest-linux-{amd64,arm64}`, que fica ao lado do host (ou em `RUNNER_GUEST_BIN`) e é injetado nas
+  `rc-guest-linux-{amd64,arm64}`, que fica ao lado do host (ou em `RUNNER_GUEST_BIN`) e é injetado nas
   imagens no build. Não vai por `go:embed`: o guest teria de existir antes de compilar o host, e o hash dele já entra
   na chave de cache da imagem.
 - No mac, `task sign` assina com o entitlement. No Linux, o usuário precisa de acesso a `/dev/kvm`.
@@ -214,7 +217,7 @@ Não se aplica.
 ## Development Workflow
 
 ```bash
-task krun:install         # mac: brew trust slp/krun + libkrun, libkrunfw, e2fsprogs
+task krun:install         # nix profile add .#krun (libkrun + libkrunfw), mac e Linux
 task build                # host + guest, assina no mac
 task image:build -- python
 task test                 # unidade
@@ -225,5 +228,5 @@ task serve                # API em 127.0.0.1:8080
 
 Variáveis:
 - `RUNNER_CACHE_DIR`: cache;
-- `RUNNER_KRUN_LIB`: caminho da libkrun (padrão `/opt/homebrew/lib/libkrun.dylib` no mac, `libkrun.so.1` no Linux);
+- `RUNNER_KRUN_LIB`: caminho da libkrun (padrão `~/.nix-profile/lib/libkrun.dylib` no mac; no Linux o do perfil do Nix ou o soname `libkrun.so.1`);
 - `RUNNER_POOL_SIZE`: VMs por linguagem, padrão 2.

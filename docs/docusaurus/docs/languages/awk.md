@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é o programa AWK, executado com `aw
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang awk
+rc image build --stack awk
 ```
 
 ## Exemplo

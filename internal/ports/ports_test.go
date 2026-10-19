@@ -14,21 +14,22 @@ func TestValidate(t *testing.T) {
 	}
 	mut := func(f func(*VMSpec)) VMSpec { s := valid(); f(&s); return s }
 	bad := map[string]VMSpec{
-		"sem cpu":          mut(func(s *VMSpec) { s.CPUs = 0 }),
-		"sem memória":      mut(func(s *VMSpec) { s.MemoryMiB = 0 }),
-		"dois roots":       mut(func(s *VMSpec) { s.RootDir = "/x" }),
-		"nenhum root":      mut(func(s *VMSpec) { s.RootDisk = "" }),
-		"sem exec":         mut(func(s *VMSpec) { s.Exec = "" }),
-		"socket sem porta": mut(func(s *VMSpec) { s.VsockPort = 0 }),
-		"porta sem socket": mut(func(s *VMSpec) { s.VsockSocket = "" }),
-		"argv com espaço":  mut(func(s *VMSpec) { s.Args = []string{"-c", "echo oi"} }),
-		"argv vazio":       mut(func(s *VMSpec) { s.Args = []string{""} }),
-		"exec com newline": mut(func(s *VMSpec) { s.Exec = "/a\nb" }),
+		"no cpu":              mut(func(s *VMSpec) { s.CPUs = 0 }),
+		"no memory":           mut(func(s *VMSpec) { s.MemoryMiB = 0 }),
+		"two roots":           mut(func(s *VMSpec) { s.RootDir = "/x" }),
+		"no root":             mut(func(s *VMSpec) { s.RootDisk = "" }),
+		"no exec":             mut(func(s *VMSpec) { s.Exec = "" }),
+		"socket without port": mut(func(s *VMSpec) { s.VsockPort = 0 }),
+		"port without socket": mut(func(s *VMSpec) { s.VsockSocket = "" }),
+		"argv with space":     mut(func(s *VMSpec) { s.Args = []string{"-c", "echo oi"} }),
+		"empty argv":          mut(func(s *VMSpec) { s.Args = []string{""} }),
+		"exec with newline":   mut(func(s *VMSpec) { s.Exec = "/a\nb" }),
+		"tty with console":    mut(func(s *VMSpec) { s.TTY, s.Console = true, "/r/c.log" }),
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {
 			if err := s.Validate(); err == nil {
-				t.Fatal("esperava recusa")
+				t.Fatal("expected rejection")
 			}
 		})
 	}

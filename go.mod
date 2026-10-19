@@ -1,13 +1,17 @@
 module runner.code
 
-go 1.25.0
+go 1.26.0
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/ebitengine/purego v0.11.2
+	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-containerregistry v0.22.1
+	github.com/landlock-lsm/go-landlock v0.10.1
 	github.com/mdlayher/vsock v1.2.1
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -41,11 +45,12 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.16.0 // indirect
-	golang.org/x/net v0.19.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )

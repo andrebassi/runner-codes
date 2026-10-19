@@ -26,7 +26,7 @@ O arquivo principal (o primeiro de `files`) é executado com `python3 <arquivo>`
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang python
+rc image build --stack python
 ```
 
 ## Exemplo

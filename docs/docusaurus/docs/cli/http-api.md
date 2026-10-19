@@ -6,7 +6,7 @@ description: 'Subir a API HTTP com pool de VMs pré-bootadas'
 ## Uso
 
 ```bash
-runner.code serve --listen 127.0.0.1:8080 --pool-size 2
+rc serve --listen 127.0.0.1:8080 --pool-size 2
 ```
 
 | Flag | Padrão | Descrição |
