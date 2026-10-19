@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é executado com `php <arquivo>` (CL
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang php
+rc image build --stack php
 ```
 
 ## Exemplo

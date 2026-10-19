@@ -9,9 +9,9 @@ O projeto usa [Task](https://taskfile.dev). `task` sem argumento lista tudo.
 
 | Task | O que faz |
 |------|-----------|
-| `task krun:install` | instala libkrun + libkrunfw (macOS via brew `slp/krun`, Linux via nix) |
+| `task krun:install` | instala libkrun + libkrunfw pelo Nix (`.#krun`) |
 | `task build` | compila host e guest em `bin/` e assina o host no macOS |
-| `task image:build -- --lang <l>` | gera o ext4 da linguagem (`-- --all` para todas); compila antes |
+| `task image:build -- --stack <l>` | gera o ext4 da linguagem (`-- --all` para todas); compila antes |
 | `task run -- <flags>` | executa um código numa VM nova |
 | `task serve -- <flags>` | sobe a API em `127.0.0.1:8080` com pool; compila antes |
 | `task doctor` | confere se o host roda microVMs |
@@ -28,8 +28,8 @@ O projeto usa [Task](https://taskfile.dev). `task` sem argumento lista tudo.
 task krun:install
 task build
 task doctor
-task image:build -- --lang python
-task run -- --lang python --code 'print(1)'
+task image:build -- --stack python
+task run -- --stack python --code 'print(1)'
 task serve
 ```
 

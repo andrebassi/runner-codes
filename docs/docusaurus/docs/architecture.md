@@ -11,7 +11,7 @@ sidebar_position: 3
         │
         ▼
 ┌───────────────────────────────┐
-│ runner.code serve | run    │  host (macOS ou Linux)
+│ rc serve | run    │  host (macOS ou Linux)
 │  ├─ domínio: valida o job     │
 │  ├─ pool: VMs prontas por     │
 │  │   linguagem                │
@@ -20,7 +20,7 @@ sidebar_position: 3
                │ spawn (nunca fork)
                ▼
 ┌───────────────────────────────┐
-│ runner.code vmm --spec     │  um processo por VM
+│ rc vmm --spec     │  um processo por VM
 │  libkrun (purego) +           │
 │  libkrunfw (kernel Linux)     │
 │  HVF no macOS / KVM no Linux  │
@@ -42,7 +42,7 @@ sidebar_position: 3
 | Binário | Onde roda | O que faz |
 |---------|-----------|-----------|
 | `runner.code` | host | `serve` (API + pool), `run` (job pela CLI), `image build`, `languages`, `doctor` e o subcomando interno `vmm` |
-| `runner-guest` | dentro da VM | escuta a porta vsock 5000, escreve os arquivos, compila se for o caso, executa e devolve o resultado. Guardado como `bin/runner.code-guest-linux-<arch>` |
+| `runner-guest` | dentro da VM | escuta a porta vsock 5000, escreve os arquivos, compila se for o caso, executa e devolve o resultado. Guardado como `bin/rc-guest-linux-<arch>` |
 
 São dois binários porque o purego força link dinâmico contra a glibc no Linux, e as imagens das linguagens são Alpine (musl). Um guest dinâmico falha dentro da VM com `not found`; o guest é compilado estático.
 
@@ -73,7 +73,7 @@ O código do host segue arquitetura hexagonal:
 
 ## Ciclo de vida de uma VM
 
-- O launcher cria o processo `runner.code vmm --spec <arquivo>` por **spawn**. Fork de processo multi-thread é morto pelo Hypervisor.framework cerca de 2 s depois, por isso nunca se usa fork.
+- O launcher cria o processo `rc vmm --spec <arquivo>` por **spawn**. Fork de processo multi-thread é morto pelo Hypervisor.framework cerca de 2 s depois, por isso nunca se usa fork.
 - O processo `vmm` carrega a libkrun, configura a VM a partir da spec e chama `krun_start_enter`, que assume o processo até a VM terminar.
 - Timeout de job: SIGKILL no grupo do processo.
 - Se o pai morre, a VM morre: `Pdeathsig` no Linux; no macOS, um pipe de vigia no fd 3.
@@ -90,5 +90,5 @@ Cada linguagem tem um ext4 read-only gerado a partir da imagem OCI oficial, com 
 |----------|--------|-----|
 | `RUNNER_LISTEN` | `127.0.0.1:8080` | endereço da API (`serve`) |
 | `RUNNER_CACHE_DIR` | `~/Library/Caches/runner-codes` (macOS), `~/.cache/runner-codes` (Linux) | imagens, VM de build e sockets |
-| `RUNNER_KRUN_LIB` | `/opt/homebrew/lib/libkrun.dylib` (macOS), `libkrun.so.1` (Linux) | caminho da libkrun |
-| `RUNNER_GUEST_BIN` | `runner.code-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |
+| `RUNNER_KRUN_LIB` | `~/.nix-profile/lib/libkrun.dylib` (macOS); no Linux `~/.nix-profile/lib/libkrun.so.1` ou o soname `libkrun.so.1` | caminho da libkrun |
+| `RUNNER_GUEST_BIN` | `rc-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |

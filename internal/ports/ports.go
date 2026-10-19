@@ -20,14 +20,18 @@ type VMSpec struct {
 	RootDisk string `json:"root_disk,omitempty"`
 	// RootDir é um diretório compartilhado por virtiofs como /. Só a VM de build usa,
 	// porque virtiofs não impede o guest de alcançar o resto do host (doc da libkrun).
-	RootDir     string   `json:"root_dir,omitempty"`
-	VsockSocket string   `json:"vsock_socket,omitempty"`
-	VsockPort   uint32   `json:"vsock_port,omitempty"`
-	Network     bool     `json:"network,omitempty"`
-	Console     string   `json:"console,omitempty"`
-	Exec        string   `json:"exec"`
-	Args        []string `json:"args,omitempty"`
-	Env         []string `json:"env,omitempty"`
+	RootDir     string `json:"root_dir,omitempty"`
+	VsockSocket string `json:"vsock_socket,omitempty"`
+	VsockPort   uint32 `json:"vsock_port,omitempty"`
+	Network     bool   `json:"network,omitempty"`
+	Console     string `json:"console,omitempty"`
+	// TTY liga o stdin/stdout/stderr do processo vmm a uma porta de console virtio no
+	// guest (/dev/hvc0), que o guest enxerga como terminal: Ctrl+C, job control e
+	// tamanho da janela funcionam. Só faz sentido com um terminal de verdade no host.
+	TTY  bool     `json:"tty,omitempty"`
+	Exec string   `json:"exec"`
+	Args []string `json:"args,omitempty"`
+	Env  []string `json:"env,omitempty"`
 	// UID e GID trocam o usuário do processo vmm antes do boot (Linux). Nil mantém o atual.
 	UID *uint32 `json:"uid,omitempty"`
 	GID *uint32 `json:"gid,omitempty"`
@@ -36,22 +40,26 @@ type VMSpec struct {
 // Validate recusa spec que a libkrun aceitaria mas que quebraria em silêncio dentro do guest.
 func (s VMSpec) Validate() error {
 	if s.CPUs == 0 || s.MemoryMiB == 0 {
-		return errors.New("spec: cpus e memory_mib precisam ser maiores que zero")
+		return errors.New("spec: cpus and memory_mib must be greater than zero")
 	}
 	if (s.RootDisk == "") == (s.RootDir == "") {
-		return errors.New("spec: informe exatamente um entre root_disk e root_dir")
+		return errors.New("spec: set exactly one of root_disk and root_dir")
 	}
 	if s.Exec == "" {
-		return errors.New("spec: exec é obrigatório")
+		return errors.New("spec: exec is required")
+	}
+	if s.TTY && s.Console != "" {
+		// O console vira o terminal: gravar em arquivo ao mesmo tempo não tem destino.
+		return errors.New("spec: tty and console are mutually exclusive")
 	}
 	if (s.VsockSocket == "") != (s.VsockPort == 0) {
-		return errors.New("spec: vsock_socket e vsock_port andam juntos")
+		return errors.New("spec: vsock_socket and vsock_port must be set together")
 	}
 	// A libkrun leva o argv pela linha de comando do kernel: argumento com espaço
 	// chega partido no guest (medido no spike). Comando composto vai por arquivo.
 	for _, a := range append([]string{s.Exec}, s.Args...) {
 		if a == "" || strings.ContainsAny(a, " \t\n") {
-			return fmt.Errorf("spec: argumento %q vazio ou com espaço; passe o comando por arquivo na imagem", a)
+			return fmt.Errorf("spec: argument %q is empty or contains whitespace; pass the command through a file in the image", a)
 		}
 	}
 	return nil

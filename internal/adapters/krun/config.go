@@ -36,6 +36,8 @@ type API interface {
 	SetUID(ctx uint32, uid uint32) int32
 	SetGID(ctx uint32, gid uint32) int32
 	SetExec(ctx uint32, path string, argv, envp []string) int32
+	DisableImplicitConsole(ctx uint32) int32
+	AddVirtioConsoleDefault(ctx uint32, inFD, outFD, errFD int32) int32
 	StartEnter(ctx uint32) int32
 }
 
@@ -80,6 +82,13 @@ func Configure(api API, s Spec) (uint32, error) {
 		// listen=true: o host conecta e a libkrun repassa para o guest que escuta na porta.
 		add("krun_add_vsock_port2", func() int32 { return api.AddVsockPort2(ctx, s.VsockPort, s.VsockSocket, true) })
 	}
+	if s.TTY {
+		// Sem o console implícito, o primeiro console explícito é o hvc0. Com os três fds
+		// sendo TTY, a libkrun cria uma porta de console só, e o init do guest a usa
+		// como terminal do programa (libkrun.h, krun_add_virtio_console_default).
+		add("krun_disable_implicit_console", func() int32 { return api.DisableImplicitConsole(ctx) })
+		add("krun_add_virtio_console_default", func() int32 { return api.AddVirtioConsoleDefault(ctx, 0, 1, 2) })
+	}
 	if s.Console != "" {
 		add("krun_set_console_output", func() int32 { return api.SetConsoleOutput(ctx, s.Console) })
 	}
@@ -102,5 +111,5 @@ func Configure(api API, s Spec) (uint32, error) {
 
 // callErr padroniza o erro de uma chamada C que devolveu -errno.
 func callErr(name string, rc int32) error {
-	return fmt.Errorf("%s falhou: errno %d", name, -rc)
+	return fmt.Errorf("%s failed: errno %d", name, -rc)
 }

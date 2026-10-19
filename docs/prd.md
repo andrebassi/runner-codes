@@ -40,12 +40,12 @@ libkrun upstream não tem backend WHP.
 - **FR2:** `POST /api/v1/execute` recebe `{trace_id, lang, code, timeout}` (formato interno) e devolve `{trace_id, stdout, stderr, exit_code}`.
 - **FR3:** `GET /api/v1/languages` lista as linguagens com imagem construída neste host.
 - **FR4:** Cada job roda numa microVM que nunca executou outro job. Ao fim do job, a VM é destruída.
-- **FR5:** `runner.code image build --lang <l>` gera, a partir da imagem OCI oficial da linguagem, um ext4 read-only com o guest-runner dentro e o warmup aplicado. A geração não exige root nem Docker.
+- **FR5:** `rc image build --stack <l>` gera, a partir da imagem OCI oficial da linguagem, um ext4 read-only com o guest-runner dentro e o warmup aplicado. A geração não exige root nem Docker.
 - **FR6:** Um pool por linguagem mantém N VMs já bootadas (N configurável, padrão 2) e repõe cada VM consumida em background.
 - **FR7:** Com o pool vazio, o job faz boot frio na hora; ele não é recusado.
 - **FR8:** Um job que passa do timeout é encerrado matando a VM, e a resposta indica timeout.
-- **FR9:** `runner.code run --lang <l> --code <c>` executa um job pela CLI, sem o servidor HTTP.
-- **FR10:** `runner.code doctor` diz se o host pode rodar VMs (HVF/KVM, libkrun, libkrunfw, imagens construídas), com um motivo por item reprovado.
+- **FR9:** `rc run --stack <l> --code <c>` executa um job pela CLI, sem o servidor HTTP.
+- **FR10:** `rc doctor` diz se o host pode rodar VMs (HVF/KVM, libkrun, libkrunfw, imagens construídas), com um motivo por item reprovado.
 
 ### Non Functional
 
@@ -69,7 +69,7 @@ o site de docs em `docs/docusaurus`.
 ### Service Architecture
 
 Monólito com arquitetura hexagonal. Um processo de serviço (HTTP + pool), e cada VM num processo filho
-`runner.code vmm`, criado por spawn: `krun_start_enter` assume o processo, e fork de processo multi-thread
+`rc vmm`, criado por spawn: `krun_start_enter` assume o processo, e fork de processo multi-thread
 é morto pelo HVF.
 
 ### Testing Requirements
@@ -81,7 +81,7 @@ Monólito com arquitetura hexagonal. Um processo de serviço (HTTP + pool), e ca
 
 ### Additional Technical Assumptions
 
-- libkrun 1.19.6 e libkrunfw 5.6.2 no macOS, via `brew tap slp/krun`. No Linux, nixpkgs (libkrun 1.19.5, libkrunfw 5.5.0).
+- libkrun 1.19.6 e libkrunfw 5.6.2 no macOS, por derivação Nix própria (`nix/`; até 19/10/2026 vinham do brew `slp/krun`). No Linux, nixpkgs (libkrun 1.19.5 com virtio-blk, libkrunfw 5.5.0). Sem Homebrew.
 - Binding por `purego` (sem cgo).
 - OCI por `go-containerregistry`; ext4 por `mkfs.ext4 -d` (e2fsprogs).
 - O guest-runner atual (`pkg/guest`) é mantido, com o protocolo vsock de 4 bytes BE + JSON.
@@ -113,7 +113,7 @@ Acceptance Criteria
 
 #### Story 1.2 — Binding purego e subcomando `vmm`
 
-As a serviço, I want lançar uma VM por spawn de `runner.code vmm --spec`, so that cada VM seja um processo descartável.
+As a serviço, I want lançar uma VM por spawn de `rc vmm --spec`, so that cada VM seja um processo descartável.
 
 Acceptance Criteria
 1. `internal/adapters/krun` carrega libkrun por purego e expõe as chamadas usadas.
@@ -137,7 +137,7 @@ Goal: transformar a imagem OCI oficial de cada linguagem num ext4 read-only pron
 
 #### Story 2.1 — `image build` OCI → ext4
 
-As a operador, I want `runner.code image build --lang <l>`, so that a imagem da linguagem seja gerada sem Docker e sem root.
+As a operador, I want `rc image build --stack <l>`, so that a imagem da linguagem seja gerada sem Docker e sem root.
 
 Acceptance Criteria
 1. Pull e achatamento das camadas com go-containerregistry, com whiteouts respeitados.

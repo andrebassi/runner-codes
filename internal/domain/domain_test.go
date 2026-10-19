@@ -18,10 +18,10 @@ func validJob() Job {
 // TestNormalizeDefaultTimeout: job sem timeout ganha o padrão; com timeout, mantém.
 func TestNormalizeDefaultTimeout(t *testing.T) {
 	if got := (Job{}).Normalize().Timeout; got != DefaultTimeout {
-		t.Fatalf("timeout padrão %v, quer %v", got, DefaultTimeout)
+		t.Fatalf("default timeout %v, want %v", got, DefaultTimeout)
 	}
 	if got := (Job{Timeout: 3 * time.Second}).Normalize().Timeout; got != 3*time.Second {
-		t.Fatalf("timeout explícito alterado: %v", got)
+		t.Fatalf("explicit timeout changed: %v", got)
 	}
 }
 
@@ -44,27 +44,27 @@ func TestValidateRejects(t *testing.T) {
 		many[i] = File{Name: strings.Repeat("a", i+1)}
 	}
 	cases := map[string]Job{
-		"linguagem desconhecida": mut(func(j *Job) { j.Language = "cobol" }),
-		"stdin grande":           mut(func(j *Job) { j.Stdin = strings.Repeat("x", MaxStdinBytes+1) }),
-		"timeout zero":           mut(func(j *Job) { j.Timeout = 0 }),
-		"timeout acima do teto":  mut(func(j *Job) { j.Timeout = MaxTimeout + time.Second }),
-		"sem código":             mut(func(j *Job) { j.Code = "" }),
-		"arquivos demais":        mut(func(j *Job) { j.Files = many }),
-		"traversal com barra":    mut(func(j *Job) { j.Files = []File{{Name: "../etc/passwd"}} }),
-		"barra invertida":        mut(func(j *Job) { j.Files = []File{{Name: `a\b`}} }),
-		"byte nulo":              mut(func(j *Job) { j.Files = []File{{Name: "a\x00b"}} }),
-		"ponto ponto":            mut(func(j *Job) { j.Files = []File{{Name: ".."}} }),
-		"ponto":                  mut(func(j *Job) { j.Files = []File{{Name: "."}} }),
-		"vazio":                  mut(func(j *Job) { j.Files = []File{{Name: ""}} }),
-		"oculto":                 mut(func(j *Job) { j.Files = []File{{Name: ".bashrc"}} }),
-		"nome longo":             mut(func(j *Job) { j.Files = []File{{Name: strings.Repeat("a", 256)}} }),
-		"repetido":               mut(func(j *Job) { j.Files = []File{{Name: "a.py"}, {Name: "a.py"}} }),
-		"código grande":          mut(func(j *Job) { j.Files = []File{{Name: "a.py", Content: strings.Repeat("x", MaxSourceBytes)}} }),
+		"unknown language":      mut(func(j *Job) { j.Language = "cobol" }),
+		"large stdin":           mut(func(j *Job) { j.Stdin = strings.Repeat("x", MaxStdinBytes+1) }),
+		"timeout zero":          mut(func(j *Job) { j.Timeout = 0 }),
+		"timeout above ceiling": mut(func(j *Job) { j.Timeout = MaxTimeout + time.Second }),
+		"no code":               mut(func(j *Job) { j.Code = "" }),
+		"too many files":        mut(func(j *Job) { j.Files = many }),
+		"traversal with slash":  mut(func(j *Job) { j.Files = []File{{Name: "../etc/passwd"}} }),
+		"backslash":             mut(func(j *Job) { j.Files = []File{{Name: `a\b`}} }),
+		"null byte":             mut(func(j *Job) { j.Files = []File{{Name: "a\x00b"}} }),
+		"dot dot":               mut(func(j *Job) { j.Files = []File{{Name: ".."}} }),
+		"dot":                   mut(func(j *Job) { j.Files = []File{{Name: "."}} }),
+		"empty":                 mut(func(j *Job) { j.Files = []File{{Name: ""}} }),
+		"hidden":                mut(func(j *Job) { j.Files = []File{{Name: ".bashrc"}} }),
+		"long name":             mut(func(j *Job) { j.Files = []File{{Name: strings.Repeat("a", 256)}} }),
+		"duplicate":             mut(func(j *Job) { j.Files = []File{{Name: "a.py"}, {Name: "a.py"}} }),
+		"large code":            mut(func(j *Job) { j.Files = []File{{Name: "a.py", Content: strings.Repeat("x", MaxSourceBytes)}} }),
 	}
 	for name, j := range cases {
 		t.Run(name, func(t *testing.T) {
 			if err := j.Validate(known); err == nil {
-				t.Fatal("esperava recusa")
+				t.Fatal("expected rejection")
 			}
 		})
 	}
@@ -74,20 +74,20 @@ func TestValidateRejects(t *testing.T) {
 func TestErrorCodes(t *testing.T) {
 	err := mutStdin().Validate(known)
 	if !errors.Is(err, ErrStdinTooBig) || !strings.HasPrefix(err.Error(), "E005") {
-		t.Fatalf("stdin grande deveria ser E005, veio %v", err)
+		t.Fatalf("large stdin should be E005, got %v", err)
 	}
 	err = Job{Language: "zig", Code: "x", Timeout: time.Second}.Validate(known)
 	var ul ErrUnsupportedLanguage
 	if !errors.As(err, &ul) || err.Error() != "E006: unsupported language zig" {
-		t.Fatalf("linguagem desconhecida deveria ser E006, veio %v", err)
+		t.Fatalf("unknown language should be E006, got %v", err)
 	}
 	if !strings.HasPrefix(ErrTimeout.Error(), "E001") {
-		t.Fatal("timeout deveria ser E001")
+		t.Fatal("timeout should be E001")
 	}
 	// Toda recusa vem como ValidationError: é o que a API usa para responder 400 e não 500.
 	var ve ValidationError
 	if !errors.As(err, &ve) || !errors.As(mutStdin().Validate(known), &ve) {
-		t.Fatal("recusa de validação deveria ser ValidationError")
+		t.Fatal("validation rejection should be ValidationError")
 	}
 }
 
@@ -105,17 +105,17 @@ func TestValidateLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := map[string]Language{
-		"sem nome":        {Image: "x", CPUs: 1, MemoryMiB: 512},
-		"nome com barra":  {Name: "a/b", Image: "x", CPUs: 1, MemoryMiB: 512},
-		"nome com ponto":  {Name: "a.b", Image: "x", CPUs: 1, MemoryMiB: 512},
-		"sem imagem":      {Name: "a", CPUs: 1, MemoryMiB: 512},
-		"sem cpu":         {Name: "a", Image: "x", MemoryMiB: 512},
-		"memória pequena": {Name: "a", Image: "x", CPUs: 1, MemoryMiB: 64},
+		"no name":         {Image: "x", CPUs: 1, MemoryMiB: 512},
+		"name with slash": {Name: "a/b", Image: "x", CPUs: 1, MemoryMiB: 512},
+		"name with dot":   {Name: "a.b", Image: "x", CPUs: 1, MemoryMiB: 512},
+		"no image":        {Name: "a", CPUs: 1, MemoryMiB: 512},
+		"no cpu":          {Name: "a", Image: "x", MemoryMiB: 512},
+		"small memory":    {Name: "a", Image: "x", CPUs: 1, MemoryMiB: 64},
 	}
 	for name, l := range bad {
 		t.Run(name, func(t *testing.T) {
 			if err := l.ValidateLanguage(); err == nil {
-				t.Fatal("esperava recusa")
+				t.Fatal("expected rejection")
 			}
 		})
 	}

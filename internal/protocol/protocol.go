@@ -53,10 +53,10 @@ type Result struct {
 func WriteFrame(w io.Writer, v interface{}) error {
 	body, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("serializar frame: %w", err)
+		return fmt.Errorf("marshal frame: %w", err)
 	}
 	if len(body) > MaxFrameBytes {
-		return fmt.Errorf("frame de %d bytes passa do limite de %d", len(body), MaxFrameBytes)
+		return fmt.Errorf("frame of %d bytes exceeds the limit of %d", len(body), MaxFrameBytes)
 	}
 	buf := make([]byte, 4+len(body))
 	binary.BigEndian.PutUint32(buf, uint32(len(body)))
@@ -69,18 +69,18 @@ func WriteFrame(w io.Writer, v interface{}) error {
 func ReadFrame(r io.Reader, v interface{}) error {
 	var hdr [4]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
-		return fmt.Errorf("ler tamanho do frame: %w", err)
+		return fmt.Errorf("read frame length: %w", err)
 	}
 	n := binary.BigEndian.Uint32(hdr[:])
 	if n > MaxFrameBytes {
-		return fmt.Errorf("frame de %d bytes passa do limite de %d", n, MaxFrameBytes)
+		return fmt.Errorf("frame of %d bytes exceeds the limit of %d", n, MaxFrameBytes)
 	}
 	body := make([]byte, n)
 	if _, err := io.ReadFull(r, body); err != nil {
-		return fmt.Errorf("ler corpo do frame: %w", err)
+		return fmt.Errorf("read frame body: %w", err)
 	}
 	if err := json.Unmarshal(body, v); err != nil {
-		return fmt.Errorf("decodificar frame: %w", err)
+		return fmt.Errorf("decode frame: %w", err)
 	}
 	return nil
 }

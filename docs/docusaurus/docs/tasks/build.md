@@ -11,8 +11,8 @@ task build
 
 Roda `scripts/build.sh`, que:
 
-1. compila o host `bin/runner.code` para o sistema atual, com `CGO_ENABLED=0` (a libkrun é carregada por purego em tempo de execução);
-2. compila o guest `bin/runner.code-guest-linux-<arch>` a partir de `./cmd/runner-guest`: sempre Linux, estático, da mesma arquitetura do host — a libkrun não emula outra arquitetura;
+1. compila o host `bin/rc` para o sistema atual, com `CGO_ENABLED=0` (a libkrun é carregada por purego em tempo de execução);
+2. compila o guest `bin/rc-guest-linux-<arch>` a partir de `./cmd/runner-guest`: sempre Linux, estático, da mesma arquitetura do host — a libkrun não emula outra arquitetura;
 3. **reprova** se o guest sair dinâmico, porque um binário dinâmico não roda na imagem musl (`not found`);
 4. no macOS, assina o host com `codesign` e o entitlement `com.apple.security.hypervisor` (`build/hv.entitlements`). Sem ele, `krun_start_enter` falha.
 
@@ -25,7 +25,7 @@ O purego força link dinâmico contra a glibc no Linux. As imagens das linguagen
 ## task image:build
 
 ```bash
-task image:build -- --lang python
+task image:build -- --stack python
 task image:build -- --all
 ```
 
@@ -39,10 +39,10 @@ task krun:install
 
 | Sistema | Como |
 |---------|------|
-| macOS | `brew tap slp/krun && brew trust slp/krun && brew install slp/krun/libkrunfw slp/krun/libkrun` |
-| Linux | `nix profile install nixpkgs#libkrun nixpkgs#libkrunfw` (libkrun 1.19.5, libkrunfw 5.5.0) |
+| macOS | `task krun:install`: libkrun 1.19.6 / libkrunfw 5.6.2 das derivações em `nix/` |
+| Linux | `task krun:install`: libkrun / libkrunfw do nixpkgs, com virtio-blk ligado |
 
-No macOS o `brew trust` é obrigatório: o brew recusa instalar a partir de tap não confiado.
+Os dois instalam `.#krun` no perfil do Nix (`~/.nix-profile/lib`), onde o `rc` procura por padrão.
 
 ## Windows
 

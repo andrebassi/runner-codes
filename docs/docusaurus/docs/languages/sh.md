@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é executado com `sh <arquivo>` — 
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang sh
+rc image build --stack sh
 ```
 
 ## Exemplo

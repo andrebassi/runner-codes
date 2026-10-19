@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é executado com `perl <arquivo>`. S
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang perl
+rc image build --stack perl
 ```
 
 ## Exemplo

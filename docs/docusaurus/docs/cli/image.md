@@ -6,23 +6,23 @@ description: 'Construir o ext4 read-only de uma linguagem a partir da imagem OCI
 ## Uso
 
 ```bash
-runner.code image build --lang python
-runner.code image build --lang python --lang go
-runner.code image build --lang python,go
-runner.code image build --all
+rc image build --stack python
+rc image build --stack python --stack go
+rc image build --stack python,go
+rc image build --all
 ```
 
 | Flag | Descrição |
 |------|-----------|
-| `--lang` | linguagem do catálogo; repetível ou separada por vírgula |
+| `--stack` | linguagem do catálogo; repetível ou separada por vírgula |
 | `--all` | todas as linguagens do catálogo |
 
-Sem `--lang` nem `--all`, o comando falha com `informe --lang ou --all`. Linguagem fora do catálogo falha com E006.
+Sem `--stack` nem `--all`, o comando falha com `informe --stack ou --all`. Linguagem fora do catálogo falha com E006.
 
 Pelo Taskfile (que compila antes):
 
 ```bash
-task image:build -- --lang python
+task image:build -- --stack python
 task image:build -- --all
 ```
 

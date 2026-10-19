@@ -8,7 +8,7 @@ description: 'Os subcomandos do runner.code'
 `runner.code` é o binário do host. Ele roda no macOS Apple Silicon e no Linux x86_64/aarch64 com KVM.
 
 ```bash
-runner.code --help
+rc --help
 ```
 
 | Subcomando | O que faz | Página |
@@ -25,7 +25,7 @@ O guest (`runner-guest`) é outro binário e roda só dentro da VM; não é cham
 ## languages
 
 ```bash
-runner.code languages
+rc languages
 ```
 
 Uma linha por linguagem do catálogo, com `ready=true` quando o ext4 já existe no cache, e a imagem OCI de origem:
@@ -39,7 +39,7 @@ nodejs   ready=false node:22-alpine
 ## doctor
 
 ```bash
-runner.code doctor
+rc doctor
 ```
 
 Confere, uma linha por item:
@@ -59,14 +59,14 @@ Cada falha sai como `FALHA <item> <motivo>`, e o comando termina com erro quando
 |----------|--------|-----|
 | `RUNNER_LISTEN` | `127.0.0.1:8080` | endereço do `serve` |
 | `RUNNER_CACHE_DIR` | `~/Library/Caches/runner-codes` (macOS), `~/.cache/runner-codes` (Linux) | imagens, VM de build, sockets |
-| `RUNNER_KRUN_LIB` | `/opt/homebrew/lib/libkrun.dylib` (macOS), `libkrun.so.1` (Linux) | caminho da libkrun |
-| `RUNNER_GUEST_BIN` | `runner.code-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |
+| `RUNNER_KRUN_LIB` | `~/.nix-profile/lib/libkrun.dylib` (macOS); no Linux `~/.nix-profile/lib/libkrun.so.1` ou o soname `libkrun.so.1` | caminho da libkrun |
+| `RUNNER_GUEST_BIN` | `rc-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |
 
 ## Pelo Taskfile
 
 | Task | Equivale a |
 |------|------------|
-| `task run -- <flags>` | `./bin/runner.code run <flags>` |
-| `task serve -- <flags>` | `./bin/runner.code serve <flags>` |
-| `task image:build -- <flags>` | `./bin/runner.code image build <flags>` |
-| `task doctor` | `./bin/runner.code doctor` |
+| `task run -- <flags>` | `./bin/rc run <flags>` |
+| `task serve -- <flags>` | `./bin/rc serve <flags>` |
+| `task image:build -- <flags>` | `./bin/rc image build <flags>` |
+| `task doctor` | `./bin/rc doctor` |

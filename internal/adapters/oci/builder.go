@@ -33,6 +33,9 @@ var buildScript []byte
 //go:embed scripts/start.sh
 var startScript []byte
 
+//go:embed scripts/shell.sh
+var shellScript []byte
+
 //go:embed scripts/bootstrap.sh
 var bootstrapScript []byte
 
@@ -140,13 +143,13 @@ func (b *Builder) EnsureBuilder(ctx context.Context) error {
 		return nil
 	}
 	if b.Source.URL == "" || b.Source.SHA256 == "" {
-		return fmt.Errorf("sem minirootfs conferido para a arquitetura %s", b.Arch)
+		return fmt.Errorf("no verified minirootfs for architecture %s", b.Arch)
 	}
 	os.RemoveAll(root)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
-	b.logf("baixando %s", b.Source.URL)
+	b.logf("downloading %s", b.Source.URL)
 	if err := b.downloadVerified(ctx, root); err != nil {
 		return err
 	}
@@ -160,9 +163,9 @@ func (b *Builder) EnsureBuilder(ctx context.Context) error {
 	if err := os.WriteFile(filepath.Join(work, "bootstrap.sh"), bootstrapScript, 0o755); err != nil {
 		return err
 	}
-	b.logf("instalando e2fsprogs e tar na VM de build")
+	b.logf("installing e2fsprogs and tar in the build VM")
 	if _, err := b.runBuildVM(ctx, "/work/bootstrap.sh", nil, filepath.Join(work, "bootstrap.console")); err != nil {
-		return fmt.Errorf("bootstrap da VM de build: %w", err)
+		return fmt.Errorf("build VM bootstrap: %w", err)
 	}
 	return os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)), 0o644)
 }
@@ -179,11 +182,11 @@ func (b *Builder) downloadVerified(ctx context.Context, root string) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("baixar minirootfs: %w", err)
+		return fmt.Errorf("download minirootfs: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("baixar minirootfs: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("download minirootfs: HTTP %d", resp.StatusCode)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(root), "minirootfs-*.tar.gz")
 	if err != nil {
@@ -196,7 +199,7 @@ func (b *Builder) downloadVerified(ctx context.Context, root string) error {
 		return err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != b.Source.SHA256 {
-		return fmt.Errorf("sha256 do minirootfs não confere: %s, esperado %s", got, b.Source.SHA256)
+		return fmt.Errorf("minirootfs sha256 does not match: %s, expected %s", got, b.Source.SHA256)
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return err
@@ -208,7 +211,7 @@ func (b *Builder) downloadVerified(ctx context.Context, root string) error {
 // (o guest vai dentro da imagem, então guest novo exige imagem nova).
 func cacheKey(digest, warmup string, guestSum []byte) string {
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte(digest), []byte(warmup), buildScript, startScript, guestSum} {
+	for _, part := range [][]byte{[]byte(digest), []byte(warmup), buildScript, startScript, shellScript, guestSum} {
 		h.Write(part)
 		h.Write([]byte{0})
 	}
@@ -238,12 +241,12 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	}
 	guestSum, err := fileSum(b.GuestBinary)
 	if err != nil {
-		return res, fmt.Errorf("guest para injetar: %w", err)
+		return res, fmt.Errorf("guest to inject: %w", err)
 	}
-	b.logf("[%s] resolvendo %s (linux/%s)", lang.Name, lang.Image, b.Arch)
+	b.logf("[%s] resolving %s (linux/%s)", lang.Name, lang.Image, b.Arch)
 	img, err := b.Fetch(ctx, lang.Image, b.Arch)
 	if err != nil {
-		return res, fmt.Errorf("buscar %s: %w", lang.Image, err)
+		return res, fmt.Errorf("fetch %s: %w", lang.Image, err)
 	}
 	digest, err := img.Digest()
 	if err != nil {
@@ -263,7 +266,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	}
 	tarPath := filepath.Join(work, lang.Name+".tar")
 	defer os.Remove(tarPath)
-	b.logf("[%s] baixando e achatando camadas", lang.Name)
+	b.logf("[%s] downloading and flattening layers", lang.Name)
 	if err := writeFlat(img, tarPath); err != nil {
 		return res, err
 	}
@@ -276,6 +279,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	}
 	writes := map[string][]byte{
 		filepath.Join(inject, "start.sh"):           startScript,
+		filepath.Join(inject, "shell.sh"):           shellScript,
 		filepath.Join(inject, "env"):                []byte(strings.Join(env, "\n") + "\n"),
 		filepath.Join(work, "build.sh"):             buildScript,
 		filepath.Join(work, lang.Name+".warmup.sh"): []byte(warmupScript(env, lang.Warmup)),
@@ -287,7 +291,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	}
 	console := filepath.Join(work, lang.Name+".console")
 	args := []string{"/work/" + lang.Name + ".tar", "/work/" + lang.Name + ".ext4", "/work/" + lang.Name + ".warmup.sh"}
-	b.logf("[%s] extraindo, aquecendo e gerando ext4 na VM de build", lang.Name)
+	b.logf("[%s] extracting, warming up and building ext4 in the build VM", lang.Name)
 	metrics, err := b.runBuildVM(ctx, "/work/build.sh", args, console)
 	if err != nil {
 		return res, err
@@ -296,7 +300,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 		return res, err
 	}
 	if err := os.Rename(filepath.Join(work, lang.Name+".ext4"), out); err != nil {
-		return res, fmt.Errorf("mover ext4: %w", err)
+		return res, fmt.Errorf("move ext4: %w", err)
 	}
 	res.Path, res.Metrics, res.Elapsed = out, metrics, time.Since(start)
 	return res, b.link(lang.Name, out)
@@ -321,7 +325,7 @@ func (b *Builder) runBuildVM(ctx context.Context, exec string, args []string, co
 	}
 	result, tail := scanConsole(console)
 	if code != 0 {
-		return "", fmt.Errorf("VM de build saiu com código %d; fim do console:\n%s", code, tail)
+		return "", fmt.Errorf("build VM exited with code %d; console tail:\n%s", code, tail)
 	}
 	return result, nil
 }
@@ -330,7 +334,7 @@ func (b *Builder) runBuildVM(ctx context.Context, exec string, args []string, co
 func scanConsole(path string) (result, tail string) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", "(sem console)"
+		return "", "(no console)"
 	}
 	defer f.Close()
 	var last []string
@@ -367,7 +371,7 @@ func writeFlat(img v1.Image, path string) error {
 		err = cerr
 	}
 	if err != nil {
-		return fmt.Errorf("achatar camadas: %w", err)
+		return fmt.Errorf("flatten layers: %w", err)
 	}
 	return nil
 }
@@ -378,7 +382,7 @@ func writeFlat(img v1.Image, path string) error {
 func imageEnv(img v1.Image) ([]string, error) {
 	cfg, err := img.ConfigFile()
 	if err != nil {
-		return nil, fmt.Errorf("ler config da imagem: %w", err)
+		return nil, fmt.Errorf("read image config: %w", err)
 	}
 	var env []string
 	for _, kv := range cfg.Config.Env {

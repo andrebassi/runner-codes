@@ -24,6 +24,8 @@ type libAPI struct {
 	setGID               func(uint32, uint32) int32
 	setExec              func(uint32, string, unsafe.Pointer, unsafe.Pointer) int32
 	startEnter           func(uint32) int32
+	disableImplConsole   func(uint32) int32
+	addVirtioConsoleDef  func(uint32, int32, int32, int32) int32
 }
 
 // keepAlive segura os arrays argv/envp passados à libkrun: krun_start_enter não volta
@@ -35,11 +37,11 @@ var keepAlive [][]*byte
 func Load(path string) (api API, err error) {
 	h, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
-		return nil, fmt.Errorf("abrir libkrun em %s: %w", path, err)
+		return nil, fmt.Errorf("open libkrun at %s: %w", path, err)
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			api, err = nil, fmt.Errorf("libkrun em %s sem símbolo esperado: %v", path, r)
+			api, err = nil, fmt.Errorf("libkrun at %s lacks an expected symbol: %v", path, r)
 		}
 	}()
 	l := &libAPI{}
@@ -58,6 +60,8 @@ func Load(path string) (api API, err error) {
 	reg(&l.setGID, "krun_setgid")
 	reg(&l.setExec, "krun_set_exec")
 	reg(&l.startEnter, "krun_start_enter")
+	reg(&l.disableImplConsole, "krun_disable_implicit_console")
+	reg(&l.addVirtioConsoleDef, "krun_add_virtio_console_default")
 	return l, nil
 }
 
@@ -122,6 +126,14 @@ func (l *libAPI) SetGID(ctx uint32, gid uint32) int32 { return l.setGID(ctx, gid
 // SetExec repassa a krun_set_exec, convertendo argv e envp para arrays C.
 func (l *libAPI) SetExec(ctx uint32, path string, argv, envp []string) int32 {
 	return l.setExec(ctx, path, cStringArray(argv), cStringArray(envp))
+}
+
+// DisableImplicitConsole repassa a krun_disable_implicit_console.
+func (l *libAPI) DisableImplicitConsole(ctx uint32) int32 { return l.disableImplConsole(ctx) }
+
+// AddVirtioConsoleDefault repassa a krun_add_virtio_console_default.
+func (l *libAPI) AddVirtioConsoleDefault(ctx uint32, inFD, outFD, errFD int32) int32 {
+	return l.addVirtioConsoleDef(ctx, inFD, outFD, errFD)
 }
 
 // StartEnter repassa a krun_start_enter; só volta em erro.
