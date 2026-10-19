@@ -36,21 +36,21 @@ func Parse(raw []byte) (*Catalog, error) {
 	dec.KnownFields(true)
 	var f file
 	if err := dec.Decode(&f); err != nil {
-		return nil, fmt.Errorf("catálogo: %w", err)
+		return nil, fmt.Errorf("catalog: %w", err)
 	}
 	if len(f.Languages) == 0 {
-		return nil, fmt.Errorf("catálogo vazio")
+		return nil, fmt.Errorf("empty catalog")
 	}
 	c := &Catalog{byName: map[string]domain.Language{}}
 	for _, l := range f.Languages {
 		if err := l.ValidateLanguage(); err != nil {
-			return nil, fmt.Errorf("catálogo: %w", err)
+			return nil, fmt.Errorf("catalog: %w", err)
 		}
 		if strings.Contains(l.Warmup, "\n") {
-			return nil, fmt.Errorf("catálogo: warmup de %s tem mais de uma linha", l.Name)
+			return nil, fmt.Errorf("catalog: warmup of %s has more than one line", l.Name)
 		}
 		if _, dup := c.byName[l.Name]; dup {
-			return nil, fmt.Errorf("catálogo: linguagem %s repetida", l.Name)
+			return nil, fmt.Errorf("catalog: duplicate language %s", l.Name)
 		}
 		c.byName[l.Name] = l
 	}

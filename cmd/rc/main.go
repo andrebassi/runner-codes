@@ -1,14 +1,17 @@
-// Command runner.code é o binário do host: serviço HTTP com pool de VMs, CLI de
+// Command rc é o binário do host: serviço HTTP com pool de VMs, CLI de
 // execução e build de imagem, e o processo `vmm` (uma microVM libkrun por processo).
 // O que roda dentro da VM é outro binário, cmd/runner-guest. Este arquivo só liga as peças.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"runner.code/internal/adapters/catalog"
 	"runner.code/internal/adapters/guestproto"
@@ -25,6 +29,7 @@ import (
 	"runner.code/internal/adapters/oci"
 	"runner.code/internal/app"
 	"runner.code/internal/domain"
+	"runner.code/internal/ports"
 )
 
 // Version é preenchida no release por -ldflags "-X main.Version=<tag>".
@@ -50,13 +55,28 @@ func cacheDir() string {
 	return filepath.Join(base, "runner-codes")
 }
 
-// libPath é a libkrun: no macOS o caminho do brew `slp/krun`; no Linux o soname, que o
-// loader resolve pelos caminhos do sistema (nixpkgs ou pacote da distro).
+// libPath é a libkrun. O padrão é o perfil do Nix (`task krun:install` instala `.#krun` ali,
+// nos dois sistemas). No Linux, sem o perfil, cai no soname, que o loader resolve pelos
+// caminhos do sistema (pacote da distro).
 func libPath() string {
-	if runtime.GOOS == "darwin" {
-		return env("RUNNER_KRUN_LIB", "/opt/homebrew/lib/libkrun.dylib")
+	if p := os.Getenv("RUNNER_KRUN_LIB"); p != "" {
+		return p
 	}
-	return env("RUNNER_KRUN_LIB", "libkrun.so.1")
+	home, _ := os.UserHomeDir()
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, ".nix-profile/lib/libkrun.dylib")
+	}
+	if p := filepath.Join(home, ".nix-profile/lib/libkrun.so.1"); fileExists(p) {
+		return p
+	}
+	return "libkrun.so.1"
+}
+
+// fileExists diz se o caminho existe; erro de permissão conta como inexistente, e o Load
+// seguinte reporta o motivo real.
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // guestBinary é o guest Linux injetado nas imagens; o build o deixa ao lado do host.
@@ -65,7 +85,7 @@ func guestBinary() string {
 		return p
 	}
 	exe, _ := os.Executable()
-	return filepath.Join(filepath.Dir(exe), "runner.code-guest-linux-"+runtime.GOARCH)
+	return filepath.Join(filepath.Dir(exe), "rc-guest-linux-"+runtime.GOARCH)
 }
 
 // deps reúne as peças montadas para os subcomandos.
@@ -111,8 +131,8 @@ func (d *deps) newExecutor(poolSize int) (*app.Executor, *app.Pool) {
 
 // main registra os subcomandos.
 func main() {
-	root := &cobra.Command{Use: "runner.code", Short: "Executa código não confiável em microVMs libkrun", Version: Version, SilenceUsage: true}
-	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), serveCmd(), languagesCmd(), doctorCmd())
+	root := &cobra.Command{Use: "rc", Short: "Run untrusted code in libkrun microVMs", Version: Version, SilenceUsage: true}
+	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), serveCmd(), languagesCmd(), doctorCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -123,7 +143,7 @@ func vmmCmd() *cobra.Command {
 	var spec, lib string
 	var watchFD int
 	c := &cobra.Command{
-		Use: "vmm", Hidden: true, Short: "Processo de uma microVM (uso interno)",
+		Use: "vmm", Hidden: true, Short: "Process of one microVM (internal use)",
 		RunE: func(*cobra.Command, []string) error {
 			s, err := krun.ReadSpec(spec)
 			if err != nil {
@@ -133,16 +153,18 @@ func vmmCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var watch *os.File
+			// io.Reader, não *os.File: um *os.File nil dentro da interface a deixa não nula,
+			// o vigia lê, falha na hora e mata a VM com 137 (medido rodando vmm à mão).
+			var watch io.Reader
 			if watchFD > 0 {
 				watch = os.NewFile(uintptr(watchFD), "watch")
 			}
 			return krun.RunVMM(api, s, watch)
 		},
 	}
-	c.Flags().StringVar(&spec, "spec", "", "arquivo JSON da spec")
-	c.Flags().StringVar(&lib, "lib", libPath(), "caminho da libkrun")
-	c.Flags().IntVar(&watchFD, "watch-fd", 0, "fd do pipe de vigia do pai")
+	c.Flags().StringVar(&spec, "spec", "", "spec JSON file")
+	c.Flags().StringVar(&lib, "lib", libPath(), "path to libkrun")
+	c.Flags().IntVar(&watchFD, "watch-fd", 0, "fd of the parent watchdog pipe")
 	return c
 }
 
@@ -151,7 +173,7 @@ func imageCmd() *cobra.Command {
 	var langs []string
 	var all bool
 	build := &cobra.Command{
-		Use: "build", Short: "Gera o ext4 da linguagem a partir da imagem OCI oficial",
+		Use: "build", Short: "Build the ext4 image of a stack from its official OCI image",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, err := wire()
 			if err != nil {
@@ -161,7 +183,7 @@ func imageCmd() *cobra.Command {
 				langs = d.catalog.Names()
 			}
 			if len(langs) == 0 {
-				return errors.New("informe --lang ou --all")
+				return errors.New("pass --stack or --all")
 			}
 			for _, name := range langs {
 				l, ok := d.catalog.Get(name)
@@ -177,9 +199,9 @@ func imageCmd() *cobra.Command {
 			return nil
 		},
 	}
-	build.Flags().StringSliceVar(&langs, "lang", nil, "linguagens (repetível)")
-	build.Flags().BoolVar(&all, "all", false, "todas do catálogo")
-	img := &cobra.Command{Use: "image", Short: "Imagens das linguagens"}
+	build.Flags().StringSliceVar(&langs, "stack", nil, "stacks to build (repeatable)")
+	build.Flags().BoolVar(&all, "all", false, "every stack in the catalog")
+	img := &cobra.Command{Use: "image", Short: "Stack images"}
 	img.AddCommand(build)
 	return img
 }
@@ -189,7 +211,7 @@ func runCmd() *cobra.Command {
 	var lang, code, file, stdin string
 	var timeout time.Duration
 	c := &cobra.Command{
-		Use: "run", Short: "Executa um código numa microVM nova",
+		Use: "run", Short: "Run code in a fresh microVM",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, err := wire()
 			if err != nil {
@@ -222,12 +244,106 @@ func runCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&lang, "lang", "", "linguagem")
-	c.Flags().StringVar(&code, "code", "", "código")
-	c.Flags().StringVar(&file, "file", "", "arquivo com o código")
-	c.Flags().StringVar(&stdin, "stdin", "", "stdin")
-	c.Flags().DurationVar(&timeout, "timeout", domain.DefaultTimeout, "timeout do job")
+	c.Flags().StringVar(&lang, "stack", "", "stack (python, go, rust, ...)")
+	c.Flags().StringVar(&code, "code", "", "source code")
+	c.Flags().StringVar(&file, "file", "", "file with the source code")
+	c.Flags().StringVar(&stdin, "stdin", "", "stdin for the program")
+	c.Flags().DurationVar(&timeout, "timeout", domain.DefaultTimeout, "job timeout")
 	return c
+}
+
+// shellCmd abre um shell interativo numa VM nova da stack: mesmo root read-only, sem rede,
+// /tmp gravável. Relança o próprio binário como `vmm` em primeiro plano, com o terminal
+// ligado ao console da VM; relançar é obrigatório porque o loader só lê a variável que
+// acha a libkrunfw (DYLD_LIBRARY_PATH/LD_LIBRARY_PATH) quando o processo nasce.
+func shellCmd() *cobra.Command {
+	var stack string
+	c := &cobra.Command{
+		Use: "shell", Short: "Open an interactive shell inside a fresh microVM of a stack",
+		RunE: func(*cobra.Command, []string) error {
+			d, err := wire()
+			if err != nil {
+				return err
+			}
+			l, ok := d.catalog.Get(stack)
+			if !ok {
+				return domain.ErrUnsupportedLanguage{Name: stack}
+			}
+			image, ok := d.builder.ImagePath(stack)
+			if !ok {
+				return fmt.Errorf("image for %s not built (run `rc image build --stack %s`)", stack, stack)
+			}
+			// Com terminal de verdade no stdin a VM ganha console TTY (/dev/hvc0): Ctrl+C,
+			// job control e tamanho da janela funcionam. Com pipe (script, teste) fica o
+			// console implícito, que entrega stdin/stdout como fluxo.
+			interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+			spec := ports.VMSpec{CPUs: l.CPUs, MemoryMiB: l.MemoryMiB, RootDisk: image, Exec: "/opt/runner/shell.sh",
+				Env: []string{"TERM=" + env("TERM", "xterm")}, TTY: interactive}
+			if err := os.MkdirAll(d.launcher.WorkDir, 0o700); err != nil {
+				return err
+			}
+			// Nome único: dois `rc shell` da mesma stack não podem apagar a spec um do outro.
+			f, err := os.CreateTemp(d.launcher.WorkDir, "shell-"+stack+"-*.json")
+			if err != nil {
+				return err
+			}
+			specPath := f.Name()
+			raw, _ := json.Marshal(spec)
+			_, err = f.Write(raw)
+			f.Close()
+			if err != nil {
+				return err
+			}
+			defer os.Remove(specPath)
+			cmd := exec.Command(d.launcher.Exe, "vmm", "--spec", specPath, "--lib", d.launcher.LibPath)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			cmd.Env = os.Environ()
+			if d.launcher.LibDir != "" {
+				cmd.Env = append(cmd.Env, libPathEnv()+"="+d.launcher.LibDir)
+			}
+			code, err := runInTerminal(cmd, interactive)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				os.Remove(specPath) // os.Exit não roda os defer
+				os.Exit(code)
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&stack, "stack", "", "stack whose image the VM boots (python, go, rust, ...)")
+	c.MarkFlagRequired("stack")
+	return c
+}
+
+// runInTerminal roda o processo da VM. Interativo, põe o terminal do host em modo raw:
+// sem isso o driver de terminal do host converte Ctrl+C em SIGINT e mata o rc e a VM; em
+// raw, o byte 0x03 segue para o terminal do guest, que interrompe só o comando. O
+// terminal é restaurado antes de devolver o código, porque o chamador pode sair com
+// os.Exit, que pularia um defer.
+func runInTerminal(cmd *exec.Cmd, interactive bool) (int, error) {
+	if interactive {
+		state, err := term.MakeRaw(int(os.Stdin.Fd()))
+		if err != nil {
+			return 0, fmt.Errorf("raw terminal: %w", err)
+		}
+		defer term.Restore(int(os.Stdin.Fd()), state)
+	}
+	err := cmd.Run()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode(), nil
+	}
+	return 0, err
+}
+
+// libPathEnv é a variável do loader que acha a libkrunfw no SO atual.
+func libPathEnv() string {
+	if runtime.GOOS == "darwin" {
+		return "DYLD_LIBRARY_PATH"
+	}
+	return "LD_LIBRARY_PATH"
 }
 
 // serveCmd sobe a API com o pool; SIGINT/SIGTERM fecham o servidor e matam as VMs.
@@ -235,7 +351,7 @@ func serveCmd() *cobra.Command {
 	var listen string
 	var poolSize int
 	c := &cobra.Command{
-		Use: "serve", Short: "API HTTP com pool de VMs pré-bootadas",
+		Use: "serve", Short: "HTTP API with a pool of pre-booted VMs",
 		RunE: func(*cobra.Command, []string) error {
 			d, err := wire()
 			if err != nil {
@@ -250,7 +366,7 @@ func serveCmd() *cobra.Command {
 			}
 			pool.Start(built)
 			defer pool.Close()
-			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Languages: func() []httpapi.LanguageInfo {
+			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Languages: func() []httpapi.LanguageInfo {
 				return languageInfo(d)
 			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -261,15 +377,15 @@ func serveCmd() *cobra.Command {
 				defer cancel()
 				srv.Shutdown(shut)
 			}()
-			fmt.Fprintf(os.Stderr, "ouvindo em %s; pool=%d por linguagem; imagens prontas: %v\n", listen, poolSize, built)
+			fmt.Fprintf(os.Stderr, "listening on %s; pool=%d per stack; images ready: %v\n", listen, poolSize, built)
 			if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
 			return nil
 		},
 	}
-	c.Flags().StringVar(&listen, "listen", env("RUNNER_LISTEN", "127.0.0.1:8080"), "endereço (padrão só loopback: a API não tem autenticação)")
-	c.Flags().IntVar(&poolSize, "pool-size", 2, "VMs prontas por linguagem")
+	c.Flags().StringVar(&listen, "listen", env("RUNNER_LISTEN", "127.0.0.1:8080"), "listen address (loopback by default: the API has no authentication)")
+	c.Flags().IntVar(&poolSize, "pool-size", 2, "ready VMs per stack")
 	return c
 }
 
@@ -287,7 +403,7 @@ func languageInfo(d *deps) []httpapi.LanguageInfo {
 // languagesCmd imprime o catálogo e se a imagem existe.
 func languagesCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "languages", Short: "Lista as linguagens e se a imagem já foi construída",
+		Use: "languages", Short: "List the stacks and whether their image is built",
 		RunE: func(*cobra.Command, []string) error {
 			d, err := wire()
 			if err != nil {
@@ -304,7 +420,7 @@ func languagesCmd() *cobra.Command {
 // doctorCmd confere o que o host precisa para rodar VMs, um motivo por item.
 func doctorCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "doctor", Short: "Confere se este host consegue rodar microVMs",
+		Use: "doctor", Short: "Check whether this host can run microVMs",
 		RunE: func(*cobra.Command, []string) error {
 			d, err := wire()
 			if err != nil {
@@ -314,23 +430,35 @@ func doctorCmd() *cobra.Command {
 			check := func(name string, err error) {
 				if err != nil {
 					fail++
-					fmt.Printf("FALHA %-12s %v\n", name, err)
+					fmt.Printf("FAIL  %-12s %v\n", name, err)
 					return
 				}
 				fmt.Printf("ok    %s\n", name)
 			}
-			check("plataforma", platformOK())
+			check("platform", platformOK())
 			_, err = krun.Load(d.launcher.LibPath)
 			check("libkrun", err)
 			_, err = os.Stat(d.builder.GuestBinary)
 			check("guest", err)
+			// O confinamento do processo vmm depende do kernel: diz o que ele cobre aqui.
+			switch abi := krun.LandlockABI(); {
+			case !krun.SandboxSupported:
+				fmt.Println("info  sandbox: macOS has no Landlock/seccomp; the VM process runs unconfined")
+			case abi == 0:
+				check("sandbox", errors.New("landlock unavailable: VM processes run without filesystem confinement"))
+			default:
+				fmt.Printf("ok    sandbox landlock ABI %d + seccomp denylist\n", abi)
+				if abi < 9 {
+					fmt.Printf("warn  landlock ABI %d < 9: a VM process can still connect to another VM's unix socket\n", abi)
+				}
+			}
 			for _, li := range languageInfo(d) {
 				if li.Ready {
-					fmt.Printf("ok    imagem %s\n", li.Name)
+					fmt.Printf("ok    image %s\n", li.Name)
 				}
 			}
 			if fail > 0 {
-				return fmt.Errorf("%d verificação(ões) falharam", fail)
+				return fmt.Errorf("%d check(s) failed", fail)
 			}
 			return nil
 		},
@@ -342,16 +470,16 @@ func platformOK() error {
 	switch runtime.GOOS {
 	case "darwin":
 		if runtime.GOARCH != "arm64" {
-			return errors.New("libkrun no macOS só roda em Apple Silicon")
+			return errors.New("libkrun on macOS only runs on Apple Silicon")
 		}
 		return nil
 	case "linux":
 		f, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0)
 		if err != nil {
-			return fmt.Errorf("sem acesso a /dev/kvm: %w", err)
+			return fmt.Errorf("no access to /dev/kvm: %w", err)
 		}
 		f.Close()
 		return nil
 	}
-	return fmt.Errorf("%s não é suportado", runtime.GOOS)
+	return fmt.Errorf("%s is not supported", runtime.GOOS)
 }

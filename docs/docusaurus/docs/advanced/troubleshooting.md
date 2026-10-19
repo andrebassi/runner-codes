@@ -6,16 +6,16 @@ description: 'Erros conhecidos, causa e correção'
 ## Primeiro passo
 
 ```bash
-runner.code doctor
+rc doctor
 ```
 
 Confere plataforma, libkrun, guest e imagens, com o motivo de cada falha.
 
 ## Couldn't find or load libkrunfw.5.dylib
 
-**Causa:** no macOS, o processo `runner.code vmm` carrega a libkrun, que por sua vez carrega a libkrunfw; o loader dinâmico não acha a libkrunfw sem `DYLD_LIBRARY_PATH`.
+**Causa:** a libkrun upstream abre a libkrunfw só pelo nome (`dlopen("libkrunfw.5.dylib")`), e o loader dinâmico não a acha fora dos caminhos padrão.
 
-**Correção:** o launcher define `DYLD_LIBRARY_PATH` com o diretório da libkrun ao criar o processo `vmm`. Se o erro aparecer, confira se `RUNNER_KRUN_LIB` aponta para um caminho completo (o diretório é derivado dele) e se a libkrunfw foi instalada pelo mesmo tap (`brew install slp/krun/libkrunfw`).
+**Correção:** a libkrun do `.#krun` (macOS) já abre a libkrunfw pelo caminho absoluto no store do Nix, então o erro só aparece com uma libkrun de outra origem. Nesse caso o launcher ainda define `DYLD_LIBRARY_PATH` com o diretório de `RUNNER_KRUN_LIB`: confira se ele é um caminho completo e se a libkrunfw está no mesmo diretório.
 
 ## krun_start_enter rc=-22
 
@@ -33,7 +33,7 @@ Confere plataforma, libkrun, guest e imagens, com o motivo de cada falha.
 
 **Causa:** a imagem em uso foi construída com o guest anterior.
 
-**Correção:** rode `runner.code image build --lang <l>` de novo. A chave do cache inclui o guest, então uma imagem nova é gerada sozinha; não é preciso apagar nada.
+**Correção:** rode `rc image build --stack <l>` de novo. A chave do cache inclui o guest, então uma imagem nova é gerada sozinha; não é preciso apagar nada.
 
 ## Argumento com espaço chega partido no guest
 
@@ -51,7 +51,7 @@ Confere plataforma, libkrun, guest e imagens, com o motivo de cada falha.
 
 **Causa:** a linguagem não está no catálogo **ou** a imagem dela ainda não foi construída neste host.
 
-**Correção:** `runner.code languages` mostra o catálogo e `ready`. Construa com `runner.code image build --lang <l>`.
+**Correção:** `rc languages` mostra o catálogo e `ready`. Construa com `rc image build --stack <l>`.
 
 ## E005: stdin too long
 

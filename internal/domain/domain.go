@@ -114,13 +114,13 @@ func (j Job) validate(known func(string) bool) error {
 		return ErrStdinTooBig
 	}
 	if j.Timeout <= 0 || j.Timeout > MaxTimeout {
-		return fmt.Errorf("timeout %v fora do intervalo (0, %v]", j.Timeout, MaxTimeout)
+		return fmt.Errorf("timeout %v out of range (0, %v]", j.Timeout, MaxTimeout)
 	}
 	if j.Code == "" && len(j.Files) == 0 {
-		return errors.New("job sem código e sem arquivos")
+		return errors.New("job has no code and no files")
 	}
 	if len(j.Files) > MaxFiles {
-		return fmt.Errorf("%d arquivos; o limite é %d", len(j.Files), MaxFiles)
+		return fmt.Errorf("%d files; the limit is %d", len(j.Files), MaxFiles)
 	}
 	total := len(j.Code)
 	seen := map[string]bool{}
@@ -129,13 +129,13 @@ func (j Job) validate(known func(string) bool) error {
 			return err
 		}
 		if seen[f.Name] {
-			return fmt.Errorf("arquivo %q repetido", f.Name)
+			return fmt.Errorf("duplicate file %q", f.Name)
 		}
 		seen[f.Name] = true
 		total += len(f.Content)
 	}
 	if total > MaxSourceBytes {
-		return fmt.Errorf("código com %d bytes; o limite é %d", total, MaxSourceBytes)
+		return fmt.Errorf("code has %d bytes; the limit is %d", total, MaxSourceBytes)
 	}
 	return nil
 }
@@ -144,13 +144,13 @@ func (j Job) validate(known func(string) bool) error {
 func validFileName(name string) error {
 	switch {
 	case name == "", name == ".", name == "..":
-		return fmt.Errorf("nome de arquivo inválido %q", name)
+		return fmt.Errorf("invalid file name %q", name)
 	case strings.ContainsAny(name, "/\\\x00"):
-		return fmt.Errorf("nome de arquivo %q não pode ter separador nem byte nulo", name)
+		return fmt.Errorf("file name %q must not contain a separator or null byte", name)
 	case strings.HasPrefix(name, "."):
-		return fmt.Errorf("nome de arquivo %q não pode começar com ponto", name)
+		return fmt.Errorf("file name %q must not start with a dot", name)
 	case len(name) > 255:
-		return fmt.Errorf("nome de arquivo com %d bytes; o limite é 255", len(name))
+		return fmt.Errorf("file name has %d bytes; the limit is 255", len(name))
 	}
 	return nil
 }
@@ -159,11 +159,11 @@ func validFileName(name string) error {
 func (l Language) ValidateLanguage() error {
 	switch {
 	case l.Name == "" || strings.ContainsAny(l.Name, "/ ."):
-		return fmt.Errorf("linguagem com nome inválido %q", l.Name)
+		return fmt.Errorf("language with invalid name %q", l.Name)
 	case l.Image == "":
-		return fmt.Errorf("linguagem %s sem imagem", l.Name)
+		return fmt.Errorf("language %s has no image", l.Name)
 	case l.CPUs == 0 || l.MemoryMiB < 128:
-		return fmt.Errorf("linguagem %s com recursos inválidos (cpus=%d memory_mib=%d; mínimo 1 e 128)", l.Name, l.CPUs, l.MemoryMiB)
+		return fmt.Errorf("language %s has invalid resources (cpus=%d memory_mib=%d; minimum 1 and 128)", l.Name, l.CPUs, l.MemoryMiB)
 	}
 	return nil
 }

@@ -5,7 +5,7 @@ description: 'Endpoints HTTP, formatos de requisição e resposta, erros e limit
 
 ## Base
 
-A API sobe com `runner.code serve` e escuta por padrão em `http://127.0.0.1:8080`. **Não há autenticação.** O padrão é só loopback; não exponha fora dela sem um proxy autenticado na frente.
+A API sobe com `rc serve` e escuta por padrão em `http://127.0.0.1:8080`. **Não há autenticação.** O padrão é só loopback; não exponha fora dela sem um proxy autenticado na frente.
 
 | Método | Caminho | O que faz |
 |--------|---------|-----------|

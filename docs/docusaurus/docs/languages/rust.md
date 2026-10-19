@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é compilado com `rustc -o <binário
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang rust
+rc image build --stack rust
 ```
 
 ## Exemplo

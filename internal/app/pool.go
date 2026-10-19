@@ -27,6 +27,12 @@ const ReadyTimeout = 30 * time.Second
 // grande não disparar dezenas de VMs de uma vez.
 const maxBootsPerLanguage = 2
 
+// DefaultMaxConcurrentBoots é o teto de boots simultâneos da reposição somando todas as
+// linguagens. Sem ele o serve subia 15 × 2 = 30 VMs juntas, saturava a CPU e o job do
+// pedido levava 1,7–2,3 s em vez de ~40 ms (medido). 4 é o número
+// (pool_controller.rs:19).
+const DefaultMaxConcurrentBoots = 4
+
 // retryBackoff é a espera depois de um boot que falhou, antes de tentar repor de novo;
 // sem ela um defeito de imagem viraria um laço de boot consumindo CPU.
 var retryBackoff = 2 * time.Second
@@ -52,7 +58,12 @@ type Pool struct {
 	Catalog  Catalog
 	WorkDir  string
 	Size     int
-	Log      io.Writer
+	// MaxConcurrentBoots limita a reposição no total; 0 usa DefaultMaxConcurrentBoots.
+	// O boot frio do caminho do pedido não passa por aqui: esperar fila somaria latência.
+	MaxConcurrentBoots int
+	Log                io.Writer
+
+	bootSlots chan struct{}
 
 	mu     sync.Mutex
 	ready  map[string]chan *ReadyVM
@@ -77,6 +88,11 @@ func (p *Pool) Start(languages []string) {
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	p.ready = map[string]chan *ReadyVM{}
 	p.tokens = map[string]chan struct{}{}
+	limit := p.MaxConcurrentBoots
+	if limit <= 0 {
+		limit = DefaultMaxConcurrentBoots
+	}
+	p.bootSlots = make(chan struct{}, limit)
 	if p.Size <= 0 {
 		return
 	}
@@ -108,13 +124,20 @@ func (p *Pool) refill(lang string, ready chan *ReadyVM, tokens chan struct{}) {
 			return
 		case <-tokens:
 		}
+		select {
+		case <-p.ctx.Done():
+			tokens <- struct{}{}
+			return
+		case p.bootSlots <- struct{}{}:
+		}
 		vm, err := p.Boot(p.ctx, lang)
+		<-p.bootSlots
 		if err != nil {
 			tokens <- struct{}{}
 			if p.ctx.Err() != nil {
 				return
 			}
-			p.logf("pool %s: boot falhou: %v", lang, err)
+			p.logf("pool %s: boot failed: %v", lang, err)
 			select {
 			case <-p.ctx.Done():
 				return
@@ -135,19 +158,25 @@ func (p *Pool) Boot(ctx context.Context, lang string) (*ReadyVM, error) {
 	}
 	image, ok := p.Images.ImagePath(lang)
 	if !ok {
-		return nil, fmt.Errorf("imagem de %s não construída (rode `runner.code image build --lang %s`)", lang, lang)
+		return nil, fmt.Errorf("image for %s not built (run `rc image build --stack %s`)", lang, lang)
 	}
 	if err := os.MkdirAll(p.WorkDir, 0o700); err != nil {
 		return nil, err
 	}
-	id := shortID()
-	r := &ReadyVM{Language: lang, Socket: filepath.Join(p.WorkDir, id+".sock"), Console: filepath.Join(p.WorkDir, id+".console")}
+	// Diretório exclusivo da VM: o Landlock do processo vmm libera escrita só nele, então
+	// uma VM comprometida não toca no socket nem no console de outra.
+	vmDir := filepath.Join(p.WorkDir, shortID())
+	if err := os.Mkdir(vmDir, 0o700); err != nil {
+		return nil, err
+	}
+	r := &ReadyVM{Language: lang, Socket: filepath.Join(vmDir, "v.sock"), Console: filepath.Join(vmDir, "console")}
 	vm, err := p.Launcher.StartVM(ports.VMSpec{
 		CPUs: l.CPUs, MemoryMiB: l.MemoryMiB, RootDisk: image,
 		VsockSocket: r.Socket, VsockPort: protocol.DefaultPort, Console: r.Console,
 		Exec: "/opt/runner/start.sh",
 	})
 	if err != nil {
+		os.RemoveAll(vmDir)
 		return nil, err
 	}
 	r.VM = vm
@@ -166,7 +195,7 @@ func (p *Pool) Boot(ctx context.Context, lang string) (*ReadyVM, error) {
 		// Lê o console antes do Destroy, que apaga o arquivo: é ali que está o motivo.
 		console := tailFile(r.Console, 400)
 		p.Destroy(r)
-		return nil, fmt.Errorf("VM de %s não ficou pronta: %w; console: %s", lang, err, console)
+		return nil, fmt.Errorf("VM for %s did not become ready: %w; console: %s", lang, err, console)
 	}
 	return r, nil
 }
@@ -198,8 +227,7 @@ func (p *Pool) Take(ctx context.Context, lang string) (*ReadyVM, error) {
 // Destroy mata a VM e apaga os arquivos dela. Toda VM entregue passa por aqui.
 func (p *Pool) Destroy(r *ReadyVM) {
 	r.VM.Kill()
-	os.Remove(r.Socket)
-	os.Remove(r.Console)
+	os.RemoveAll(filepath.Dir(r.Socket))
 }
 
 // Close para a reposição e mata todas as VMs paradas no pool.
@@ -234,6 +262,17 @@ func (p *Pool) Ready(lang string) int {
 	return len(p.ready[lang])
 }
 
+// Status devolve quantas VMs estão prontas por linguagem (para o /health).
+func (p *Pool) Status() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make(map[string]int, len(p.ready))
+	for lang, ch := range p.ready {
+		out[lang] = len(ch)
+	}
+	return out
+}
+
 // shortID gera um id curto para nomear socket e console.
 func shortID() string {
 	b := make([]byte, 6)
@@ -245,7 +284,7 @@ func shortID() string {
 func tailFile(path string, n int64) string {
 	f, err := os.Open(path)
 	if err != nil {
-		return "(sem console)"
+		return "(no console)"
 	}
 	defer f.Close()
 	st, _ := f.Stat()

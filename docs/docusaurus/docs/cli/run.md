@@ -6,12 +6,12 @@ description: 'Executar um código numa microVM nova pela linha de comando'
 ## Uso
 
 ```bash
-runner.code run --lang <linguagem> (--code '<código>' | --file <arquivo>) [--stdin '<texto>'] [--timeout 5s]
+rc run --stack <linguagem> (--code '<código>' | --file <arquivo>) [--stdin '<texto>'] [--timeout 5s]
 ```
 
 | Flag | Padrão | Descrição |
 |------|--------|-----------|
-| `--lang` | — | linguagem do catálogo |
+| `--stack` | — | linguagem do catálogo |
 | `--code` | — | código do arquivo principal |
 | `--file` | — | lê o código de um arquivo local (substitui `--code`) |
 | `--stdin` | vazio | entrada padrão do programa |
@@ -42,21 +42,21 @@ O `run` não usa pool: sobe uma VM nova (boot frio), executa o job e destrói a 
 
 ```bash
 # Python com stdin
-runner.code run --lang python --code 'print(input().upper())' --stdin 'olá'
+rc run --stack python --code 'print(input().upper())' --stdin 'olá'
 
 # Arquivo local
-runner.code run --lang go --file ./main.go
+rc run --stack go --file ./main.go
 
 # Timeout curto
-runner.code run --lang bash --code 'sleep 10' --timeout 2s
+rc run --stack bash --code 'sleep 10' --timeout 2s
 ```
 
 Pelo Taskfile:
 
 ```bash
-task run -- --lang python --code 'print(1)'
+task run -- --stack python --code 'print(1)'
 ```
 
 ## Pré-requisito
 
-A imagem da linguagem precisa estar construída (`runner.code image build --lang <l>`); sem ela, o job é recusado com E006.
+A imagem da linguagem precisa estar construída (`rc image build --stack <l>`); sem ela, o job é recusado com E006.

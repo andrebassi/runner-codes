@@ -58,18 +58,18 @@ func (l *Launcher) Start(s Spec) (*Process, error) {
 		return nil, err
 	}
 	if err := os.MkdirAll(l.WorkDir, 0o700); err != nil {
-		return nil, fmt.Errorf("criar workdir: %w", err)
+		return nil, fmt.Errorf("create workdir: %w", err)
 	}
 	id := newID()
 	specPath := filepath.Join(l.WorkDir, id+".json")
 	raw, _ := json.Marshal(s)
 	if err := os.WriteFile(specPath, raw, 0o600); err != nil {
-		return nil, fmt.Errorf("gravar spec: %w", err)
+		return nil, fmt.Errorf("write spec: %w", err)
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		os.Remove(specPath)
-		return nil, fmt.Errorf("criar pipe de vigia: %w", err)
+		return nil, fmt.Errorf("create watch pipe: %w", err)
 	}
 	// O lado de leitura vira o fd 3 do filho (primeiro de ExtraFiles).
 	cmd := exec.Command(l.Exe, "vmm", "--spec", specPath, "--watch-fd", "3", "--lib", l.LibPath)
@@ -81,7 +81,7 @@ func (l *Launcher) Start(s Spec) (*Process, error) {
 		r.Close()
 		w.Close()
 		os.Remove(specPath)
-		return nil, fmt.Errorf("lançar vmm: %w", err)
+		return nil, fmt.Errorf("launch vmm: %w", err)
 	}
 	r.Close()
 	p := &Process{ID: id, Spec: s, cmd: cmd, watch: w, specPath: specPath, done: make(chan struct{})}

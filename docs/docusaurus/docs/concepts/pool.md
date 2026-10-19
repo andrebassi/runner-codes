@@ -8,7 +8,7 @@ description: 'VMs pré-bootadas por linguagem, usadas uma única vez e repostas 
 Bootar uma VM e esperar o guest responder custa da ordem de 260 ms (p50 medido). Com o pool, esse custo sai do caminho da requisição: a API pega uma VM que já está pronta.
 
 ```bash
-runner.code serve --listen 127.0.0.1:8080 --pool-size 2
+rc serve --listen 127.0.0.1:8080 --pool-size 2
 ```
 
 ## Regras
@@ -40,4 +40,4 @@ macOS 27.0.1, Apple Silicon, 19/10/2026. Linux ainda não medido.
 
 ## A CLI não usa pool
 
-`runner.code run` sempre sobe uma VM nova (pool de tamanho zero) e a destrói no fim.
+`rc run` sempre sobe uma VM nova (pool de tamanho zero) e a destrói no fim.

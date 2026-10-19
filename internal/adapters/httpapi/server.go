@@ -32,6 +32,8 @@ type Server struct {
 	Runner    Runner
 	Languages func() []LanguageInfo
 	Version   string
+	// Pool devolve as VMs prontas por linguagem; nil omite o campo no /health.
+	Pool func() map[string]int
 }
 
 // FileRequest é um arquivo no corpo da requisição.
@@ -73,7 +75,13 @@ func (s *Server) Handler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "version": s.Version}) })
+	r.GET("/health", func(c *gin.Context) {
+		body := gin.H{"status": "ok", "version": s.Version}
+		if s.Pool != nil {
+			body["pool"] = s.Pool()
+		}
+		c.JSON(http.StatusOK, body)
+	})
 	v1 := r.Group("/api/v1")
 	v1.GET("/languages", func(c *gin.Context) { c.JSON(http.StatusOK, s.Languages()) })
 	v1.POST("/run", s.run)
@@ -85,7 +93,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) run(c *gin.Context) {
 	var req RunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "requisição inválida: " + err.Error()})
+		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "invalid request: " + err.Error()})
 		return
 	}
 	files := toFiles(req.Files)
@@ -108,7 +116,7 @@ func (s *Server) run(c *gin.Context) {
 func (s *Server) execute(c *gin.Context) {
 	var req ExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "requisição inválida: " + err.Error()})
+		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "invalid request: " + err.Error()})
 		return
 	}
 	job := domain.Job{Language: req.Language, Code: req.Code, Files: toFiles(req.Files),

@@ -19,10 +19,10 @@ func ReadSpec(path string) (Spec, error) {
 	var s Spec
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return s, fmt.Errorf("ler spec: %w", err)
+		return s, fmt.Errorf("read spec: %w", err)
 	}
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return s, fmt.Errorf("decodificar spec: %w", err)
+		return s, fmt.Errorf("decode spec: %w", err)
 	}
 	return s, s.Validate()
 }
@@ -43,5 +43,38 @@ func RunVMM(api API, s Spec, watchdog io.Reader) error {
 	if err != nil {
 		return err
 	}
+	if err := sandbox(s); err != nil {
+		return err
+	}
 	return callErr("krun_start_enter", api.StartEnter(ctx))
+}
+
+// preload é preloadKrunfw; os testes trocam porque a máquina de teste pode não ter libkrunfw.
+var preload = preloadKrunfw
+
+// applySandbox é ApplySandbox; os testes trocam para observar a política sem confinar
+// o processo de teste.
+var applySandbox = ApplySandbox
+
+// sandbox confina o processo vmm de uma VM de job antes de entregá-lo à libkrun.
+// Tudo o que a libkrun abriria só no krun_start_enter é preparado antes: a libkrunfw
+// carregada e o console criado, porque depois do Landlock esses open falhariam.
+func sandbox(s Spec) error {
+	if !SandboxEnabled(s) {
+		if s.RootDisk != "" && !s.Network && SandboxSupported {
+			fmt.Fprintf(os.Stderr, "warning: sandbox disabled by %s=off\n", sandboxDisabledEnv)
+		}
+		return nil
+	}
+	if err := preload(); err != nil {
+		return err
+	}
+	if s.Console != "" {
+		f, err := os.OpenFile(s.Console, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return fmt.Errorf("create console: %w", err)
+		}
+		f.Close()
+	}
+	return applySandbox(PolicyFor(s, loadedLibDirs()))
 }

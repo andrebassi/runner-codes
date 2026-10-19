@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é o filtro, executado com `jq --nul
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang jq
+rc image build --stack jq
 ```
 
 ## Exemplo
