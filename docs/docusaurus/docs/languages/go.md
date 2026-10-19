@@ -26,7 +26,7 @@ O arquivo principal (o primeiro de `files`) é executado com `go run <arquivo>`.
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang go
+rc image build --stack go
 ```
 
 ## Exemplo

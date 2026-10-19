@@ -19,6 +19,7 @@ type fakeAPI struct {
 	remountOpts string
 	argv        []string
 	uid, gid    uint32
+	consoleFDs  [3]int32
 }
 
 // rec anota a chamada e devolve -22 (EINVAL) se for a escolhida para falhar.
@@ -88,6 +89,15 @@ func (f *fakeAPI) SetExec(_ uint32, _ string, argv, _ []string) int32 {
 	return f.rec("krun_set_exec")
 }
 
+// DisableImplicitConsole anota a chamada.
+func (f *fakeAPI) DisableImplicitConsole(uint32) int32 { return f.rec("krun_disable_implicit_console") }
+
+// AddVirtioConsoleDefault anota a chamada e guarda os fds.
+func (f *fakeAPI) AddVirtioConsoleDefault(_ uint32, in, out, errFD int32) int32 {
+	f.consoleFDs = [3]int32{in, out, errFD}
+	return f.rec("krun_add_virtio_console_default")
+}
+
 // StartEnter anota a chamada; o fake "volta" como se a VM tivesse falhado ao iniciar.
 func (f *fakeAPI) StartEnter(uint32) int32 { return f.rec("krun_start_enter") }
 
@@ -105,15 +115,15 @@ func TestConfigureJobVMOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ctx != 7 {
-		t.Fatalf("ctx = %d, quer 7", ctx)
+		t.Fatalf("ctx = %d, want 7", ctx)
 	}
 	want := "krun_set_log_level,krun_create_ctx,krun_set_vm_config,krun_add_disk2,krun_set_root_disk_remount," +
 		"krun_disable_implicit_vsock,krun_add_vsock,krun_add_vsock_port2,krun_set_console_output,krun_set_exec"
 	if got := strings.Join(f.calls, ","); got != want {
-		t.Fatalf("ordem:\n got %s\nwant %s", got, want)
+		t.Fatalf("order:\n got %s\nwant %s", got, want)
 	}
 	if !f.disk.readOnly || f.disk.format != diskFormatRaw || f.remountOpts != "ro" {
-		t.Fatalf("root tem de ser disco RAW read-only remontado ro: %+v opts=%q", f.disk, f.remountOpts)
+		t.Fatalf("root must be a read-only RAW disk remounted ro: %+v opts=%q", f.disk, f.remountOpts)
 	}
 }
 
@@ -124,10 +134,10 @@ func TestNoNetworkUnlessAsked(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f.tsi != 0 {
-		t.Fatalf("TSI ligado sem pedir rede: %d", f.tsi)
+		t.Fatalf("TSI enabled without requesting network: %d", f.tsi)
 	}
 	if f.calls[5] != "krun_disable_implicit_vsock" {
-		t.Fatalf("o vsock implícito (com TSI) precisa ser desligado antes do add_vsock: %v", f.calls)
+		t.Fatalf("the implicit vsock (with TSI) must be disabled before add_vsock: %v", f.calls)
 	}
 	s := jobSpec()
 	s.Network = true
@@ -136,7 +146,7 @@ func TestNoNetworkUnlessAsked(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f.tsi != tsiHijackInet {
-		t.Fatalf("Network=true deveria ligar TSI INET, veio %d", f.tsi)
+		t.Fatalf("Network=true should enable TSI INET, got %d", f.tsi)
 	}
 }
 
@@ -150,13 +160,36 @@ func TestConfigureBuildVM(t *testing.T) {
 	}
 	got := strings.Join(f.calls, ",")
 	if !strings.Contains(got, "krun_set_root,") || strings.Contains(got, "krun_add_disk2") || strings.Contains(got, "vsock_port2") {
-		t.Fatalf("chamadas inesperadas para VM de build: %s", got)
+		t.Fatalf("unexpected calls for a build VM: %s", got)
 	}
 	if strings.Index(got, "krun_setgid") > strings.Index(got, "krun_setuid") {
-		t.Fatalf("setgid tem de vir antes de setuid: %s", got)
+		t.Fatalf("setgid must come before setuid: %s", got)
 	}
 	if f.uid != 1000 || f.gid != 1001 || strings.Join(f.argv, " ") != "a b" {
-		t.Fatalf("uid/gid/argv errados: %d %d %v", f.uid, f.gid, f.argv)
+		t.Fatalf("wrong uid/gid/argv: %d %d %v", f.uid, f.gid, f.argv)
+	}
+}
+
+// TestConfigureTTY trava o console TTY do `rc shell`: console implícito desligado e
+// stdin/stdout/stderr (0, 1, 2) do vmm virando a porta de console do guest.
+func TestConfigureTTY(t *testing.T) {
+	f := &fakeAPI{}
+	s := jobSpec()
+	s.Console, s.TTY = "", true
+	if _, err := Configure(f, s); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(f.calls, ",")
+	if !strings.Contains(got, "krun_disable_implicit_console,krun_add_virtio_console_default") {
+		t.Fatalf("TTY calls missing or out of order: %s", got)
+	}
+	if f.consoleFDs != [3]int32{0, 1, 2} {
+		t.Fatalf("console fds %v, want 0 1 2", f.consoleFDs)
+	}
+	f = &fakeAPI{}
+	Configure(f, jobSpec())
+	if strings.Contains(strings.Join(f.calls, ","), "console_default") {
+		t.Fatal("a VM without tty must keep the implicit console")
 	}
 }
 
@@ -166,17 +199,20 @@ func TestConfigureFailsOnEachCall(t *testing.T) {
 	full := jobSpec()
 	full.UID, full.GID = &uid, &gid
 	dir := Spec{CPUs: 1, MemoryMiB: 1, RootDir: "/r", Exec: "/x"}
+	tty := jobSpec()
+	tty.Console, tty.TTY = "", true
 	names := map[string]Spec{
 		"krun_create_ctx": full, "krun_set_vm_config": full, "krun_add_disk2": full,
 		"krun_set_root_disk_remount": full, "krun_disable_implicit_vsock": full, "krun_add_vsock": full,
 		"krun_add_vsock_port2": full, "krun_set_console_output": full, "krun_setgid": full,
 		"krun_setuid": full, "krun_set_exec": full, "krun_set_root": dir,
+		"krun_disable_implicit_console": tty, "krun_add_virtio_console_default": tty,
 	}
 	for name, s := range names {
 		t.Run(name, func(t *testing.T) {
 			_, err := Configure(&fakeAPI{failOn: name}, s)
 			if err == nil || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), "errno 22") {
-				t.Fatalf("esperava erro citando %s e errno 22, veio %v", name, err)
+				t.Fatalf("expected an error citing %s and errno 22, got %v", name, err)
 			}
 		})
 	}
@@ -187,35 +223,35 @@ func TestValidate(t *testing.T) {
 	ok := jobSpec()
 	mut := func(f func(*Spec)) Spec { s := ok; f(&s); return s }
 	bad := map[string]Spec{
-		"sem cpu":          mut(func(s *Spec) { s.CPUs = 0 }),
-		"sem memória":      mut(func(s *Spec) { s.MemoryMiB = 0 }),
-		"dois roots":       mut(func(s *Spec) { s.RootDir = "/x" }),
-		"nenhum root":      mut(func(s *Spec) { s.RootDisk = "" }),
-		"sem exec":         mut(func(s *Spec) { s.Exec = "" }),
-		"socket sem porta": mut(func(s *Spec) { s.VsockPort = 0 }),
-		"porta sem socket": mut(func(s *Spec) { s.VsockSocket = "" }),
-		"argv com espaço":  mut(func(s *Spec) { s.Args = []string{"-c", "echo oi"} }),
-		"argv vazio":       mut(func(s *Spec) { s.Args = []string{""} }),
-		"exec com tab":     mut(func(s *Spec) { s.Exec = "/bin/a\tb" }),
+		"no cpu":              mut(func(s *Spec) { s.CPUs = 0 }),
+		"no memory":           mut(func(s *Spec) { s.MemoryMiB = 0 }),
+		"two roots":           mut(func(s *Spec) { s.RootDir = "/x" }),
+		"no root":             mut(func(s *Spec) { s.RootDisk = "" }),
+		"no exec":             mut(func(s *Spec) { s.Exec = "" }),
+		"socket without port": mut(func(s *Spec) { s.VsockPort = 0 }),
+		"port without socket": mut(func(s *Spec) { s.VsockSocket = "" }),
+		"argv with space":     mut(func(s *Spec) { s.Args = []string{"-c", "echo oi"} }),
+		"empty argv":          mut(func(s *Spec) { s.Args = []string{""} }),
+		"exec with tab":       mut(func(s *Spec) { s.Exec = "/bin/a\tb" }),
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {
 			if err := s.Validate(); err == nil {
-				t.Fatal("esperava recusa")
+				t.Fatal("expected rejection")
 			}
 			if _, err := Configure(&fakeAPI{}, s); err == nil {
-				t.Fatal("Configure deveria repassar a recusa")
+				t.Fatal("Configure should pass the rejection through")
 			}
 		})
 	}
 	if err := ok.Validate(); err != nil {
-		t.Fatalf("spec válida recusada: %v", err)
+		t.Fatalf("valid spec rejected: %v", err)
 	}
 }
 
 // TestCallErr trava o formato da mensagem de erro de chamada C.
 func TestCallErr(t *testing.T) {
-	if got := fmt.Sprint(callErr("krun_x", -2)); got != "krun_x falhou: errno 2" {
-		t.Fatalf("mensagem inesperada: %s", got)
+	if got := fmt.Sprint(callErr("krun_x", -2)); got != "krun_x failed: errno 2" {
+		t.Fatalf("unexpected message: %s", got)
 	}
 }

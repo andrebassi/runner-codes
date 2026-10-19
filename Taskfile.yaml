@@ -4,71 +4,82 @@ version: '3'
 
 tasks:
   default:
-    desc: Lista as tasks
+    desc: List the tasks
     cmds:
       - task --list
 
   krun:install:
-    desc: Instala libkrun + libkrunfw (macOS via brew slp/krun, Linux via nix)
+    desc: Install libkrun + libkrunfw via Nix (flake .#krun)
     cmds:
       - ./scripts/krun-install.sh
 
   build:
-    desc: Compila host + guest em bin/ e assina no macOS
+    desc: Build host + guest into bin/ and sign on macOS
     cmds:
       - ./scripts/build.sh
 
   image:build:
-    desc: "Gera o ext4 de linguagens (ex.: task image:build -- --lang python, ou -- --all)"
+    desc: "Build stack images (e.g. task image:build -- --stack python, or -- --all)"
     deps: [build]
     cmds:
-      - ./bin/runner.code image build {{.CLI_ARGS}}
+      - ./bin/rc image build {{.CLI_ARGS}}
 
   run:
-    desc: "Executa um código (ex.: task run -- --lang python --code 'print(1)')"
+    desc: "Run code (e.g. task run -- --stack python --code 'print(1)')"
     cmds:
-      - ./bin/runner.code run {{.CLI_ARGS}}
+      - ./bin/rc run {{.CLI_ARGS}}
+
+  shell:
+    desc: "Interactive shell inside a fresh microVM (e.g. task shell -- --stack python)"
+    interactive: true
+    cmds:
+      - ./bin/rc shell {{.CLI_ARGS}}
 
   serve:
-    desc: API em 127.0.0.1:8080 com pool pré-bootado
+    desc: HTTP API on 127.0.0.1:8080 with a pre-booted pool
     deps: [build]
     cmds:
-      - ./bin/runner.code serve {{.CLI_ARGS}}
+      - ./bin/rc serve {{.CLI_ARGS}}
 
   doctor:
-    desc: Confere se o host roda microVMs
+    desc: Check whether this host can run microVMs
     cmds:
-      - ./bin/runner.code doctor
+      - ./bin/rc doctor
 
   test:
-    desc: Testes de unidade com race detector
+    desc: Unit tests with the race detector
     cmds:
       - go test -race -count=1 ./internal/...
 
   test:cov:
-    desc: Gate de cobertura (reprova abaixo de 90% total / 100% domain)
+    desc: Coverage gate (fails below 90% total / 100% domain)
     cmds:
       - ./scripts/coverage-gate.sh
 
   test:targets:
-    desc: Gate multi-alvo (darwin/arm64, linux/amd64, linux/arm64 compilam; windows recusa)
+    desc: Multi-target gate (darwin/arm64, linux/amd64, linux/arm64 build; windows refused)
     cmds:
       - ./scripts/targets-gate.sh
 
   test:e2e:
-    desc: Ponta a ponta contra libkrun real (precisa das imagens construídas)
+    desc: End-to-end against real libkrun (needs built images)
     deps: [build]
     cmds:
-      - RUNNER_BIN=$PWD/bin/runner.code go test -count=1 -tags e2e -v ./e2e/...
+      - RUNNER_BIN=$PWD/bin/rc go test -count=1 -tags e2e -v ./e2e/...
 
   gates:
-    desc: Rodada completa de gates
+    desc: Full gate run
     cmds:
       - task: test:targets
       - task: test:cov
       - task: test:e2e
 
+  legacy:ec2:
+    desc: Check the legacy Firecracker EC2; -- --stop stops it (never terminates)
+    cmds:
+      - ./scripts/legacy-ec2.sh {{.CLI_ARGS}}
+
   clean:
-    desc: Apaga binários (o cache de imagens fica em ~/Library/Caches/runner-codes)
+    desc: Remove binaries (the image cache stays in ~/Library/Caches/runner-codes)
     cmds:
       - rm -rf bin

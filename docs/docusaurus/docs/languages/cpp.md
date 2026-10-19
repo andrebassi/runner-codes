@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é compilado com `g++ -o <binário> 
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang cpp
+rc image build --stack cpp
 ```
 
 ## Exemplo

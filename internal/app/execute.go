@@ -51,7 +51,7 @@ func (e *Executor) Run(ctx context.Context, job domain.Job) (domain.Result, erro
 	}
 	vm, err := e.VMs.Take(ctx, job.Language)
 	if err != nil {
-		return domain.Result{TraceID: job.TraceID}, fmt.Errorf("obter VM: %w", err)
+		return domain.Result{TraceID: job.TraceID}, fmt.Errorf("get VM: %w", err)
 	}
 	defer e.VMs.Destroy(vm)
 
@@ -64,7 +64,7 @@ func (e *Executor) Run(ctx context.Context, job domain.Job) (domain.Result, erro
 		return domain.Result{TraceID: job.TraceID, Status: "failed", TimedOut: true, Duration: elapsed, Error: domain.ErrTimeout.Error()}, nil
 	}
 	if err != nil {
-		return domain.Result{TraceID: job.TraceID}, fmt.Errorf("executar no guest: %w", err)
+		return domain.Result{TraceID: job.TraceID}, fmt.Errorf("run in guest: %w", err)
 	}
 	return fromProtocol(job.TraceID, res, elapsed), nil
 }

@@ -32,7 +32,10 @@ languages:
     image: rust:1-alpine
     cpus: 2
     memory_mib: 1024
-    warmup: ""
+    # O executor do guest força RUSTUP_HOME=/opt/rustup e CARGO_HOME=/opt/cargo (herança do
+    # rootfs antigo); a imagem oficial instala em /usr/local. Sem o link o rustup tenta criar
+    # /opt/rustup no root read-only e falha (medido). A compilação de teste prova o toolchain.
+    warmup: ln -s /usr/local/rustup /opt/rustup && ln -s /usr/local/cargo /opt/cargo && printf 'fn main(){}\n' > /tmp/w.rs && RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo rustc -o /tmp/w /tmp/w.rs && rm -f /tmp/w /tmp/w.rs
 
   - name: java
     image: eclipse-temurin:21-jdk-alpine

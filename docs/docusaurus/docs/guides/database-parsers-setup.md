@@ -49,8 +49,8 @@ Depois:
 
 ```bash
 task build
-task image:build -- --lang mysql-parser
-runner.code run --lang mysql-parser --code 'SELECT 1;'
+task image:build -- --stack mysql-parser
+rc run --stack mysql-parser --code 'SELECT 1;'
 ```
 
 ### 3. Teste

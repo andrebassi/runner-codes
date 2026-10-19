@@ -75,10 +75,10 @@ func TestStartWaitExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code := p.Wait(); code != 3 {
-		t.Fatalf("código %d, quer 3", code)
+		t.Fatalf("exit code %d, want 3", code)
 	}
 	if _, err := os.Stat(p.specPath); !os.IsNotExist(err) {
-		t.Fatal("spec deveria ter sido apagada")
+		t.Fatal("spec should have been removed")
 	}
 }
 
@@ -92,7 +92,7 @@ func TestLibPathEnvReachesVMM(t *testing.T) {
 	}
 	p.Wait()
 	if !strings.Contains(stderr.String(), "/lib/krunfw") {
-		t.Fatalf("%s não chegou ao vmm: %q", libPathEnv, stderr.String())
+		t.Fatalf("%s did not reach the vmm: %q", libPathEnv, stderr.String())
 	}
 }
 
@@ -106,13 +106,13 @@ func TestKillLeavesNothing(t *testing.T) {
 	pid := p.PID()
 	select {
 	case <-p.Done():
-		t.Fatal("vmm falso saiu antes do Kill")
+		t.Fatal("fake vmm exited before Kill")
 	case <-time.After(100 * time.Millisecond):
 	}
 	p.Kill()
 	p.Kill() // idempotente
 	if err := syscall.Kill(pid, 0); err == nil {
-		t.Fatal("processo sobreviveu ao Kill")
+		t.Fatal("process survived Kill")
 	}
 }
 
@@ -129,10 +129,10 @@ func TestParentGoneClosesVMM(t *testing.T) {
 	case <-p.Done():
 	case <-time.After(5 * time.Second):
 		p.Kill()
-		t.Fatal("vmm não saiu com o vigia fechado")
+		t.Fatal("vmm did not exit with the watch pipe closed")
 	}
 	if p.exitCode != ExitParentGone {
-		t.Fatalf("código %d, quer %d", p.exitCode, ExitParentGone)
+		t.Fatalf("exit code %d, want %d", p.exitCode, ExitParentGone)
 	}
 }
 
@@ -140,22 +140,22 @@ func TestParentGoneClosesVMM(t *testing.T) {
 func TestStartErrors(t *testing.T) {
 	l := newTestLauncher(t, nil)
 	if _, err := l.Start(Spec{}); err == nil {
-		t.Fatal("spec inválida deveria falhar")
+		t.Fatal("invalid spec should fail")
 	}
-	file := filepath.Join(t.TempDir(), "arquivo")
+	file := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(file, nil, 0o600)
 	bad := *l
 	bad.WorkDir = filepath.Join(file, "sub")
 	if _, err := bad.Start(jobSpec()); err == nil {
-		t.Fatal("workdir sob um arquivo deveria falhar")
+		t.Fatal("workdir under a file should fail")
 	}
 	noExe := *l
-	noExe.Exe = filepath.Join(t.TempDir(), "nao-existe")
+	noExe.Exe = filepath.Join(t.TempDir(), "does-not-exist")
 	if _, err := noExe.Start(jobSpec()); err == nil {
-		t.Fatal("binário inexistente deveria falhar")
+		t.Fatal("missing binary should fail")
 	}
 	if entries, _ := os.ReadDir(noExe.WorkDir); len(entries) != 0 {
-		t.Fatalf("spec ficou para trás depois de falha no spawn: %v", entries)
+		t.Fatalf("spec left behind after a spawn failure: %v", entries)
 	}
 }
 
@@ -167,19 +167,19 @@ func TestStartVMPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	if vm.PID() <= 0 || vm.Wait() != 3 {
-		t.Fatal("VM pela porta não se comportou como o processo")
+		t.Fatal("VM through the port did not behave like the process")
 	}
 	if _, err := l.StartVM(Spec{}); err == nil {
-		t.Fatal("spec inválida deveria falhar pela porta também")
+		t.Fatal("invalid spec should fail through the port too")
 	}
 }
 
 // TestExitCodeOf cobre os três casos: sucesso, saída com código e erro que não é de saída.
 func TestExitCodeOf(t *testing.T) {
 	if exitCodeOf(nil) != 0 {
-		t.Fatal("nil deveria ser 0")
+		t.Fatal("nil should be 0")
 	}
-	if exitCodeOf(fmt.Errorf("outro")) != -1 {
-		t.Fatal("erro sem código deveria ser -1")
+	if exitCodeOf(fmt.Errorf("other")) != -1 {
+		t.Fatal("error without an exit code should be -1")
 	}
 }

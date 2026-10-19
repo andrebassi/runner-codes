@@ -25,7 +25,7 @@ O catálogo vem do `languages.yaml`, embutido no binário (`internal/adapters/ca
 | [jq](/languages/jq) | `jq` | `alpine:3.22` | 1 | 256 MiB | `apk add jq` |
 | [SQLite](/languages/sqlite) | `sqlite` | `alpine:3.22` | 1 | 256 MiB | `apk add sqlite` |
 
-`runner.code languages` (ou `GET /api/v1/languages`) mostra a mesma lista com `ready`, que diz se a imagem já foi construída neste host. Linguagem sem imagem construída é recusada com E006.
+`rc languages` (ou `GET /api/v1/languages`) mostra a mesma lista com `ready`, que diz se a imagem já foi construída neste host. Linguagem sem imagem construída é recusada com E006.
 
 ## Recursos
 
@@ -69,8 +69,8 @@ Depois:
 
 ```bash
 task build
-task image:build -- --lang <nome>
-runner.code run --lang <nome> --code '<programa mínimo>'
+task image:build -- --stack <nome>
+rc run --stack <nome> --code '<programa mínimo>'
 ```
 
 O binário do executor precisa estar no `PATH` da imagem ou no caminho absoluto que o executor usa. Uma imagem baseada em Alpine (musl) é o caso testado; o guest é estático e roda em qualquer uma.

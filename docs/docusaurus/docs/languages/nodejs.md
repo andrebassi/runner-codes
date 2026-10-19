@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é executado com `node <arquivo>`. O
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang nodejs
+rc image build --stack nodejs
 ```
 
 ## Exemplo

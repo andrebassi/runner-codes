@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Instala libkrun + libkrunfw. macOS: tap slp/krun (bottles arm64; 1.19.6 / 5.6.2 em
-# 19/10/2026). Linux: nixpkgs (libkrun 1.19.5 / libkrunfw 5.5.0), sem Docker (regra local).
+# Instala libkrun + libkrunfw pelo Nix (sem Homebrew), nos dois sistemas: o flake do repo
+# expõe `.#krun`, um lib/ com as duas, e o `rc` procura em ~/.nix-profile/lib por padrão.
+#   - macOS arm64: derivações próprias em nix/ (libkrun 1.19.6, libkrunfw 5.6.2); o nixpkgs
+#     só empacota a libkrun para Linux. A 1ª vez compila a libkrun (Rust, ~10 min);
+#   - Linux: nixpkgs com virtio-blk ligado.
+# Reinstalar sobre uma versão anterior troca a entrada do perfil em vez de duplicar.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 case "$(uname -s)" in
-  Darwin)
-    # O brew recusa fórmula de tap não confiado ("Refusing to load formula ... untrusted tap").
-    brew tap slp/krun
-    brew trust slp/krun
-    HOMEBREW_NO_AUTO_UPDATE=1 brew install slp/krun/libkrunfw slp/krun/libkrun
-    ls -la /opt/homebrew/lib/libkrun.dylib /opt/homebrew/lib/libkrunfw.dylib
-    ;;
-  Linux)
-    nix profile install nixpkgs#libkrun nixpkgs#libkrunfw
-    echo "aponte RUNNER_KRUN_LIB para \$HOME/.nix-profile/lib/libkrun.so.1 se o loader não achar"
-    ;;
+  Darwin | Linux) ;;
   *)
-    echo "SO sem libkrun upstream: $(uname -s)" >&2
+    echo "OS without upstream libkrun: $(uname -s)" >&2
     exit 1
     ;;
 esac
+# `nix profile` identifica a entrada pelo nome do atributo; remover antes deixa a operação
+# idempotente (o `add` recusa um segundo pacote com os mesmos arquivos).
+nix profile remove krun >/dev/null 2>&1 || true
+nix profile add .#krun
+ls -la "$HOME"/.nix-profile/lib/libkrun* "$HOME"/.nix-profile/lib/libkrunfw*

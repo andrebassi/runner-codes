@@ -26,7 +26,7 @@ Esta é a SQLite executável. Os validadores de sintaxe de banco não estão no 
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang sqlite
+rc image build --stack sqlite
 ```
 
 ## Exemplo

@@ -11,11 +11,11 @@ func TestSetDefaultEnvKeepsExisting(t *testing.T) {
 	t.Setenv("RUNNER_TEST_ENV", "/tmp/home")
 	setDefaultEnv("RUNNER_TEST_ENV", "/root")
 	if got := os.Getenv("RUNNER_TEST_ENV"); got != "/tmp/home" {
-		t.Fatalf("valor existente sobrescrito: %s", got)
+		t.Fatalf("existing value overwritten: %s", got)
 	}
 	t.Setenv("RUNNER_TEST_ENV", "")
 	setDefaultEnv("RUNNER_TEST_ENV", "/root")
 	if got := os.Getenv("RUNNER_TEST_ENV"); got != "/root" {
-		t.Fatalf("padrão não aplicado: %s", got)
+		t.Fatalf("default not applied: %s", got)
 	}
 }

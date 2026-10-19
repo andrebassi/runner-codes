@@ -26,7 +26,7 @@ Fora da conta, com o motivo escrito no script:
 
 | Excluído | Motivo |
 |----------|--------|
-| `cmd/runner.code` | wiring: só liga as peças; verificado pelo e2e |
+| `cmd/rc` | wiring: só liga as peças; verificado pelo e2e |
 | `internal/guest` | executor herdado, que só roda com as toolchains dentro da VM; medido à parte como dívida declarada, com catraca que reprova se cair |
 
 Prova de que o gate morde: `COVERAGE_FLOOR=101 task test:cov` precisa sair com rc ≠ 0.

@@ -117,13 +117,13 @@ func TestEnsureBuilderOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if l.calls() != 1 || !l.specs[0].Network || l.specs[0].Exec != "/work/bootstrap.sh" || l.specs[0].RootDir != b.builderRoot() {
-		t.Fatalf("bootstrap com spec errada: %+v", l.specs)
+		t.Fatalf("bootstrap with wrong spec: %+v", l.specs)
 	}
 	if b, _ := os.ReadFile(filepath.Join(b.builderRoot(), "etc", "resolv.conf")); !strings.Contains(string(b), "nameserver") {
-		t.Fatal("resolv.conf da VM de build ausente")
+		t.Fatal("build VM resolv.conf missing")
 	}
 	if err := b.EnsureBuilder(context.Background()); err != nil || l.calls() != 1 {
-		t.Fatalf("segunda chamada não deveria subir VM: err=%v calls=%d", err, l.calls())
+		t.Fatalf("second call should not boot a VM: err=%v calls=%d", err, l.calls())
 	}
 }
 
@@ -133,30 +133,30 @@ func TestEnsureBuilderRefuses(t *testing.T) {
 	b := newBuilder(t, &fakeLauncher{handle: buildOK}, nil)
 	b.Source = Source{}
 	if err := b.EnsureBuilder(ctx); err == nil {
-		t.Fatal("sem fonte deveria falhar")
+		t.Fatal("no source should fail")
 	}
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, nil)
 	b.Source.SHA256 = strings.Repeat("0", 64)
-	if err := b.EnsureBuilder(ctx); err == nil || !strings.Contains(err.Error(), "não confere") {
-		t.Fatalf("sha errado deveria falhar antes de extrair: %v", err)
+	if err := b.EnsureBuilder(ctx); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("wrong sha should fail before extracting: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(b.builderRoot(), "bin", "sh")); !os.IsNotExist(err) {
-		t.Fatal("nada pode ser extraído com sha errado")
+		t.Fatal("nothing may be extracted with a wrong sha")
 	}
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, nil)
 	b.Source.URL += "-404"
 	if err := b.EnsureBuilder(ctx); err == nil {
-		t.Fatal("HTTP 404 deveria falhar")
+		t.Fatal("HTTP 404 should fail")
 	}
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, nil)
 	b.Source.URL = "http://127.0.0.1:1/x"
 	if err := b.EnsureBuilder(ctx); err == nil {
-		t.Fatal("conexão recusada deveria falhar")
+		t.Fatal("connection refused should fail")
 	}
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, nil)
-	b.Source.URL = "::url-inválida"
+	b.Source.URL = "::invalid-url"
 	if err := b.EnsureBuilder(ctx); err == nil {
-		t.Fatal("URL inválida deveria falhar")
+		t.Fatal("invalid URL should fail")
 	}
 	fail := &fakeLauncher{handle: func(s ports.VMSpec, _ *fakeVM) int {
 		os.WriteFile(s.Console, []byte("ERROR: unable to select packages"), 0o644)
@@ -165,14 +165,14 @@ func TestEnsureBuilderRefuses(t *testing.T) {
 	b = newBuilder(t, fail, nil)
 	err := b.EnsureBuilder(ctx)
 	if err == nil || !strings.Contains(err.Error(), "unable to select packages") {
-		t.Fatalf("falha do apk deveria trazer o console: %v", err)
+		t.Fatalf("apk failure should include the console: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(b.builderRoot(), ".runner-ready")); !os.IsNotExist(err) {
-		t.Fatal("marcador não pode existir depois de bootstrap falho")
+		t.Fatal("marker must not exist after a failed bootstrap")
 	}
-	b = newBuilder(t, &fakeLauncher{fail: errors.New("sem hypervisor")}, nil)
+	b = newBuilder(t, &fakeLauncher{fail: errors.New("no hypervisor")}, nil)
 	if err := b.EnsureBuilder(ctx); err == nil {
-		t.Fatal("launcher que falha deveria falhar")
+		t.Fatal("failing launcher should fail")
 	}
 }
 
@@ -186,32 +186,32 @@ func TestBuildAndCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Cached || !strings.Contains(res.Metrics, "extract_ms=1") || !strings.HasPrefix(res.Digest, "sha256:") {
-		t.Fatalf("resultado inesperado: %+v", res)
+		t.Fatalf("unexpected result: %+v", res)
 	}
 	spec := l.specs[len(l.specs)-1]
 	if spec.Exec != "/work/build.sh" || spec.Args[0] != "/work/python.tar" || spec.Args[2] != "/work/python.warmup.sh" {
-		t.Fatalf("spec de build errada: %+v", spec)
+		t.Fatalf("wrong build spec: %+v", spec)
 	}
 	// Trava o defeito medido: sem PATH com /usr/local/bin o warmup do Python não roda.
 	if !strings.Contains(strings.Join(spec.Env, " "), "/usr/local/bin") {
-		t.Fatalf("VM de build sem PATH com /usr/local/bin: %v", spec.Env)
+		t.Fatalf("build VM without /usr/local/bin in PATH: %v", spec.Env)
 	}
 	if p, ok := b.ImagePath("python"); !ok || p != res.Path {
-		t.Fatalf("symlink não aponta para o build: %s %v", p, ok)
+		t.Fatalf("symlink does not point to the build: %s %v", p, ok)
 	}
 	if _, err := os.Stat(filepath.Join(b.builderRoot(), "work", "python.tar")); !os.IsNotExist(err) {
-		t.Fatal("tar intermediário deveria ser apagado")
+		t.Fatal("intermediate tar should be removed")
 	}
 	if g, _ := os.ReadFile(filepath.Join(b.builderRoot(), "work", "inject", "guest")); string(g) != "guest-binary" {
-		t.Fatal("guest não foi injetado")
+		t.Fatal("guest was not injected")
 	}
 	before := l.calls()
 	again, err := b.Build(context.Background(), pyLang)
 	if err != nil || !again.Cached || again.Path != res.Path || l.calls() != before {
-		t.Fatalf("segundo build deveria ser cache sem VM: %+v err=%v", again, err)
+		t.Fatalf("second build should be a cache hit without a VM: %+v err=%v", again, err)
 	}
 	if _, ok := b.ImagePath("ruby"); ok {
-		t.Fatal("ruby nunca foi construído")
+		t.Fatal("ruby was never built")
 	}
 }
 
@@ -227,22 +227,22 @@ func TestRebuildRemovesPreviousImage(t *testing.T) {
 	other := filepath.Join(b.imagesDir(), "ruby-aaaaaaaaaaaa.ext4")
 	os.WriteFile(other, []byte("x"), 0o644)
 	changed := pyLang
-	changed.Warmup = "true # mudou"
+	changed.Warmup = "true # changed"
 	second, err := b.Build(context.Background(), changed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.Path == first.Path {
-		t.Fatal("warmup novo deveria gerar outra imagem")
+		t.Fatal("new warmup should produce another image")
 	}
 	if _, err := os.Stat(first.Path); !os.IsNotExist(err) {
-		t.Fatal("imagem anterior deveria ter sido apagada")
+		t.Fatal("previous image should have been removed")
 	}
 	if _, err := os.Stat(second.Path); err != nil {
-		t.Fatal("imagem atual sumiu")
+		t.Fatal("current image is gone")
 	}
 	if _, err := os.Stat(other); err != nil {
-		t.Fatal("imagem de outra linguagem não pode ser apagada")
+		t.Fatal("another language image must not be removed")
 	}
 }
 
@@ -252,14 +252,14 @@ func TestCacheKeyInvalidation(t *testing.T) {
 	for name, k := range map[string]string{
 		"warmup": cacheKey("sha256:a", "w2", []byte("g")),
 		"guest":  cacheKey("sha256:a", "w", []byte("g2")),
-		"imagem": cacheKey("sha256:b", "w", []byte("g")),
+		"image":  cacheKey("sha256:b", "w", []byte("g")),
 	} {
 		if k == base {
-			t.Errorf("mudar %s não mudou a chave", name)
+			t.Errorf("changing %s did not change the key", name)
 		}
 	}
 	if len(base) != 12 {
-		t.Fatalf("chave com %d caracteres", len(base))
+		t.Fatalf("key has %d characters", len(base))
 	}
 }
 
@@ -269,15 +269,15 @@ func TestBuildFailures(t *testing.T) {
 	ctx := context.Background()
 
 	b := newBuilder(t, &fakeLauncher{handle: buildOK}, img)
-	b.GuestBinary = "/nao/existe"
+	b.GuestBinary = "/does/not/exist"
 	if _, err := b.Build(ctx, pyLang); err == nil {
-		t.Fatal("guest ausente deveria falhar")
+		t.Fatal("missing guest should fail")
 	}
 
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, img)
 	b.Fetch = func(context.Context, string, string) (v1.Image, error) { return nil, errors.New("rate limit") }
 	if _, err := b.Build(ctx, pyLang); err == nil || !strings.Contains(err.Error(), "rate limit") {
-		t.Fatalf("erro de fetch deveria subir: %v", err)
+		t.Fatalf("fetch error should propagate: %v", err)
 	}
 
 	b = newBuilder(t, &fakeLauncher{handle: func(s ports.VMSpec, _ *fakeVM) int {
@@ -288,12 +288,12 @@ func TestBuildFailures(t *testing.T) {
 		return 0
 	}}, img)
 	if _, err := b.Build(ctx, pyLang); err == nil || !strings.Contains(err.Error(), "No space left") {
-		t.Fatalf("falha do mkfs deveria trazer o console: %v", err)
+		t.Fatalf("mkfs failure should include the console: %v", err)
 	}
 
 	b = newBuilder(t, &fakeLauncher{handle: func(s ports.VMSpec, _ *fakeVM) int { return 0 }}, img)
 	if _, err := b.Build(ctx, pyLang); err == nil {
-		t.Fatal("VM que sai 0 sem gerar o ext4 deveria falhar no rename")
+		t.Fatal("VM that exits 0 without producing the ext4 should fail on rename")
 	}
 
 	b = newBuilder(t, &fakeLauncher{handle: func(s ports.VMSpec, vm *fakeVM) int {
@@ -306,13 +306,13 @@ func TestBuildFailures(t *testing.T) {
 	cctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 	if _, err := b.Build(cctx, pyLang); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("cancelamento deveria matar a VM de build e devolver o erro do ctx: %v", err)
+		t.Fatalf("cancellation should kill the build VM and return the ctx error: %v", err)
 	}
 
 	b = newBuilder(t, &fakeLauncher{handle: buildOK}, img)
 	b.Source = Source{}
 	if _, err := b.Build(ctx, pyLang); err == nil {
-		t.Fatal("sem VM de build não há build")
+		t.Fatal("no build VM means no build")
 	}
 }
 
@@ -332,17 +332,17 @@ func TestRemoteFetcher(t *testing.T) {
 	}
 	want, _ := img.Digest()
 	if d, _ := got.Digest(); d != want {
-		t.Fatalf("digest %s, quer %s", d, want)
+		t.Fatalf("digest %s, want %s", d, want)
 	}
-	if _, err := RemoteFetcher(context.Background(), "::ref::inválida", "arm64"); err == nil {
-		t.Fatal("referência inválida deveria falhar")
+	if _, err := RemoteFetcher(context.Background(), "::ref::invalid", "arm64"); err == nil {
+		t.Fatal("invalid reference should fail")
 	}
 	tarPath := filepath.Join(t.TempDir(), "flat.tar")
 	if err := writeFlat(got, tarPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFlat(got, filepath.Join(t.TempDir(), "sem", "dir.tar")); err == nil {
-		t.Fatal("destino inexistente deveria falhar")
+	if err := writeFlat(got, filepath.Join(t.TempDir(), "missing", "dir.tar")); err == nil {
+		t.Fatal("missing destination should fail")
 	}
 }
 
@@ -351,19 +351,19 @@ func TestRemoteFetcher(t *testing.T) {
 func TestImageEnvAndWarmupScript(t *testing.T) {
 	img, _ := random.Image(64, 1)
 	cfg, _ := img.ConfigFile()
-	cfg.Config.Env = []string{"PATH=/usr/local/go/bin:/usr/bin", "JAVA_HOME=/opt/java", "MAL='; rm -rf /", "QUEBRA=a\nb", "SEMIGUAL"}
+	cfg.Config.Env = []string{"PATH=/usr/local/go/bin:/usr/bin", "JAVA_HOME=/opt/java", "BAD='; rm -rf /", "BREAK=a\nb", "NOEQUALS"}
 	img, _ = mutate.ConfigFile(img, cfg)
 	env, err := imageEnv(img)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(env, "|") != "PATH=/usr/local/go/bin:/usr/bin|JAVA_HOME=/opt/java|MAL='; rm -rf /" {
-		t.Fatalf("env filtrado errado: %q", env)
+	if strings.Join(env, "|") != "PATH=/usr/local/go/bin:/usr/bin|JAVA_HOME=/opt/java|BAD='; rm -rf /" {
+		t.Fatalf("wrongly filtered env: %q", env)
 	}
 	script := warmupScript(env, "go version")
-	want := "export 'PATH=/usr/local/go/bin:/usr/bin'\nexport 'JAVA_HOME=/opt/java'\nexport 'MAL='\\''; rm -rf /'\ngo version\n"
+	want := "export 'PATH=/usr/local/go/bin:/usr/bin'\nexport 'JAVA_HOME=/opt/java'\nexport 'BAD='\\''; rm -rf /'\ngo version\n"
 	if script != want {
-		t.Fatalf("script:\n%s\nquer:\n%s", script, want)
+		t.Fatalf("script:\n%s\nwant:\n%s", script, want)
 	}
 }
 
@@ -379,7 +379,7 @@ func TestBuildWritesImageEnv(t *testing.T) {
 	}
 	got, _ := os.ReadFile(filepath.Join(b.builderRoot(), "work", "inject", "env"))
 	if string(got) != "PATH=/opt/java/openjdk/bin:/usr/bin\n" {
-		t.Fatalf("env injetado: %q", got)
+		t.Fatalf("injected env: %q", got)
 	}
 }
 
@@ -388,43 +388,43 @@ func TestScanConsoleLongLine(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.log")
 	os.WriteFile(p, []byte(strings.Repeat("x", 1<<20)+"\nRESULT used_mib=9\n"), 0o644)
 	if r, _ := scanConsole(p); r != "used_mib=9" {
-		t.Fatalf("RESULT perdido depois de linha longa: %q", r)
+		t.Fatalf("RESULT lost after a long line: %q", r)
 	}
 	// Caso medido no build do C: RESULT colado no fim da barra de progresso do apk, com \r.
 	os.WriteFile(p, []byte("\x1b7 99% ███\x1b8\x1b[0KRESULT used_mib=240 disk_mib=332\r\n"), 0o644)
 	if r, _ := scanConsole(p); r != "used_mib=240 disk_mib=332" {
-		t.Fatalf("RESULT colado na barra de progresso não foi achado: %q", r)
+		t.Fatalf("RESULT glued to the progress bar was not found: %q", r)
 	}
 }
 
 // TestHelpers cobre console ausente, cópia com origem/destino inválidos e link sem diretório.
 func TestHelpers(t *testing.T) {
-	if r, tail := scanConsole("/nao/existe"); r != "" || tail != "(sem console)" {
-		t.Fatalf("console ausente: %q %q", r, tail)
+	if r, tail := scanConsole("/does/not/exist"); r != "" || tail != "(no console)" {
+		t.Fatalf("missing console: %q %q", r, tail)
 	}
 	long := filepath.Join(t.TempDir(), "c.log")
 	var sb strings.Builder
 	for i := 0; i < 30; i++ {
-		sb.WriteString("linha\n")
+		sb.WriteString("line\n")
 	}
 	os.WriteFile(long, []byte(sb.String()), 0o644)
 	if _, tail := scanConsole(long); strings.Count(tail, "\n") != 19 {
-		t.Fatalf("tail deveria ter 20 linhas, tem %d", strings.Count(tail, "\n")+1)
+		t.Fatalf("tail should have 20 lines, has %d", strings.Count(tail, "\n")+1)
 	}
-	if err := copyFile("/nao/existe", filepath.Join(t.TempDir(), "x"), 0o644); err == nil {
-		t.Fatal("origem ausente deveria falhar")
+	if err := copyFile("/does/not/exist", filepath.Join(t.TempDir(), "x"), 0o644); err == nil {
+		t.Fatal("missing source should fail")
 	}
 	src := filepath.Join(t.TempDir(), "s")
 	os.WriteFile(src, []byte("x"), 0o644)
-	if err := copyFile(src, "/nao/existe/x", 0o644); err == nil {
-		t.Fatal("destino inválido deveria falhar")
+	if err := copyFile(src, "/does/not/exist/x", 0o644); err == nil {
+		t.Fatal("invalid destination should fail")
 	}
-	if _, err := fileSum("/nao/existe"); err == nil {
-		t.Fatal("fileSum de arquivo ausente deveria falhar")
+	if _, err := fileSum("/does/not/exist"); err == nil {
+		t.Fatal("fileSum of a missing file should fail")
 	}
-	b := &Builder{CacheDir: "/nao/existe"}
+	b := &Builder{CacheDir: "/does/not/exist"}
 	if err := b.link("python", "/x"); err == nil {
-		t.Fatal("link sem diretório deveria falhar")
+		t.Fatal("link without a directory should fail")
 	}
-	b.logf("sem destino de log não pode entrar em pânico")
+	b.logf("missing log destination must not panic")
 }

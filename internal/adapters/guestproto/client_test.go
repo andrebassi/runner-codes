@@ -61,10 +61,10 @@ func TestRunDeadline(t *testing.T) {
 	start := time.Now()
 	_, err := Client{}.Run(ctx, sock, protocol.Job{})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("esperava DeadlineExceeded, veio %v", err)
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
 	}
 	if time.Since(start) > time.Second {
-		t.Fatal("Run passou do deadline")
+		t.Fatal("Run exceeded the deadline")
 	}
 }
 
@@ -74,23 +74,23 @@ func TestRunCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
 	if _, err := (Client{}).Run(ctx, sock, protocol.Job{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("esperava Canceled, veio %v", err)
+		t.Fatalf("expected Canceled, got %v", err)
 	}
 }
 
 // TestRunErrors cobre socket inexistente, guest que fecha sem responder e job não serializável.
 func TestRunErrors(t *testing.T) {
 	if _, err := (Client{}).Run(context.Background(), filepath.Join(t.TempDir(), "x.sock"), protocol.Job{}); err == nil {
-		t.Fatal("socket inexistente deveria falhar")
+		t.Fatal("missing socket should fail")
 	}
 	closer := fakeGuest(t, func(c net.Conn) {})
 	if _, err := (Client{}).Run(context.Background(), closer, protocol.Job{}); err == nil {
-		t.Fatal("guest que fecha sem responder deveria falhar")
+		t.Fatal("guest that closes without replying should fail")
 	}
 	sock := fakeGuest(t, echoGuest)
 	big := protocol.Job{Code: string(make([]byte, protocol.MaxFrameBytes+1))}
 	if _, err := (Client{}).Run(context.Background(), sock, big); err == nil {
-		t.Fatal("job acima do limite deveria falhar no envio")
+		t.Fatal("job above the limit should fail on send")
 	}
 }
 
@@ -110,7 +110,7 @@ func TestWaitReadyRetriesUntilAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n.Load() < 4 {
-		t.Fatalf("esperava pelo menos 4 tentativas, houve %d", n.Load())
+		t.Fatalf("expected at least 4 attempts, got %d", n.Load())
 	}
 }
 
@@ -118,17 +118,17 @@ func TestWaitReadyRetriesUntilAnswer(t *testing.T) {
 // socket vira DeadlineExceeded mesmo com o ctx ainda vivo.
 func TestCtxError(t *testing.T) {
 	live := context.Background()
-	if err := ctxError(live, fmt.Errorf("ler: %w", os.ErrDeadlineExceeded)); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("i/o timeout deveria virar DeadlineExceeded: %v", err)
+	if err := ctxError(live, fmt.Errorf("read: %w", os.ErrDeadlineExceeded)); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("i/o timeout should become DeadlineExceeded: %v", err)
 	}
 	canceled, cancel := context.WithCancel(live)
 	cancel()
-	if err := ctxError(canceled, errors.New("conexão fechada")); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelamento deveria prevalecer: %v", err)
+	if err := ctxError(canceled, errors.New("connection closed")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation should take precedence: %v", err)
 	}
-	other := errors.New("conexão resetada")
+	other := errors.New("connection reset")
 	if err := ctxError(live, other); err != other {
-		t.Fatalf("erro comum deveria passar intacto: %v", err)
+		t.Fatalf("plain error should pass through unchanged: %v", err)
 	}
 }
 
@@ -136,8 +136,8 @@ func TestCtxError(t *testing.T) {
 func TestWaitReadyGivesUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	err := (Client{}).WaitReady(ctx, filepath.Join(t.TempDir(), "nunca.sock"))
+	err := (Client{}).WaitReady(ctx, filepath.Join(t.TempDir(), "never.sock"))
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("esperava DeadlineExceeded, veio %v", err)
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
 	}
 }

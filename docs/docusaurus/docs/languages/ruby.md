@@ -24,7 +24,7 @@ O arquivo principal (o primeiro de `files`) é executado com `ruby <arquivo>`. O
 ## Construir a imagem
 
 ```bash
-runner.code image build --lang ruby
+rc image build --stack ruby
 ```
 
 ## Exemplo
