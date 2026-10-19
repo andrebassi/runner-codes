@@ -160,17 +160,17 @@ Ciclo de vida das [máquinas persistentes](/cli/machine), com os nomes de rota d
 
 | Método | Caminho | Corpo / query | Resposta |
 |--------|---------|---------------|----------|
-| POST | `/api/v1/machines` | `{"name","stack","cpus","memory_mib","disk_gib","gpu"}` | 201 + máquina (`state: stopped`) |
+| POST | `/api/v1/machines` | `{"name","stack"\|"image","cpus","memory_mib","disk_gib","gpu","gpu_vram_mib","env","workdir","init","workload","stop_signal","stop_timeout","stop_on_exit"}` ou `{"name","runner_code":"<TOML>"}` (campos não vazios vencem o arquivo) | 201 + máquina (`state: stopped`) |
 | GET | `/api/v1/machines` | — | lista com `state` e `pid` |
 | GET | `/api/v1/machines/:name` | — | a máquina |
 | DELETE | `/api/v1/machines/:name` | `?force=true` mata se ligada | 204 |
 | POST | `/api/v1/machines/:name/start` | — | 200 + máquina (`state: running`) |
-| POST | `/api/v1/machines/:name/stop` | `?timeout=N` em segundos (0–300; 0 mata na hora) | 204 |
+| POST | `/api/v1/machines/:name/stop` | `?timeout=N` em segundos (0–300; 0 mata na hora); sem ele, o `stop_timeout` da máquina (ou 10) | 204 |
 | POST | `/api/v1/machines/:name/exec` | `{"command":["argv",...],"env":["K=V"],"workdir","stdin","timeout"}` | `{"exitCode","stdout","stderr","timedOut","executionTime"}` |
 | POST | `/api/v1/machines/:name/exec/stream` | mesmo corpo | SSE: `stdout`, `stderr` e `exit` (`{"exitCode":N}`) |
 | PUT | `/api/v1/machines/:name/files?path=/abs[&mode=644]` | corpo cru = conteúdo | `{"path","bytes"}` |
 | GET | `/api/v1/machines/:name/files?path=/abs` | — | conteúdo cru (`application/octet-stream`) |
-| GET | `/api/v1/machines/:name/logs?tail=N` | — | console em texto |
+| GET | `/api/v1/machines/:name/logs?tail=N&source=all\|workload` | — | console em texto; `workload` filtra a saída do workload, sem a marca |
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'

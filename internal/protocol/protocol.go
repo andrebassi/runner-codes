@@ -50,6 +50,14 @@ type Job struct {
 	Data   []byte `json:"data,omitempty"`
 	Final  bool   `json:"final,omitempty"`
 	Mode   uint32 `json:"mode,omitempty"`
+	// Rows e Cols são o tamanho inicial do terminal no OpPTY.
+	Rows uint16 `json:"rows,omitempty"`
+	Cols uint16 `json:"cols,omitempty"`
+	// Signal e StopOnExit são do workload: o OpWorkload liga o StopOnExit (a máquina
+	// desliga quando o workload sai); o OpShutdown manda Signal ao workload e espera Timeout
+	// segundos antes do SIGKILL.
+	Signal     int  `json:"signal,omitempty"`
+	StopOnExit bool `json:"stop_on_exit,omitempty"`
 }
 
 // Operações de Job. OpRun é o vazio, para o fio dos jobs efêmeros não mudar.
@@ -59,6 +67,21 @@ const (
 	OpPut      = "put"
 	OpGet      = "get"
 	OpShutdown = "shutdown"
+	// OpPTY abre uma sessão interativa: o guest roda o Argv num PTY e a conexão vira um
+	// canal de frames Event nos dois sentidos até o programa sair.
+	OpPTY = "pty"
+	// OpWorkload liga o processo que a máquina mantém rodando (entrypoint + cmd do
+	// runner.code), em segundo plano; a resposta vem assim que ele começou.
+	OpWorkload = "workload"
+)
+
+// Tipos de Event da sessão interativa. Do host para o guest: entrada e tamanho da janela.
+// Do guest para o host: a saída do terminal e a saída do programa (com o código).
+const (
+	EventInput  = "input"
+	EventResize = "resize"
+	EventOutput = "output"
+	EventExit   = "exit"
 )
 
 // ChunkBytes é o pedaço de cópia de arquivo: 1 MiB, como o smolvm. Em base64 no JSON vira
@@ -82,6 +105,13 @@ type Event struct {
 	Type   string  `json:"type"`
 	Data   string  `json:"data,omitempty"`
 	Result *Result `json:"result,omitempty"`
+	// Bytes, Rows, Cols e Code são da sessão interativa (OpPTY). Bytes e não Data porque o
+	// terminal carrega byte cru (UTF-8 partido no meio, sequências de controle): numa string
+	// JSON o byte inválido viraria U+FFFD; em []byte vai em base64, sem perda.
+	Bytes []byte `json:"bytes,omitempty"`
+	Rows  uint16 `json:"rows,omitempty"`
+	Cols  uint16 `json:"cols,omitempty"`
+	Code  int    `json:"code,omitempty"` // ausente = 0, que é o que o exit sem código quer dizer
 }
 
 // Result é a resposta do guest. Stderr e Exception são null quando vazios, contrato da API.

@@ -9,7 +9,7 @@ o passo correspondente no `scripts/runbook.sh`, na mesma entrega.**
 
 | Última execução | Host | Resultado |
 |-----------------|------|-----------|
-| 19/10/2026 | macOS 27, Apple M1 Pro | `task runbook`: 0 falhas em 23 conferências. Prova de falha: com a máquina subindo sem o `machine.sh`, 6 falhas |
+| 19/10/2026 | macOS 27, Apple M1 Pro | `task runbook`: 0 falhas em 36 conferências (com o `runner.code`, passo 8b). Prova de falha: com o init rodando a cada start, o 8b reprovou (`init não roda de novo`) |
 
 Pré-requisitos: `task krun:install`, `task build` e as imagens (`./bin/rc image build --all`; o passo 9 precisa da
 `llama`).
@@ -108,6 +108,26 @@ Esperado:
 
 Esperado: `a`, `b` um segundo depois e `rc=7`. O rc do `rc` é o do comando.
 
+## 7b. Terminal interativo na máquina
+
+```bash
+./bin/rc machine shell --name teste
+```
+
+Dentro do shell que abrir, digite:
+
+```bash
+test -t 0 && echo IS-TTY; stty size     # IS-TTY e o tamanho do seu terminal
+sleep 30                                 # aperte Ctrl+C: interrompe só o sleep
+echo ALIVE                               # o shell continua vivo
+exit 4
+```
+
+Fora, `echo $?` mostra `4`. A máquina continua ligada: o shell é uma sessão, não a VM.
+
+Esperado: terminal de verdade, com Ctrl+C, setas, histórico, `vi` e redimensionamento da janela. É `bash` se a imagem
+tiver; na python (Alpine) é o `sh`.
+
 ## 8. Logs da máquina
 
 ```bash
@@ -115,6 +135,53 @@ Esperado: `a`, `b` um segundo depois e `rc=7`. O rc do `rc` é o do comando.
 ```
 
 Esperado: as últimas linhas do console (o guest registra cada operação). Funciona também com a máquina parada.
+
+## 8b. Máquina declarada num `runner.code`
+
+O [`runner.code`](docusaurus/docs/cli/runner-code.md) é o Smolfile do `rc`: stack ou imagem, recursos, env, init e
+workload num TOML versionável.
+
+```bash
+mkdir -p /tmp/rc-demo && cd /tmp/rc-demo
+cat > runner.code <<'TOML'
+stack = "python"
+cpus = 2
+env = ["GREETING=hello"]
+workdir = "/app"
+init = ["echo $(( $(cat count 2>/dev/null || echo 0) + 1 )) > count"]
+entrypoint = ["sh", "-c"]
+cmd = ["trap 'echo saved > saved; exit 0' INT; echo \"up $GREETING in $(pwd)\"; while :; do sleep 0.2; done"]
+stop_signal = "SIGINT"
+stop_timeout = 5
+TOML
+~/works/labs/github/runner.codes/bin/rc machine create --name web --cpus 1
+cd ~/works/labs/github/runner.codes
+./bin/rc machine status --name web --json
+./bin/rc machine start  --name web
+./bin/rc machine logs   --name web --source workload
+./bin/rc machine exec   --name web -- sh -c 'cat count; echo $GREETING; pwd'
+./bin/rc machine stop   --name web
+./bin/rc machine start  --name web
+./bin/rc machine exec   --name web -- sh -c 'cat count saved'
+./bin/rc machine stop   --name web
+./bin/rc machine delete --name web
+```
+
+Esperado:
+- o `create` sem `-f` diz `from runner.code`, e o status mostra `"cpus": 1`: a flag vence o arquivo;
+- `logs --source workload` mostra `up hello in /app`: o workdir foi criado e env e workdir chegaram ao workload;
+- o primeiro `exec` imprime `1`, `hello`, `/app`;
+- o segundo imprime `1` e `saved`: o init **não** rodou de novo no segundo start, e o `SIGINT` do stop chegou ao
+  workload, que gravou o arquivo antes do sync.
+
+Chave que o `runner.code` ainda não implementa é recusada, nunca ignorada:
+
+```bash
+printf 'stack = "python"\nnet = true\n' > /tmp/rc-demo/bad.code
+./bin/rc machine create --name x -f /tmp/rc-demo/bad.code
+```
+
+Esperado: `key "net" is not supported yet: networking (planned: phase C)`, e nada criado.
 
 ## 9. GPU
 
@@ -157,7 +224,7 @@ Esperado:
 ```bash
 ./bin/rc machine stop --name teste
 ./bin/rc machine delete --name teste
-rm -f /tmp/rc-up.bin /tmp/rc-down.bin
+rm -rf /tmp/rc-up.bin /tmp/rc-down.bin /tmp/rc-demo
 ```
 
 Esperado: `stopped teste` e `deleted teste`. `./bin/rc machine ls` volta vazio.

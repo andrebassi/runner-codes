@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 // rcMachine roda `rc machine ...` e devolve stdout, stderr e rc.
@@ -246,4 +248,65 @@ func TestMachineAPI(t *testing.T) {
 	}
 	srv.Process.Signal(syscall.SIGTERM)
 	srv.Wait()
+}
+
+// TestMachineShellTTY trava o `rc machine shell` com um pseudo-terminal de verdade, numa
+// máquina já ligada: o shell enxerga um terminal com o tamanho do host, Ctrl+C interrompe só
+// o comando (o shell e a máquina continuam), o que se grava no shell persiste para o exec, e
+// o rc do `rc` é o do `exit`. Antes do devpts no machine.sh o shell saía com 127 na hora
+// (`open /dev/ptmx: no such device`, medido).
+func TestMachineShellTTY(t *testing.T) {
+	name := uniqueName("e2e-tty")
+	defer rcMachine(t, "delete", "--name", name, "-f")
+	mustMachine(t, "create", "--name", name, "--stack", "python", "--disk-gib", "2")
+	mustMachine(t, "start", "--name", name)
+
+	cmd := exec.Command(bin(t), "machine", "shell", "--name", name)
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ptmx.Close()
+	out := &ptyOutput{}
+	go io.Copy(out, ptmx)
+	send := func(s string) { ptmx.Write([]byte(s)) }
+
+	pos := out.waitFor(t, 0, "# ", 30*time.Second)
+	// IS-T""TY e SL""EPT: o eco da linha digitada mostra as aspas; só a execução imprime junto.
+	send("test -t 0 && echo IS-T\"\"TY; stty size\r")
+	pos = out.waitFor(t, pos, "IS-TTY", 10*time.Second)
+	pos = out.waitFor(t, pos, "40 120", 10*time.Second)
+	send("sleep 30; echo SL\"\"EPT\r")
+	time.Sleep(time.Second)
+	start := time.Now()
+	send("\x03")
+	send("echo shell-wrote > /workspace/from-shell; echo ALIVE-$((6*7))\r")
+	out.waitFor(t, pos, "ALIVE-42", 10*time.Second)
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("Ctrl+C did not interrupt the sleep (took %v)", time.Since(start))
+	}
+	out.mu.Lock()
+	slept := strings.Contains(out.buf.String(), "SLEPT\r\n")
+	out.mu.Unlock()
+	if slept {
+		t.Fatal("the sleep finished: Ctrl+C did not reach the guest")
+	}
+	send("exit 4\r")
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 4 {
+			t.Fatalf("exit code must pass through: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		cmd.Process.Kill()
+		t.Fatal("rc machine shell did not exit after `exit 4`")
+	}
+	if got := mustMachine(t, "exec", "--name", name, "--", "cat", "/workspace/from-shell"); got != "shell-wrote\n" {
+		t.Fatalf("what the shell wrote is not in the machine: %q", got)
+	}
+	if st := mustMachine(t, "status", "--name", name, "--json"); !strings.Contains(st, `"state": "running"`) {
+		t.Fatal("the machine must keep running after the shell exits")
+	}
 }
