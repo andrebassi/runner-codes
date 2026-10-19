@@ -82,3 +82,26 @@ func TestWriteFrameErrors(t *testing.T) {
 		t.Fatal("expected the writer error")
 	}
 }
+
+// TestStreamWireFormat trava o fio do streaming: `stream` só aparece quando ligado (o job
+// sem streaming sai byte a byte igual ao de antes) e o Event carrega o Result final.
+func TestStreamWireFormat(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteFrame(&buf, Job{Lang: "sh", Code: "true"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "stream") {
+		t.Fatalf("non-streaming job must not carry the field: %s", buf.String()[4:])
+	}
+	buf.Reset()
+	if err := WriteFrame(&buf, Event{Type: EventResult, Result: &Result{Status: "success", Stdout: "a"}}); err != nil {
+		t.Fatal(err)
+	}
+	var ev Event
+	if err := ReadFrame(&buf, &ev); err != nil {
+		t.Fatal(err)
+	}
+	if ev.Type != EventResult || ev.Result == nil || ev.Result.Stdout != "a" || ev.Data != "" {
+		t.Fatalf("result event read wrong: %+v", ev)
+	}
+}

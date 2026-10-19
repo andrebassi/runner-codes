@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,7 +18,21 @@ import (
 // Runner executa um job; o app.Executor implementa.
 type Runner interface {
 	Run(ctx context.Context, job domain.Job) (domain.Result, error)
+	// RunStream entrega a saída a onOutput enquanto o programa roda; job recusado na
+	// validação volta como erro sem nenhuma chamada a onOutput.
+	RunStream(ctx context.Context, job domain.Job, onOutput func(stream, data string)) (domain.Result, error)
 	Known(lang string) bool
+}
+
+// StreamResult é o evento `result` que fecha POST /api/v1/execute/stream. Não repete
+// stdout/stderr: o cliente já os recebeu pelos eventos, e repetir dobraria os bytes.
+type StreamResult struct {
+	Status        string      `json:"status"`
+	ExitCode      int         `json:"exitCode"`
+	Exception     interface{} `json:"exception"`
+	ExecutionTime int64       `json:"executionTime"`
+	TimedOut      bool        `json:"timedOut"`
+	Error         string      `json:"error,omitempty"`
 }
 
 // LanguageInfo é uma linha de GET /api/v1/languages.
@@ -86,7 +101,65 @@ func (s *Server) Handler() http.Handler {
 	v1.GET("/languages", func(c *gin.Context) { c.JSON(http.StatusOK, s.Languages()) })
 	v1.POST("/run", s.run)
 	v1.POST("/execute", s.execute)
+	v1.POST("/execute/stream", s.executeStream)
 	return r
+}
+
+// executeStream atende POST /api/v1/execute/stream: mesmo corpo do /execute, resposta em
+// Server-Sent Events. Eventos `stdout`/`stderr` trazem o pedaço como string JSON (SSE não
+// aceita quebra de linha crua no data); `result` fecha. O 200 só sai no primeiro evento,
+// para job recusado ainda poder responder 400 JSON igual ao /execute.
+func (s *Server) executeStream(c *gin.Context) {
+	var req ExecuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "invalid request: " + err.Error()})
+		return
+	}
+	if _, batch := req.Stdin.([]interface{}); batch {
+		c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: "invalid request: stdin as a list (batch) is not supported on the stream endpoint"})
+		return
+	}
+	job := domain.Job{Language: req.Language, Code: req.Code, Files: toFiles(req.Files),
+		Stdin: stdinString(req.Stdin), Timeout: time.Duration(req.Timeout) * time.Second}
+
+	w := c.Writer
+	started := false
+	// emit é chamado só da goroutine que lê o guest (o cliente lê os frames em sequência),
+	// então não precisa de lock.
+	emit := func(event string, v interface{}) {
+		if !started {
+			started = true
+			h := w.Header()
+			h.Set("Content-Type", "text/event-stream")
+			h.Set("Cache-Control", "no-cache")
+			// Proxy nginx acumula a resposta por padrão e mataria o streaming.
+			h.Set("X-Accel-Buffering", "no")
+			w.WriteHeader(http.StatusOK)
+		}
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
+		w.Flush()
+	}
+	res, err := s.Runner.RunStream(c.Request.Context(), job, func(stream, data string) { emit(stream, data) })
+	if err != nil {
+		if started {
+			emit("error", gin.H{"error": err.Error()})
+			return
+		}
+		var ve domain.ValidationError
+		if errors.As(err, &ve) {
+			c.JSON(http.StatusBadRequest, RunResponse{Status: "failed", Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, RunResponse{Status: "failed", Exception: err.Error()})
+		return
+	}
+	status := res.Status
+	if status == "" {
+		status = "failed"
+	}
+	emit("result", StreamResult{Status: status, ExitCode: res.ExitCode, Exception: nullable(res.Exception),
+		ExecutionTime: res.Duration.Milliseconds(), TimedOut: res.TimedOut, Error: res.Error})
 }
 
 // run atende POST /api/v1/run.

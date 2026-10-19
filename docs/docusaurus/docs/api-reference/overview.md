@@ -86,6 +86,40 @@ Os valores de `executionTime` acima são ilustrativos.
 
 A resposta tem o mesmo formato de `/api/v1/run`.
 
+## POST /api/v1/execute/stream
+
+Mesmo corpo do `/api/v1/execute`. A resposta é `text/event-stream` (Server-Sent Events): a saída chega **enquanto
+o programa roda**, e um evento `result` fecha a resposta.
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/api/v1/execute/stream -H 'content-type: application/json' \
+  -d '{"language":"python","code":"import time\nprint(\"early\")\ntime.sleep(1.5)\nprint(\"late\")"}'
+```
+
+```
+event: stdout
+data: "early\n"
+
+event: stdout
+data: "late\n"
+
+event: result
+data: {"status":"success","exitCode":0,"exception":null,"executionTime":1534,"timedOut":false}
+```
+
+| Evento | `data` |
+|--------|--------|
+| `stdout`, `stderr` | o pedaço de saída como **string JSON** (a quebra de linha vem escapada: SSE não aceita quebra crua no `data`) |
+| `result` | `status`, `exitCode`, `exception`, `executionTime` (ms), `timedOut`, e `error` quando houver. Não repete stdout/stderr |
+| `error` | `{"error": "..."}`: falha de infraestrutura depois de o stream ter começado (ex.: conexão com o guest caiu) |
+
+- Job recusado na validação responde **400 JSON**, igual ao `/execute`, antes de abrir o stream. Falha de
+  infraestrutura antes do primeiro evento responde 500 JSON.
+- `stdin` em lista (lote) não é aceito nesta rota: 400.
+- O cabeçalho `X-Accel-Buffering: no` desliga o buffer de proxy nginx.
+- Linguagens com stdout em bloco quando a saída é pipe (C, Ruby, Perl) só entregam no `flush` do programa; o Python
+  roda com `PYTHONUNBUFFERED=1`. Detalhes em [`rc run`](/cli/run).
+
 ## Campos da resposta
 
 | Campo | Descrição |

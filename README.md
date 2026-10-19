@@ -82,6 +82,19 @@ aparece como `exception: "Timeout"`.
 
 A API **não tem autenticação**. Por isso o padrão é escutar só em `127.0.0.1`.
 
+### Saída em streaming
+
+O `rc run` mostra o stdout e o stderr enquanto o programa roda. Pela API, `POST /api/v1/execute/stream` (mesmo corpo
+do `/execute`) responde em Server-Sent Events: eventos `stdout`/`stderr` com o pedaço como string JSON e um `result`
+no fim.
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/api/v1/execute/stream -H 'content-type: application/json' \
+  -d '{"language":"python","code":"import time\nprint(\"early\")\ntime.sleep(1.5)\nprint(\"late\")"}'
+```
+
+C, Ruby e Perl acumulam o stdout quando a saída é pipe: o programa precisa dar flush para o pedaço sair antes do fim.
+
 ### Shell dentro da VM
 
 ```bash

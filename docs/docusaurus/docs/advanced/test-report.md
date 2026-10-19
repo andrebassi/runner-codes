@@ -116,6 +116,8 @@ Rodada duas vezes seguidas (`-count=2`), verde nas duas. Cada teste trava um com
 | `TestShell` | `rc shell` com stdin por pipe sobe com root read-only, `/tmp` gravável e sem rede; na stack bash é bash 5.2 de verdade |
 | `TestShellTTY` | `rc shell` sob pseudo-terminal real (`creack/pty`, 40×120): o stdin do guest é terminal, `stty size` devolve `40 120`, e Ctrl+C interrompe um `sleep 30` sem derrubar a VM (o teste leva ~1,4 s; sem a interrupção levaria 30 s). **Prova de falha:** sem o modo raw no host o teste reprovou (`VM survived the shell exit`); restaurado, passou |
 | `TestServePool` | o `serve` enche os pools, atende `/run` e, no SIGTERM, não deixa VM viva |
+| `TestRunStreams` | `rc run` com Python que escreve, dorme 1,5 s e escreve de novo: a 1ª linha chega ao stdout do host ≥ 1 s antes da 2ª (medido: 0,25 s e 1,75 s depois do início). **Prova de falha:** com o `rc run` acumulando a saída, as duas linhas chegaram com 3,8 µs de distância e o teste reprovou |
+| `TestServeStream` | `POST /api/v1/execute/stream` com a VM real: `text/event-stream`, eventos `stdout` com a 1ª linha ≥ 1 s antes da 2ª, `result` final com `exitCode` 0; job recusado responde 400 antes do stream |
 
 ### `rc shell`
 

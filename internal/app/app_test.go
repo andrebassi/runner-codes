@@ -74,12 +74,25 @@ type guest struct {
 	readyErr func(socket string) error
 	run      func(ctx context.Context, socket string, j protocol.Job) (protocol.Result, error)
 	sockets  sync.Map
+	// chunks são os pedaços {fluxo, dado} que o RunStream falso entrega antes do resultado.
+	chunks   [][2]string
+	streamed atomic.Bool
 }
 
 // Run delega para a função configurada.
 func (g *guest) Run(ctx context.Context, socket string, j protocol.Job) (protocol.Result, error) {
 	g.sockets.Store(socket, true)
 	return g.run(ctx, socket, j)
+}
+
+// RunStream manda os pedaços de chunks a onOutput e depois delega o resultado ao run;
+// streamed registra que o caminho de streaming foi o escolhido.
+func (g *guest) RunStream(ctx context.Context, socket string, j protocol.Job, onOutput func(stream, data string)) (protocol.Result, error) {
+	g.streamed.Store(true)
+	for _, c := range g.chunks {
+		onOutput(c[0], c[1])
+	}
+	return g.Run(ctx, socket, j)
 }
 
 // WaitReady responde na hora, ou espera o ctx se readyErr devolver erro de bloqueio.
@@ -428,6 +441,40 @@ func TestExecuteGuestTimeoutException(t *testing.T) {
 	res, err := e.Run(context.Background(), job())
 	if err != nil || !res.TimedOut || res.Status != "success" {
 		t.Fatalf("res=%+v err=%v", res, err)
+	}
+}
+
+// TestRunStream: o streaming passa os pedaços adiante, devolve o mesmo resultado do Run e
+// destrói a VM; o Run comum não usa o caminho de streaming.
+func TestRunStream(t *testing.T) {
+	e, _, l, g := executor(t)
+	g.chunks = [][2]string{{"stdout", "a"}, {"stderr", "e"}}
+	g.run = func(context.Context, string, protocol.Job) (protocol.Result, error) {
+		return protocol.Result{Status: "success", Stdout: "a", Stderr: "e", ExecutionTime: 5}, nil
+	}
+	var got []string
+	res, err := e.RunStream(context.Background(), job(), func(stream, data string) { got = append(got, stream+":"+data) })
+	if err != nil || res.Stdout != "a" || res.Stderr != "e" || strings.Join(got, ",") != "stdout:a,stderr:e" {
+		t.Fatalf("res=%+v err=%v chunks=%v", res, err, got)
+	}
+	if !l.vm(0).killed.Load() {
+		t.Fatal("VM was not destroyed after the streamed job")
+	}
+	g.streamed.Store(false)
+	if _, err := e.Run(context.Background(), job()); err != nil || g.streamed.Load() {
+		t.Fatalf("plain Run must not stream: err=%v", err)
+	}
+}
+
+// TestRunStreamValidationFirst: job recusado não chama o onOutput nem sobe VM; é o que
+// deixa a rota SSE responder 400 antes de abrir o stream.
+func TestRunStreamValidationFirst(t *testing.T) {
+	e, _, l, _ := executor(t)
+	bad := job()
+	bad.Language = "ruby"
+	called := false
+	if _, err := e.RunStream(context.Background(), bad, func(string, string) { called = true }); err == nil || called || l.count() != 0 {
+		t.Fatalf("err=%v called=%v vms=%d", err, called, l.count())
 	}
 }
 

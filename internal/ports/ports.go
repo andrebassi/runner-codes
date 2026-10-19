@@ -84,6 +84,9 @@ type VMLauncher interface {
 // GuestClient conversa com o guest-runner de uma VM pelo socket do vsock.
 type GuestClient interface {
 	Run(ctx context.Context, socket string, job protocol.Job) (protocol.Result, error)
+	// RunStream é o Run com a saída entregue a onOutput enquanto o programa roda; o
+	// Result final é o mesmo do Run.
+	RunStream(ctx context.Context, socket string, job protocol.Job, onOutput func(stream, data string)) (protocol.Result, error)
 	WaitReady(ctx context.Context, socket string) error
 }
 

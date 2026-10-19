@@ -33,6 +33,24 @@ type Job struct {
 	Stdin   interface{}       `json:"stdin,omitempty"` // string, ou []string para lote
 	Timeout int               `json:"timeout"`
 	Meta    map[string]string `json:"meta,omitempty"`
+	// Stream pede a saída em pedaços (frames Event) antes do resultado. Sem ele o guest
+	// responde com um único frame Result, como sempre fez.
+	Stream bool `json:"stream,omitempty"`
+}
+
+// Tipos de Event no modo streaming: pedaços de saída e o resultado que encerra a conversa.
+const (
+	EventStdout = "stdout"
+	EventStderr = "stderr"
+	EventResult = "result"
+)
+
+// Event é um frame do modo streaming. Pedaço de saída leva Data; o último frame tem
+// Type EventResult e o Result completo (stdout/stderr inteiros, para o contrato não mudar).
+type Event struct {
+	Type   string  `json:"type"`
+	Data   string  `json:"data,omitempty"`
+	Result *Result `json:"result,omitempty"`
 }
 
 // Result é a resposta do guest. Stderr e Exception são null quando vazios, contrato da API.

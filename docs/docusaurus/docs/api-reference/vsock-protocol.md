@@ -42,6 +42,22 @@ Job `{"trace_id":"t1","lang":"python","code":"print(1)","timeout":10}` tem 64 by
 - Host → guest: [Job request](/api-reference/job-request).
 - Guest → host: [Job response](/api-reference/job-response).
 
+## Streaming
+
+Com `"stream": true` no job, o guest responde com vários frames em vez de um, todos no mesmo formato
+(tamanho + JSON), em `internal/protocol`:
+
+```json
+{"type":"stdout","data":"early\n"}
+{"type":"stderr","data":"warn\n"}
+{"type":"result","result":{"status":"success","stdout":"early\n","stderr":"warn\n","exception":null,"executionTime":12}}
+```
+
+- Um frame por escrita do processo no pipe (até 32 KiB no Linux), na ordem em que o guest leu.
+- O `result` é sempre o último e traz o resultado completo, igual ao do modo sem streaming.
+- Sem `stream`, o fio é idêntico ao anterior: um frame de resultado. A prova de prontidão (`sh true`) usa esse modo.
+- Se o host recebe um frame sem `type`, o guest da imagem é anterior ao streaming: `rc image build` refaz a imagem.
+
 ## Diferença para a versão com Firecracker
 
 O formato do frame e os campos do JSON não mudaram. O que deixou de existir é o handshake textual `CONNECT 5000` / `OK 5000`, que era do socket vsock do Firecracker: na libkrun, o socket Unix já está ligado à porta 5000.

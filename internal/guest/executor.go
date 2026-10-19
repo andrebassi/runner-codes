@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"runner.code/internal/protocol"
 )
 
 var (
@@ -524,8 +527,19 @@ func ensureProc() {
 	})
 }
 
-// Execute runs the code and returns the result
+// Sink recebe cada pedaço de saída do programa enquanto ele roda; stream é
+// protocol.EventStdout ou protocol.EventStderr. É chamado de duas goroutines (o exec copia
+// stdout e stderr em paralelo), então quem implementa serializa as escritas.
+type Sink func(stream, data string)
+
+// Execute roda o código e devolve o resultado inteiro no fim, sem streaming.
 func (e *Executor) Execute(job Job) Result {
+	return e.ExecuteStream(job, nil)
+}
+
+// ExecuteStream roda o código entregando a saída ao sink à medida que sai (nil = sem
+// streaming). O Result devolvido é o mesmo do Execute: stdout e stderr completos.
+func (e *Executor) ExecuteStream(job Job, sink Sink) Result {
 	fmt.Printf("[executor] Execute called for lang=%s trace_id=%s\n", job.Lang, job.TraceID)
 
 	// Ensure /proc is mounted (needed after snapshot restore for compilers like rustc)
@@ -606,7 +620,7 @@ func (e *Executor) Execute(job Job) Result {
 
 		// Compile: javac/kotlinc/scalac Main.java/Main.kt/Main.scala
 		buildArgs := append(langConfig.BuildArgs, mainFile)
-		stdout, stderr, exitCode := e.runCommandWithStdin(ctx, tmpDir, "", langConfig.BuildCmd, buildArgs...)
+		stdout, stderr, exitCode := e.runCommandWithStdin(ctx, sink, tmpDir, "", langConfig.BuildCmd, buildArgs...)
 
 		if exitCode != 0 {
 			result.Status = "success"
@@ -621,7 +635,7 @@ func (e *Executor) Execute(job Job) Result {
 
 		// Run: java/kotlin/scala Main (from the same directory)
 		runArgs := append(langConfig.Args, className)
-		stdout, stderr, exitCode = e.runCommandWithStdin(ctx, tmpDir, stdinStr, langConfig.Command, runArgs...)
+		stdout, stderr, exitCode = e.runCommandWithStdin(ctx, sink, tmpDir, stdinStr, langConfig.Command, runArgs...)
 		result.ExecutionTime = time.Since(execStart).Milliseconds()
 		result.Stdout = stdout
 		if stderr != "" {
@@ -649,7 +663,7 @@ func (e *Executor) Execute(job Job) Result {
 			buildArgs = append(langConfig.BuildArgs, binFile, mainFile)
 		}
 
-		stdout, stderr, exitCode := e.runCommandWithStdin(ctx, tmpDir, "", langConfig.BuildCmd, buildArgs...)
+		stdout, stderr, exitCode := e.runCommandWithStdin(ctx, sink, tmpDir, "", langConfig.BuildCmd, buildArgs...)
 
 		if exitCode != 0 {
 			result.Status = "success" // API status is success, code failed
@@ -663,7 +677,7 @@ func (e *Executor) Execute(job Job) Result {
 		}
 
 		// Run the compiled binary with stdin
-		stdout, stderr, exitCode = e.runCommandWithStdin(ctx, tmpDir, stdinStr, binFile)
+		stdout, stderr, exitCode = e.runCommandWithStdin(ctx, sink, tmpDir, stdinStr, binFile)
 		result.ExecutionTime = time.Since(execStart).Milliseconds()
 		result.Stdout = stdout
 		if stderr != "" {
@@ -695,7 +709,7 @@ func (e *Executor) Execute(job Job) Result {
 		args = append(langConfig.Args, mainFile)
 		inputStdin = stdinStr
 	}
-	stdout, stderr, exitCode := e.runCommandWithStdin(ctx, tmpDir, inputStdin, langConfig.Command, args...)
+	stdout, stderr, exitCode := e.runCommandWithStdin(ctx, sink, tmpDir, inputStdin, langConfig.Command, args...)
 	result.ExecutionTime = time.Since(execStart).Milliseconds()
 	result.Stdout = stdout
 	if stderr != "" {
@@ -813,11 +827,25 @@ func (e *Executor) getStdinString(stdin interface{}) string {
 
 // runCommand executes a command and returns stdout, stderr, and exit code
 func (e *Executor) runCommand(ctx context.Context, dir string, name string, args ...string) (string, string, int) {
-	return e.runCommandWithStdin(ctx, dir, "", name, args...)
+	return e.runCommandWithStdin(ctx, nil, dir, "", name, args...)
 }
 
-// runCommandWithStdin executes a command with stdin support
-func (e *Executor) runCommandWithStdin(ctx context.Context, dir string, stdin string, name string, args ...string) (string, string, int) {
+// sinkWriter entrega cada Write do pipe ao sink, rotulado com o fluxo de origem.
+type sinkWriter struct {
+	stream string
+	sink   Sink
+}
+
+// Write repassa o pedaço ao sink; nunca falha, para o exec não abortar a cópia do pipe
+// por causa de quem está lendo.
+func (w sinkWriter) Write(p []byte) (int, error) {
+	w.sink(w.stream, string(p))
+	return len(p), nil
+}
+
+// runCommandWithStdin executes a command with stdin support. Com sink, a saída também é
+// entregue ao sink enquanto o programa roda.
+func (e *Executor) runCommandWithStdin(ctx context.Context, sink Sink, dir string, stdin string, name string, args ...string) (string, string, int) {
 	// Log command being executed
 	fmt.Printf("[executor] Running: %s %v in dir: %s\n", name, args, dir)
 
@@ -856,6 +884,14 @@ func (e *Executor) runCommandWithStdin(ctx context.Context, dir string, stdin st
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if sink != nil {
+		cmd.Stdout = io.MultiWriter(&stdout, sinkWriter{protocol.EventStdout, sink})
+		cmd.Stderr = io.MultiWriter(&stderr, sinkWriter{protocol.EventStderr, sink})
+		// Com a saída num pipe, o Python acumula o stdout em bloco de 8 KiB e o streaming
+		// só chegaria no fim. As outras linguagens com stdio em bloco (C, Ruby, Perl)
+		// dependem de o programa dar flush: não há como forçar de fora.
+		cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
+	}
 
 	// Provide stdin if available
 	if stdin != "" {
