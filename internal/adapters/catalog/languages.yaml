@@ -1,0 +1,101 @@
+# Catálogo de linguagens deste runner.
+#
+# name       nome que a API recebe; precisa existir no executor do guest (internal/guest/executor.go)
+# image      imagem OCI oficial de origem; o build gera um ext4 read-only a partir dela
+# cpus       teto de vCPU por job (contra abuso; vCPU ociosa dorme no hypervisor)
+# memory_mib teto de RAM por job (contra abuso; a memória da libkrun é elástica e o
+#            footprint medido de VM parada é 44 MB, independente deste número)
+# warmup     roda em chroot na VM de build, com rede, e o resultado fica gravado na imagem.
+#            Linha única de sh. Nada aqui roda na VM do job.
+languages:
+  - name: python
+    image: python:3.12-alpine
+    cpus: 1
+    memory_mib: 512
+    # A imagem oficial apaga os .pyc; compilar a stdlib tira esse custo do primeiro import.
+    warmup: python3 -m compileall -q -j0 /usr/local/lib/python3.12 >/dev/null 2>&1 || true
+
+  - name: nodejs
+    image: node:22-alpine
+    cpus: 1
+    memory_mib: 512
+    warmup: ""
+
+  - name: go
+    image: golang:1.25-alpine
+    cpus: 2
+    memory_mib: 1024
+    # Popula um GOCACHE na imagem; o start.sh copia para o tmpfs (o root é read-only).
+    warmup: mkdir -p /tmp/w && printf 'package main\nimport "fmt"\nfunc main(){fmt.Println(1)}\n' > /tmp/w/m.go && GOCACHE=/opt/runner/gocache go build -o /tmp/w/m /tmp/w/m.go && rm -rf /tmp/w
+
+  - name: rust
+    image: rust:1-alpine
+    cpus: 2
+    memory_mib: 1024
+    warmup: ""
+
+  - name: java
+    image: eclipse-temurin:21-jdk-alpine
+    cpus: 2
+    memory_mib: 1024
+    warmup: ""
+
+  - name: c
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 512
+    warmup: apk add --no-cache -q build-base
+
+  - name: cpp
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 512
+    warmup: apk add --no-cache -q build-base
+
+  - name: ruby
+    image: ruby:3.3-alpine
+    cpus: 1
+    memory_mib: 512
+    warmup: ""
+
+  - name: php
+    image: php:8.3-cli-alpine
+    cpus: 1
+    memory_mib: 512
+    warmup: ""
+
+  - name: perl
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 512
+    warmup: apk add --no-cache -q perl
+
+  - name: bash
+    image: bash:5.2
+    cpus: 1
+    memory_mib: 256
+    warmup: ""
+
+  - name: sh
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 256
+    warmup: ""
+
+  - name: awk
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 256
+    warmup: ""
+
+  - name: jq
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 256
+    warmup: apk add --no-cache -q jq
+
+  - name: sqlite
+    image: alpine:3.22
+    cpus: 1
+    memory_mib: 256
+    warmup: apk add --no-cache -q sqlite

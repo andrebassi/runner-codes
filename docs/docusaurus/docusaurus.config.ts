@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Runner Codes',
-  tagline: 'Secure code execution for AI-generated code and any test',
+  tagline: 'Execução de código não confiável em microVMs libkrun, uma VM nova por job',
   favicon: 'img/favicon.svg',
 
   future: {
@@ -17,16 +17,19 @@ const config: Config = {
   organizationName: 'andrebassi',
   projectName: 'runner-codes',
 
-  onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+  // Link quebrado reprova o build: com 'warn' a documentação publicava links mortos sem aviso.
+  onBrokenLinks: 'throw',
 
   i18n: {
-    defaultLocale: 'en',
-    locales: ['en'],
+    defaultLocale: 'pt-BR',
+    locales: ['pt-BR'],
   },
 
   markdown: {
     format: 'md',
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
   },
 
   presets: [
@@ -64,11 +67,11 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'docsSidebar',
           position: 'left',
-          label: 'Documentation',
+          label: 'Documentação',
         },
         {
           to: '/api-reference/overview',
-          label: 'API Reference',
+          label: 'API',
           position: 'left',
         },
 {
@@ -80,7 +83,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `Copyright © ${new Date().getFullYear()} Runner Codes.<br/>Developed and maintained by <a href="https://andrebassi.com.br" target="_blank" rel="noopener noreferrer">André Bassi</a>`,
+      copyright: `Copyright © ${new Date().getFullYear()} Runner Codes.<br/>Desenvolvido e mantido por <a href="https://andrebassi.com.br" target="_blank" rel="noopener noreferrer">André Bassi</a>`,
     },
     prism: {
       theme: prismThemes.github,
