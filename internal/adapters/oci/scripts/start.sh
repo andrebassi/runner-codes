@@ -1,0 +1,19 @@
+#!/bin/sh
+# Primeiro processo do job dentro da VM (krun_set_exec). O root é ext4 read-only:
+# toda escrita vai para um tmpfs, que some com a VM.
+mount -t tmpfs -o size=256m,mode=1777 tmpfs /tmp
+# Ambiente da config OCI (PATH, JAVA_HOME...), uma variável por linha. `export "$l"`
+# não interpreta o valor, então nada da imagem vira comando aqui.
+if [ -f /opt/runner/env ]; then
+  while IFS= read -r l; do [ -n "$l" ] && export "$l"; done < /opt/runner/env
+fi
+mkdir -p /tmp/home
+export HOME=/tmp/home
+# Cache de build aquecido na imagem (Go) só funciona gravável: copia para o tmpfs, no
+# caminho que o executor do guest força (GOCACHE=/tmp/go-cache, internal/guest/executor.go).
+# Copiar para outro nome deixava cada `go run` compilando a stdlib do zero (3,4 s medidos).
+# Acontece no boot, antes de a VM entrar no pool, então não pesa no job.
+if [ -d /opt/runner/gocache ]; then
+  cp -a /opt/runner/gocache /tmp/go-cache
+fi
+exec /opt/runner/guest --port 5000

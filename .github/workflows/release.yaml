@@ -15,10 +15,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
+          # host: CLI/serve/vmm. darwin/arm64 sai sem assinatura: o entitlement do
+          # hypervisor é aplicado pelo usuário (codesign ad-hoc), descrito no release.
+          - { goos: linux, goarch: amd64, pkg: ./cmd/runner.code, name: runner.code }
+          - { goos: linux, goarch: arm64, pkg: ./cmd/runner.code, name: runner.code }
+          - { goos: darwin, goarch: arm64, pkg: ./cmd/runner.code, name: runner.code }
+          # guest: roda dentro da VM, sempre Linux e estático, da arquitetura do host.
+          - { goos: linux, goarch: amd64, pkg: ./cmd/runner-guest, name: runner.code-guest }
+          - { goos: linux, goarch: arm64, pkg: ./cmd/runner-guest, name: runner.code-guest }
 
     steps:
       - name: Checkout code
@@ -27,24 +31,28 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: go.mod
 
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
         run: |
           mkdir -p dist
-          go build -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
-            -o dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }} \
-            ./cmd/infra.operator/...
-          chmod +x dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
+          out=dist/${{ matrix.name }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          go build -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o "$out" ${{ matrix.pkg }}
+          # O guest tem de sair estático: dinâmico não roda na imagem Alpine (musl).
+          if [ "${{ matrix.name }}" = "runner.code-guest" ] && file "$out" | grep -q 'dynamically linked'; then
+            echo "guest saiu dinâmico" >&2; exit 1
+          fi
+          chmod +x "$out"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/infra.operator-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: ${{ matrix.name }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ matrix.name }}-${{ matrix.goos }}-${{ matrix.goarch }}
 
   release:
     name: Create Release
@@ -60,13 +68,11 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -la dist/
-
       - name: Create checksums
         run: |
+          cp build/hv.entitlements dist/
           cd dist
-          sha256sum infra.operator-* > checksums.txt
+          sha256sum runner.code-* hv.entitlements > checksums.txt
           cat checksums.txt
 
       - name: Create Release
@@ -77,37 +83,26 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            dist/infra.operator-linux-amd64
-            dist/infra.operator-linux-arm64
+            dist/runner.code-*
+            dist/hv.entitlements
             dist/checksums.txt
           body: |
             ## Runner Codes ${{ github.ref_name }}
 
-            Secure code execution environment for AI-generated code using Firecracker microVMs.
+            Execução isolada de código gerado por LLM em microVMs libkrun (macOS Apple Silicon e Linux com KVM).
 
-            ### Downloads
+            | Host | Binário do host | Guest (ao lado do host) |
+            |---|---|---|
+            | Linux x86_64 | `runner.code-linux-amd64` | `runner.code-guest-linux-amd64` |
+            | Linux ARM64 | `runner.code-linux-arm64` | `runner.code-guest-linux-arm64` |
+            | macOS Apple Silicon | `runner.code-darwin-arm64` | `runner.code-guest-linux-arm64` |
 
-            | Platform | Architecture | Download |
-            |----------|--------------|----------|
-            | Linux | x86_64 (amd64) | `infra.operator-linux-amd64` |
-            | Linux | ARM64 | `infra.operator-linux-arm64` |
+            Pré-requisito: libkrun + libkrunfw (macOS: `brew tap slp/krun && brew trust slp/krun && brew install slp/krun/libkrunfw slp/krun/libkrun`; Linux: `nix profile install nixpkgs#libkrun nixpkgs#libkrunfw`).
 
-            ### Installation
-
-            ```bash
-            # Download (Linux amd64)
-            curl -L -o infra.operator https://github.com/andrebassi/runner-codes/releases/download/${{ github.ref_name }}/infra.operator-linux-amd64
-            chmod +x infra.operator
-            sudo mv infra.operator /usr/local/bin/
-            ```
-
-            ### Links
-
-            - **Website:** https://runner.codes
-            - **Documentation:** https://docs.runner.codes
-
-            ### Verify checksums
+            No macOS, assine o host com o entitlement do hypervisor (sem ele a VM não sobe):
 
             ```bash
-            sha256sum -c checksums.txt
+            codesign --force --sign - --entitlements hv.entitlements runner.code-darwin-arm64
             ```
+
+            Conferir: `sha256sum -c checksums.txt`

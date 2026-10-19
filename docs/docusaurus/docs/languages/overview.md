@@ -1,398 +1,80 @@
 ---
-title: 'Language Support Overview'
-description: 'Supported programming languages and execution details'
+title: 'Linguagens'
+description: 'O catálogo de linguagens, recursos por linguagem e como adicionar uma nova'
 ---
 
-## Supported Languages
+## Catálogo
 
-Runner Codes supports **45 programming languages** across multiple categories, each with its own optimized rootfs image.
+O catálogo vem do `languages.yaml`, embutido no binário (`internal/adapters/catalog/languages.yaml`). São 15 linguagens:
 
-### Main Languages
+| Linguagem | Nome na API | Imagem OCI de origem | vCPU | RAM | Warmup |
+|-----------|-------------|----------------------|------|-----|--------|
+| [Python](/languages/python) | `python` | `python:3.12-alpine` | 1 | 512 MiB | `compileall` da stdlib |
+| [Node.js](/languages/nodejs) | `nodejs` | `node:22-alpine` | 1 | 512 MiB | — |
+| [Go](/languages/go) | `go` | `golang:1.25-alpine` | 2 | 1024 MiB | `GOCACHE` populado |
+| [Rust](/languages/rust) | `rust` | `rust:1-alpine` | 2 | 1024 MiB | — |
+| [Java](/languages/java) | `java` | `eclipse-temurin:21-jdk-alpine` | 2 | 1024 MiB | — |
+| [C](/languages/c) | `c` | `alpine:3.22` | 1 | 512 MiB | `apk add build-base` |
+| [C++](/languages/cpp) | `cpp` | `alpine:3.22` | 1 | 512 MiB | `apk add build-base` |
+| [Ruby](/languages/ruby) | `ruby` | `ruby:3.3-alpine` | 1 | 512 MiB | — |
+| [PHP](/languages/php) | `php` | `php:8.3-cli-alpine` | 1 | 512 MiB | — |
+| [Perl](/languages/perl) | `perl` | `alpine:3.22` | 1 | 512 MiB | `apk add perl` |
+| [Bash](/languages/bash) | `bash` | `bash:5.2` | 1 | 256 MiB | — |
+| [sh](/languages/sh) | `sh` | `alpine:3.22` | 1 | 256 MiB | — |
+| [AWK](/languages/awk) | `awk` | `alpine:3.22` | 1 | 256 MiB | — |
+| [jq](/languages/jq) | `jq` | `alpine:3.22` | 1 | 256 MiB | `apk add jq` |
+| [SQLite](/languages/sqlite) | `sqlite` | `alpine:3.22` | 1 | 256 MiB | `apk add sqlite` |
 
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| [Python](/languages/python) | 3.10 | 600 MB | ~3.1s |
-| [Node.js](/languages/nodejs) | 20 LTS | 700 MB | ~3.2s |
-| [TypeScript](/languages/typescript) | 5.x | 800 MB | ~3.5s |
-| [Go](/languages/go) | 1.22 | 700 MB | ~3.5s |
-| [Rust](/languages/rust) | stable | 2 GB | ~5-8s |
+`runner.code languages` (ou `GET /api/v1/languages`) mostra a mesma lista com `ready`, que diz se a imagem já foi construída neste host. Linguagem sem imagem construída é recusada com E006.
 
-### Systems Languages
+## Recursos
 
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| C | GCC 11 | 500 MB | ~3s |
-| C++ | G++ 11 | 600 MB | ~3.5s |
-| Zig | 0.11 | 600 MB | ~4s |
-| D | LDC 1.28 | 800 MB | ~4s |
+vCPU e RAM são **teto contra abuso**, não reserva. A memória da libkrun é elástica: o host só paga as páginas que o guest toca, e uma VM parada mediu 44 MB de footprint independentemente do teto. vCPU ociosa dorme no hypervisor.
 
-### JVM Languages
+## Como o código roda
 
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| Java | 17 | 900 MB | ~4s |
-| Kotlin | 1.9 | 1 GB | ~4.5s |
-| Scala | 3.x | 1.2 GB | ~5s |
-| Groovy | 4.x | 1 GB | ~4.5s |
-| Clojure | 1.11 | 1 GB | ~5s |
+| Família | Linguagens | Execução |
+|---------|------------|----------|
+| interpretada | Python, Node.js, Ruby, PHP, Perl, Bash, sh, AWK, jq | `<interpretador> <arquivo principal>` |
+| compilada | C, C++, Rust | compila para um binário e executa o binário |
+| JVM | Java | `javac` e `java Main` |
+| Go | Go | `go run` |
+| SQL | SQLite | o código vai pelo stdin do `sqlite3 :memory:` |
 
-### Scripting Languages
+Em todas: o primeiro item de `files` é o arquivo principal, o diretório de trabalho fica no tmpfs de `/tmp`, a VM é nova e destruída no fim, e não há rede.
 
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| Ruby | 3.0 | 600 MB | ~3s |
-| PHP | 8.1 | 600 MB | ~3s |
-| Perl | 5.34 | 500 MB | ~3s |
-| Lua | 5.4 | 400 MB | ~2.8s |
-| Tcl | 8.6 | 400 MB | ~2.8s |
-| Bash | 5.1 | 512 MB | ~3s |
-| AWK | GNU | 400 MB | ~2.5s |
+## Adicionar uma linguagem
 
-### Functional Languages
+São duas condições, e as duas precisam valer:
 
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| Haskell | GHC 9 | 1.5 GB | ~6s |
-| OCaml | 4.13 | 700 MB | ~4s |
-| F# | .NET 8 | 1.5 GB | ~5s |
-| Elixir | 1.12 | 800 MB | ~4s |
-| Erlang | OTP 24 | 700 MB | ~4s |
-| Scheme | Guile | 500 MB | ~3s |
-| Common Lisp | SBCL | 600 MB | ~3.5s |
+1. **A linguagem existe no executor do guest** (`internal/guest/executor.go`), com extensão, comando e, se for compilada, o comando de build. O executor tem entradas para mais linguagens do que o catálogo publica; se a que você quer não estiver lá, ela precisa ser acrescentada ao executor (e o guest recompilado).
+2. **Uma entrada nova no `languages.yaml`**:
 
-### Modern Compiled Languages
-
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| Crystal | 1.x | 800 MB | ~4s |
-| Nim | 2.0 | 600 MB | ~4s |
-| Swift | 5.x | 1.5 GB | ~5s |
-| V | 0.4 | 500 MB | ~3.5s |
-
-### Scientific Computing
-
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| Julia | 1.10 | 1.5 GB | ~8s |
-| R | 4.1 | 1 GB | ~5s |
-| Octave | 6.1 | 1.2 GB | ~6s |
-| Fortran | GFortran | 500 MB | ~3.5s |
-
-### Database & Query Languages
-
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| SQLite | 3.x | 400 MB | ~2.5s |
-| jq | 1.6 | 400 MB | ~2.5s |
-
-### Legacy Languages
-
-| Language | Version | Rootfs | Boot Time |
-|----------|---------|--------|-----------|
-| COBOL | GnuCOBOL | 600 MB | ~4s |
-| Pascal | FreePascal | 500 MB | ~3.5s |
-| Prolog | SWI-Prolog | 600 MB | ~3.5s |
-| NASM | x86 Assembly | 400 MB | ~3s |
-
-## Language Comparison
-
-### Performance Tiers
-
-| Tier | Languages | Boot + Execute | Use Cases |
-|------|-----------|----------------|-----------|
-| **Fast** (~2-3s) | Python, Node.js, Bash, Ruby, PHP, Perl, Lua, Tcl, AWK, SQLite, jq | ~2.5-3.2s | Scripting, rapid prototyping |
-| **Medium** (~3-5s) | Go, Java, Kotlin, Scala, Groovy, Clojure, Elixir, Erlang | ~3.5-5s | Enterprise, concurrent apps |
-| **Compiled** (~4-8s) | C, C++, Rust, D, Zig, Crystal, Nim, Haskell, OCaml, F#, Swift | ~4-8s | Performance-critical code |
-| **Heavy** (~5-10s) | Julia, R, Octave, .NET (C#, F#), COBOL | ~5-10s | Scientific computing, legacy |
-
-### Detailed Comparison
-
-| Language | Type | Rootfs Size | Boot + Execute | Best For |
-|----------|------|-------------|----------------|----------|
-| Python | Interpreted | 600 MB | ~3.1s | Data science, scripting |
-| Node.js | Interpreted | 700 MB | ~3.2s | Web, async operations |
-| TypeScript | Transpiled | 800 MB | ~3.5s | Type-safe JavaScript |
-| Go | Compiled | 700 MB | ~3.5s | Systems, concurrency |
-| Rust | Compiled | 2 GB | ~5-8s | Performance, safety |
-| Java | JVM | 900 MB | ~4s | Enterprise applications |
-| Kotlin | JVM | 1 GB | ~4.5s | Modern JVM development |
-| C | Compiled | 500 MB | ~3s | Systems programming |
-| C++ | Compiled | 600 MB | ~3.5s | High-performance apps |
-| Ruby | Interpreted | 600 MB | ~3s | Scripting, web |
-| PHP | Interpreted | 600 MB | ~3s | Web scripting |
-| Bash | Interpreted | 512 MB | ~3.0s | Shell scripting |
-| Haskell | Compiled | 1.5 GB | ~6s | Functional programming |
-| Elixir | BEAM | 800 MB | ~4s | Concurrent systems |
-| Julia | JIT | 1.5 GB | ~8s | Scientific computing |
-| SQLite | Query | 400 MB | ~2.5s | Database operations |
-| COBOL | Compiled | 600 MB | ~4s | Business logic |
-
-:::note
-
-  Times include VM boot (~3s) + code execution. Actual code execution times vary based on complexity.
-
-:::
-
-## Execution Models
-
-### Interpreted Languages
-
-Python, Node.js, Ruby, PHP, Perl, Lua, Tcl, Bash, R are executed directly by their interpreters:
-
-![Interpreted Languages Execution Flow](/img/execution-interpreted.svg)
-
-### Compiled Languages
-
-C, C++, Go, Rust, D, Zig, Haskell, Crystal, Nim, COBOL require compilation:
-
-![Compiled Languages Execution Flow](/img/execution-compiled.svg)
-
-### JVM Languages
-
-Java, Kotlin, Scala, Groovy, Clojure use the JVM:
-
-![JVM Languages Execution Flow](/img/execution-jvm.svg)
-
-### BEAM Languages
-
-Elixir and Erlang run on the BEAM virtual machine:
-
-![BEAM Languages Execution Flow](/img/execution-beam.svg)
-
-## Language Configuration
-
-Each language is configured in `pkg/guest/executor.go`:
-
-```go title="Type definition"
-type LanguageConfig struct {
-    Name       string   // Language identifier ("python", "node", etc.)
-    Extension  string   // File extension (".py", ".js", etc.)
-    Command    string   // Interpreter/compiler command
-    Args       []string // Additional arguments
-    NeedsBuild bool     // Whether compilation is required
-    BuildCmd   string   // Compiler command (if compiled)
-    BuildArgs  []string // Compiler arguments
-}
-
-// Example configurations
-languages := map[string]LanguageConfig{
-    "python": {
-        Name:      "python",
-        Extension: ".py",
-        Command:   "python3",
-    },
-    "rust": {
-        Name:       "rust",
-        Extension:  ".rs",
-        NeedsBuild: true,
-        BuildCmd:   "rustc",
-        BuildArgs:  []string{"-o", "runbin"},
-    },
-    "kotlin": {
-        Name:       "kotlin",
-        Extension:  ".kt",
-        NeedsBuild: true,
-        BuildCmd:   "kotlinc",
-        BuildArgs:  []string{"-include-runtime", "-d", "Main.jar"},
-        Command:    "java",
-        Args:       []string{"-jar", "Main.jar"},
-    },
-    // ... 42+ more languages
-}
+```yaml
+  - name: lua
+    image: <imagem OCI oficial>
+    cpus: 1
+    memory_mib: 256
+    warmup: ""
 ```
 
-## Environment Variables
+| Campo | Regra |
+|-------|-------|
+| `name` | exatamente o nome da entrada no executor do guest |
+| `image` | imagem OCI pública, da arquitetura do host; o build a baixa sem Docker |
+| `cpus`, `memory_mib` | teto contra abuso |
+| `warmup` | uma linha de `sh`, rodada em chroot na VM de build, com rede; o resultado fica gravado na imagem. Nada do warmup roda na VM do job |
 
-The executor sets these environment variables for all languages:
+Depois:
 
-```go title="Go code"
-cmd.Env = append(os.Environ(),
-    "HOME=/tmp",
-    "TMPDIR=/tmp",
-    // Go
-    "GOCACHE=/tmp/go-cache",
-    "GOPATH=/tmp/go",
-    "GOROOT=/usr/local/go",
-    // Rust
-    "CARGO_HOME=/opt/cargo",
-    "RUSTUP_HOME=/opt/rustup",
-    // JVM
-    "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64",
-    // .NET
-    "DOTNET_ROOT=/usr/share/dotnet",
-    // Julia
-    "JULIA_DEPOT_PATH=/tmp/julia",
-    // PATH
-    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:...",
-)
+```bash
+task build
+task image:build -- --lang <nome>
+runner.code run --lang <nome> --code '<programa mínimo>'
 ```
 
-## Choosing the Right Language
+O binário do executor precisa estar no `PATH` da imagem ou no caminho absoluto que o executor usa. Uma imagem baseada em Alpine (musl) é o caso testado; o guest é estático e roda em qualquer uma.
 
+## Linguagens removidas
 
-    **Python, Node.js, Ruby, PHP, Perl, Lua**
-
-    - Fast startup times (~3s)
-    - Rich standard libraries
-    - Great for quick tasks
-    - Easy to read and maintain
-
-
-
-    **Rust, C, C++, Go, Zig**
-
-    - Compiled to native code
-    - Zero-cost abstractions
-    - Memory safety (Rust, Go)
-    - Best for compute-intensive tasks
-
-
-
-    **Java, Kotlin, Scala, C#, F#**
-
-    - Strong typing
-    - Rich ecosystems
-    - Good for complex business logic
-    - Cross-platform support
-
-
-
-    **Haskell, Elixir, Erlang, OCaml, Clojure, Scheme**
-
-    - Immutable data structures
-    - Pattern matching
-    - Concurrent programming
-    - Mathematical elegance
-
-
-
-    **Julia, R, Octave, Python, Fortran**
-
-    - Numerical computing
-    - Statistical analysis
-    - Linear algebra
-    - Data visualization
-
-
-
-    **SQLite, jq, AWK, Python**
-
-    - Query languages
-    - Text processing
-    - JSON manipulation
-    - Data transformation
-
-
-
-    **COBOL, Fortran, Pascal**
-
-    - Business applications
-    - Scientific computing
-    - Educational purposes
-    - Migration projects
-
-
-## Performance Benchmarks
-
-### Fibonacci(30) Benchmark
-
-| Language | Execution Time | Notes |
-|----------|----------------|-------|
-| C | ~0.003s | Direct compilation |
-| Rust | ~0.005s | Zero-cost abstractions |
-| Go | ~0.01s | Compiled, optimized |
-| Java | ~0.02s | JIT optimization |
-| Node.js | ~0.1s | V8 JIT optimization |
-| Python | ~0.3s | Recursive implementation |
-| Ruby | ~0.5s | Interpreted |
-| Bash | ~8s | Recursive, very slow |
-
-:::note
-
-  Times exclude VM boot. Includes compilation time for compiled languages.
-
-:::
-
-### Hello World (Total Time Including Boot)
-
-| Language | Total Time | Compile | Execute |
-|----------|------------|---------|---------|
-| Bash | 3010ms | - | 10ms |
-| Python | 3050ms | - | 50ms |
-| SQLite | 3020ms | - | 20ms |
-| Node.js | 3100ms | - | 100ms |
-| Go | 3500ms | 450ms | 50ms |
-| Java | 4000ms | 800ms | 200ms |
-| Rust | 5000ms | 1900ms | 100ms |
-| Haskell | 6000ms | 2800ms | 200ms |
-
-## Adding Custom Languages
-
-To add support for a new language:
-
-**1. Create rootfs:**
-
-```bash title="Create new rootfs with language runtime"
-task aws:create-rootfs-{lang}
-```
-
-**2. Add configuration:**
-
-Add language configuration to `pkg/guest/executor.go`:
-
-```go title="Language configuration"
-"newlang": {
-    Name:       "newlang",
-    Extension:  ".nlg",
-    Command:    "newlang",
-    Args:       []string{"run"},
-    NeedsBuild: false,
-},
-```
-
-**3. Build and deploy:**
-
-```bash title="Build infra.operator for Linux"
-task build:infra-operator-linux
-```
-
-```bash title="Deploy to AWS"
-task aws:deploy
-```
-
-**4. Test:**
-
-```bash title="Test new language"
-task aws:test LANG=newlang CODE="print('hello')"
-```
-
-## Limitations
-
-### Common Limitations
-
-- **No network access**: VMs don't have network connectivity
-- **No persistent storage**: Files are lost after execution
-- **Memory limit**: 512 MiB by default
-- **Timeout**: Configurable, default 10 seconds
-
-### Language-Specific Limitations
-
-| Language | Limitations |
-|----------|-------------|
-| Python | No external packages (unless in rootfs) |
-| Node.js | No npm install during execution |
-| Go | go mod not supported inline |
-| Rust | No cargo, only rustc |
-| Java | No external JARs |
-| Kotlin | No Gradle/Maven |
-| Haskell | No cabal packages |
-| Julia | No Pkg packages |
-| R | No CRAN packages |
-| .NET | No NuGet packages |
-| Elixir | No Mix dependencies |
-
-:::warning
-
-  All languages run in isolated environments without network access. External dependencies must be pre-installed in the rootfs image.
-
-:::
+A versão com Firecracker documentava outras linguagens (TypeScript, Kotlin, Haskell, Elixir e outras) e os parsers de banco. Elas não têm imagem no catálogo atual. Os parsers estão em [Parsers de banco de dados](/guides/database-parsers-setup).

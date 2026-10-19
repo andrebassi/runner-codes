@@ -1,267 +1,72 @@
 ---
-title: 'CLI Overview'
-description: 'Manage Firecracker microVMs, rootfs images, and snapshots via command line'
+title: 'Visão geral da CLI'
+description: 'Os subcomandos do runner.code'
 ---
 
-## Overview
+## O binário
 
-The `infra.operator` CLI provides a complete interface for managing Firecracker microVMs, including rootfs image creation, snapshot management, S3 synchronization, and code execution.
+`runner.code` é o binário do host. Ele roda no macOS Apple Silicon e no Linux x86_64/aarch64 com KVM.
 
-## Installation
-
-### Build from Source
-
-```bash title="Build for current platform"
-task -t Taskfile.cli.yaml build
+```bash
+runner.code --help
 ```
 
-```bash title="Build for Linux (deploy to EC2)"
-task -t Taskfile.cli.yaml build-linux
+| Subcomando | O que faz | Página |
+|------------|-----------|--------|
+| `serve` | API HTTP com pool de VMs pré-bootadas | [API HTTP](/cli/http-api) |
+| `run` | executa um código numa VM nova (boot frio) | [run](/cli/run) |
+| `image build` | gera o ext4 de uma ou mais linguagens a partir da imagem OCI oficial | [image](/cli/image) |
+| `languages` | lista o catálogo e se a imagem de cada linguagem já foi construída | abaixo |
+| `doctor` | confere se o host consegue rodar microVMs | abaixo |
+| `vmm` | processo de uma VM; uso interno, chamado pelo launcher | [libkrun](/concepts/libkrun) |
+
+O guest (`runner-guest`) é outro binário e roda só dentro da VM; não é chamado à mão.
+
+## languages
+
+```bash
+runner.code languages
 ```
 
-### Deploy to EC2
+Uma linha por linguagem do catálogo, com `ready=true` quando o ext4 já existe no cache, e a imagem OCI de origem:
 
-```bash title="Deploy to EC2"
-task -t Taskfile.cli.yaml deploy
 ```
-
-## Command Structure
-
-![CLI Command Structure](/img/cli-structure.svg)
-
-## Quick Reference
-
-
-
-
-
-
-## Global Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--config` | Path to config file | `$HOME/.infra-operator.yaml` |
-| `--version` | Show version | - |
-| `--help` | Show help | - |
-
-## Environment Variables
-
-```bash title="AWS Configuration"
-export AWS_ACCESS_KEY_ID="your-key"
-export AWS_SECRET_ACCESS_KEY="your-secret"
-export AWS_DEFAULT_REGION="us-east-1"
-```
-
-```bash title="S3 Bucket Configuration"
-export S3_BUCKET="llm-infra-operator-rootfs"
-export S3_REGION="us-east-1"
-```
-
-```bash title="Firecracker Configuration"
-export FC_WORKDIR="/srv/firecracker"
-export FC_KERNEL="/srv/firecracker/vmlinux"
-```
-
-## Command Categories
-
-### Rootfs Management
-
-Create and manage rootfs images for different programming languages:
-
-```bash title="Create a Python rootfs image"
-infra.operator rootfs create --lang python
-```
-
-```bash title="List local rootfs images"
-infra.operator rootfs list
-```
-
-```bash title="List S3 rootfs images"
-infra.operator rootfs list --remote
-```
-
-```bash title="Upload to S3"
-infra.operator rootfs upload --lang python
-```
-
-```bash title="Download from S3"
-infra.operator rootfs download --lang python
-```
-
-### Snapshot Management
-
-Create and manage VM snapshots for fast boot (~200ms):
-
-```bash title="Create a snapshot"
-infra.operator snapshot create --lang python
-```
-
-```bash title="List local snapshots"
-infra.operator snapshot list
-```
-
-```bash title="List S3 snapshots"
-infra.operator snapshot list --remote
-```
-
-```bash title="Upload snapshot to S3"
-infra.operator snapshot upload --lang python
-```
-
-```bash title="Download snapshot from S3"
-infra.operator snapshot download --lang python
-```
-
-### Code Execution
-
-Execute code in isolated microVMs:
-
-```bash title="Execute inline code"
-infra.operator run --lang python --code "print('Hello!')"
-```
-
-```bash title="Execute from file"
-infra.operator run --lang nodejs --file script.js
-```
-
-```bash title="Execute with custom timeout"
-infra.operator run --lang go --code 'package main; func main() { println("hi") }' --timeout 60
-```
-
-### API Server
-
-Start the HTTP API server:
-
-```bash title="Start API server on default port 8080"
-infra.operator api
-```
-
-```bash title="Start API server with custom port and host"
-infra.operator api --port 3000 --host 0.0.0.0
-```
-
-### Benchmarking
-
-Run performance benchmarks:
-
-```bash title="Benchmark all 45 languages"
-infra.operator benchmark --all
-```
-
-```bash title="Benchmark specific languages"
-infra.operator benchmark --langs python,nodejs,go
-```
-
-## Supported Languages
-
-The CLI supports **45 programming languages**:
-
-| Category | Languages |
-|----------|-----------|
-| **Popular** | Python, Node.js, TypeScript, Go, Rust, Java, C#/.NET |
-| **Web** | PHP, Ruby, Perl |
-| **Compiled** | C, C++, Fortran, Pascal, COBOL |
-| **Functional** | Haskell, OCaml, Elixir, Erlang, Clojure, Common Lisp |
-| **JVM** | Java, Kotlin, Scala, Groovy, Clojure |
-| **Modern** | Zig, Nim, Crystal, D |
-| **Scientific** | Julia, R, Octave |
-| **Scripting** | Lua, Tcl, AWK, jq |
-| **Other** | Prolog, Scheme, SQLite, NASM, Bash |
-
-## Workflow Examples
-
-### Full Language Setup
-
-```bash title="1. Create rootfs image"
-infra.operator rootfs create --lang python
-```
-
-```bash title="2. Create snapshot for fast boot"
-infra.operator snapshot create --lang python
-```
-
-```bash title="3. Upload to S3 for distribution"
-infra.operator snapshot upload --lang python
-```
-
-```bash title="4. Execute code"
-infra.operator run --lang python --code "print('Ready!')"
-```
-
-### Download and Execute
-
-```bash title="1. Download snapshot from S3"
-infra.operator snapshot download --lang nodejs
-```
-
-```bash title="2. Execute code"
-infra.operator run --lang nodejs --code "console.log('Hello!')"
-```
-
-### Benchmark Performance
-
-```bash title="Run full benchmark with S3 on-demand download"
-infra.operator benchmark --all
-```
-
-```text title="Expected output"
-[1/45] python: LOAD=209ms [OK]
-[2/45] nodejs: LOAD=215ms [OK]
+python   ready=true  python:3.12-alpine
+nodejs   ready=false node:22-alpine
 ...
-Average Load Time: 220ms
 ```
 
-## Taskfile Integration
+## doctor
 
-Use Taskfile for common operations:
-
-```bash title="List available tasks"
-task -t Taskfile.cli.yaml --list
+```bash
+runner.code doctor
 ```
 
-```bash title="Build the CLI"
-task -t Taskfile.cli.yaml build
-```
+Confere, uma linha por item:
 
-```bash title="Run code locally"
-task -t Taskfile.cli.yaml run LANG=python CODE='print(1)'
-```
+| Item | O que verifica |
+|------|----------------|
+| `plataforma` | macOS em Apple Silicon, ou Linux com `/dev/kvm` aberto para leitura e escrita |
+| `libkrun` | se a biblioteca carrega pelo caminho configurado |
+| `guest` | se o binário do guest existe ao lado do host |
+| `imagem <lang>` | lista as imagens já construídas |
 
-```bash title="Execute code on remote EC2"
-task -t Taskfile.cli.yaml remote:run LANG=python CODE='print(1)'
-```
+Cada falha sai como `FALHA <item> <motivo>`, e o comando termina com erro quando há alguma.
 
-```bash title="Run benchmark on remote EC2"
-task -t Taskfile.cli.yaml remote:benchmark
-```
+## Variáveis de ambiente
 
-## Output Format
+| Variável | Padrão | Uso |
+|----------|--------|-----|
+| `RUNNER_LISTEN` | `127.0.0.1:8080` | endereço do `serve` |
+| `RUNNER_CACHE_DIR` | `~/Library/Caches/runner-codes` (macOS), `~/.cache/runner-codes` (Linux) | imagens, VM de build, sockets |
+| `RUNNER_KRUN_LIB` | `/opt/homebrew/lib/libkrun.dylib` (macOS), `libkrun.so.1` (Linux) | caminho da libkrun |
+| `RUNNER_GUEST_BIN` | `runner.code-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |
 
-All commands output structured information:
+## Pelo Taskfile
 
-```bash title="List rootfs images (table format)"
-infra.operator rootfs list
-```
-
-```text title="Rootfs list output"
-LANGUAGE  SIZE      PATH
-python    1.2 GB    /srv/firecracker/images/rootfs-python.ext4
-nodejs    800 MB    /srv/firecracker/images/rootfs-nodejs.ext4
-```
-
-```bash title="Execute code"
-infra.operator run --lang python --code "print('hello')"
-```
-
-```json title="Execution output (JSON)"
-{
-  "stdout": "hello\n",
-  "stderr": "",
-  "exit_code": 0
-}
-```
-
-## Next Steps
-
-
-
+| Task | Equivale a |
+|------|------------|
+| `task run -- <flags>` | `./bin/runner.code run <flags>` |
+| `task serve -- <flags>` | `./bin/runner.code serve <flags>` |
+| `task image:build -- <flags>` | `./bin/runner.code image build <flags>` |
+| `task doctor` | `./bin/runner.code doctor` |
