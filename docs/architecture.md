@@ -223,6 +223,7 @@ task image:build -- python
 task test                 # unidade
 task test:cov             # gate 90%
 task test:e2e             # libkrun real (tag e2e)
+task runbook              # docs/runbook.md executado: todo recurso novo ganha seção lá e passo no scripts/runbook.sh
 task serve                # API em 127.0.0.1:8080
 ```
 

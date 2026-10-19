@@ -346,9 +346,11 @@ func TestExecutor_Execute_NodeJS(t *testing.T) {
 }
 
 func TestExecutor_Execute_Go(t *testing.T) {
-	// Skip if go is not available
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("Go not available, skipping test")
+	// O executor fixa GOROOT=/usr/local/go, o layout da imagem golang. Fora dela (Go do
+	// Nix ou de outro lugar no PATH) o `go run` falha com "cannot find GOROOT" e o teste
+	// mediria o host, não o executor; dentro da VM ele é coberto pelo e2e.
+	if _, err := os.Stat("/usr/local/go/bin/go"); err != nil {
+		t.Skip("Go is not at /usr/local/go (guest image layout), skipping test")
 	}
 
 	executor := NewExecutor()

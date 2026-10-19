@@ -93,6 +93,39 @@ func (l *Launcher) Start(s Spec) (*Process, error) {
 	return p, nil
 }
 
+// StartDetached lança o vmm de uma máquina persistente desligado do `rc`: sessão própria
+// (Setsid, que também cria o grupo para o SIGKILL do stop), sem pipe de vigia e sem
+// Pdeathsig, porque a máquina tem de sobreviver ao comando que a ligou. A spec fica em
+// specPath (no diretório da máquina) e stdout/stderr do vmm vão para logPath.
+func (l *Launcher) StartDetached(s Spec, specPath, logPath string) (int, error) {
+	if err := s.Validate(); err != nil {
+		return 0, err
+	}
+	raw, _ := json.Marshal(s)
+	if err := os.WriteFile(specPath, raw, 0o600); err != nil {
+		return 0, fmt.Errorf("write spec: %w", err)
+	}
+	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return 0, fmt.Errorf("open machine log: %w", err)
+	}
+	defer log.Close()
+	cmd := exec.Command(l.Exe, "vmm", "--spec", specPath, "--lib", l.LibPath)
+	cmd.Env = append(os.Environ(), libPathEnv+"="+l.LibDir)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdout, cmd.Stderr = log, log
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("launch vmm: %w", err)
+	}
+	pid := cmd.Process.Pid
+	// O Wait só recolhe o processo quando ele sair. Sem isso, num processo de vida longa
+	// (rc serve) a VM desligada vira zumbi: kill(pid, 0) continua achando o pid, a máquina
+	// parece ligada, e o stop espera o prazo inteiro (medido: 10 s a cada stop pela API).
+	// Na CLI o rc sai antes, e o init recolhe o órfão.
+	go cmd.Wait()
+	return pid, nil
+}
+
 // StartVM satisfaz ports.VMLauncher: o app só conhece a porta, não o *Process.
 func (l *Launcher) StartVM(s ports.VMSpec) (ports.VM, error) {
 	p, err := l.Start(s)

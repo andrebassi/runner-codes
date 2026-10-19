@@ -86,6 +86,40 @@ Os valores de `executionTime` acima são ilustrativos.
 
 A resposta tem o mesmo formato de `/api/v1/run`.
 
+## POST /api/v1/execute/stream
+
+Mesmo corpo do `/api/v1/execute`. A resposta é `text/event-stream` (Server-Sent Events): a saída chega **enquanto
+o programa roda**, e um evento `result` fecha a resposta.
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/api/v1/execute/stream -H 'content-type: application/json' \
+  -d '{"language":"python","code":"import time\nprint(\"early\")\ntime.sleep(1.5)\nprint(\"late\")"}'
+```
+
+```
+event: stdout
+data: "early\n"
+
+event: stdout
+data: "late\n"
+
+event: result
+data: {"status":"success","exitCode":0,"exception":null,"executionTime":1534,"timedOut":false}
+```
+
+| Evento | `data` |
+|--------|--------|
+| `stdout`, `stderr` | o pedaço de saída como **string JSON** (a quebra de linha vem escapada: SSE não aceita quebra crua no `data`) |
+| `result` | `status`, `exitCode`, `exception`, `executionTime` (ms), `timedOut`, e `error` quando houver. Não repete stdout/stderr |
+| `error` | `{"error": "..."}`: falha de infraestrutura depois de o stream ter começado (ex.: conexão com o guest caiu) |
+
+- Job recusado na validação responde **400 JSON**, igual ao `/execute`, antes de abrir o stream. Falha de
+  infraestrutura antes do primeiro evento responde 500 JSON.
+- `stdin` em lista (lote) não é aceito nesta rota: 400.
+- O cabeçalho `X-Accel-Buffering: no` desliga o buffer de proxy nginx.
+- Linguagens com stdout em bloco quando a saída é pipe (C, Ruby, Perl) só entregam no `flush` do programa; o Python
+  roda com `PYTHONUNBUFFERED=1`. Detalhes em [`rc run`](/cli/run).
+
 ## Campos da resposta
 
 | Campo | Descrição |
@@ -119,6 +153,47 @@ A resposta tem o mesmo formato de `/api/v1/run`.
 | código total (soma dos arquivos) | ≤ 4 MiB |
 | nome de arquivo | sem `/`, sem `..`, sem começar com `.`, ≤ 255 bytes |
 | timeout | padrão 10 s, máximo 300 s |
+
+## Máquinas
+
+Ciclo de vida das [máquinas persistentes](/cli/machine), com os nomes de rota do smolvm.
+
+| Método | Caminho | Corpo / query | Resposta |
+|--------|---------|---------------|----------|
+| POST | `/api/v1/machines` | `{"name","stack","cpus","memory_mib","disk_gib","gpu"}` | 201 + máquina (`state: stopped`) |
+| GET | `/api/v1/machines` | — | lista com `state` e `pid` |
+| GET | `/api/v1/machines/:name` | — | a máquina |
+| DELETE | `/api/v1/machines/:name` | `?force=true` mata se ligada | 204 |
+| POST | `/api/v1/machines/:name/start` | — | 200 + máquina (`state: running`) |
+| POST | `/api/v1/machines/:name/stop` | `?timeout=N` em segundos (0–300; 0 mata na hora) | 204 |
+| POST | `/api/v1/machines/:name/exec` | `{"command":["argv",...],"env":["K=V"],"workdir","stdin","timeout"}` | `{"exitCode","stdout","stderr","timedOut","executionTime"}` |
+| POST | `/api/v1/machines/:name/exec/stream` | mesmo corpo | SSE: `stdout`, `stderr` e `exit` (`{"exitCode":N}`) |
+| PUT | `/api/v1/machines/:name/files?path=/abs[&mode=644]` | corpo cru = conteúdo | `{"path","bytes"}` |
+| GET | `/api/v1/machines/:name/files?path=/abs` | — | conteúdo cru (`application/octet-stream`) |
+| GET | `/api/v1/machines/:name/logs?tail=N` | — | console em texto |
+
+```bash
+curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'
+curl -s -X POST localhost:8080/api/v1/machines/dev/start
+curl -s -X POST localhost:8080/api/v1/machines/dev/exec -d '{"command":["python3","-c","print(42)"]}'
+# {"exitCode":0,"stdout":"42\n","stderr":"","timedOut":false,"executionTime":31}
+curl -s -X PUT --data-binary @app.py 'localhost:8080/api/v1/machines/dev/files?path=/workspace/app.py'
+```
+
+O `command` é um argv **sem shell implícito**. Para usar shell, mande `["sh","-c","..."]`.
+
+Erros das rotas de máquina:
+
+```json
+{"error":{"code":"INVALID_STATE","message":"INVALID_STATE: machine dev is not running; start it first"}}
+```
+
+| Código | HTTP |
+|--------|------|
+| `NOT_FOUND` | 404 |
+| `CONFLICT`, `INVALID_STATE` | 409 |
+| `CONFIG_ERROR` | 400 |
+| `RUNNER_ERROR` (infraestrutura) | 500 |
 
 ## Protocolo interno
 

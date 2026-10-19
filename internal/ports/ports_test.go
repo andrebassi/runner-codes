@@ -14,17 +14,24 @@ func TestValidate(t *testing.T) {
 	}
 	mut := func(f func(*VMSpec)) VMSpec { s := valid(); f(&s); return s }
 	bad := map[string]VMSpec{
-		"no cpu":              mut(func(s *VMSpec) { s.CPUs = 0 }),
-		"no memory":           mut(func(s *VMSpec) { s.MemoryMiB = 0 }),
-		"two roots":           mut(func(s *VMSpec) { s.RootDir = "/x" }),
-		"no root":             mut(func(s *VMSpec) { s.RootDisk = "" }),
-		"no exec":             mut(func(s *VMSpec) { s.Exec = "" }),
-		"socket without port": mut(func(s *VMSpec) { s.VsockPort = 0 }),
-		"port without socket": mut(func(s *VMSpec) { s.VsockSocket = "" }),
-		"argv with space":     mut(func(s *VMSpec) { s.Args = []string{"-c", "echo oi"} }),
-		"empty argv":          mut(func(s *VMSpec) { s.Args = []string{""} }),
-		"exec with newline":   mut(func(s *VMSpec) { s.Exec = "/a\nb" }),
-		"tty with console":    mut(func(s *VMSpec) { s.TTY, s.Console = true, "/r/c.log" }),
+		"no cpu":                mut(func(s *VMSpec) { s.CPUs = 0 }),
+		"no memory":             mut(func(s *VMSpec) { s.MemoryMiB = 0 }),
+		"two roots":             mut(func(s *VMSpec) { s.RootDir = "/x" }),
+		"no root":               mut(func(s *VMSpec) { s.RootDisk = "" }),
+		"no exec":               mut(func(s *VMSpec) { s.Exec = "" }),
+		"socket without port":   mut(func(s *VMSpec) { s.VsockPort = 0 }),
+		"port without socket":   mut(func(s *VMSpec) { s.VsockSocket = "" }),
+		"argv with space":       mut(func(s *VMSpec) { s.Args = []string{"-c", "echo oi"} }),
+		"empty argv":            mut(func(s *VMSpec) { s.Args = []string{""} }),
+		"exec with newline":     mut(func(s *VMSpec) { s.Exec = "/a\nb" }),
+		"tty with console":      mut(func(s *VMSpec) { s.TTY, s.Console = true, "/r/c.log" }),
+		"vram without gpu":      mut(func(s *VMSpec) { s.GPUVRAMMiB = 1024 }),
+		"data disk on virtiofs": mut(func(s *VMSpec) { s.RootDisk, s.RootDir, s.DataDisk = "", "/r", "/d.ext4" }),
+	}
+	gpu := valid()
+	gpu.GPU, gpu.GPUVRAMMiB = true, 1024
+	if err := gpu.Validate(); err != nil {
+		t.Fatalf("gpu with vram must be accepted: %v", err)
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {
