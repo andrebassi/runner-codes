@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"runner.code/internal/adapters/runfile"
 	"runner.code/internal/app"
 	"runner.code/internal/domain"
 )
@@ -28,17 +29,55 @@ type MachineService interface {
 	Exec(ctx context.Context, name string, req app.ExecRequest, onOutput func(stream, data string)) (domain.Result, error)
 	CopyIn(ctx context.Context, name, guestPath string, r io.Reader, mode os.FileMode) (int64, error)
 	CopyOut(ctx context.Context, name, guestPath string, w io.Writer) (int64, error)
-	Logs(name string, tail int) (string, error)
+	Logs(name string, tail int, source string) (string, error)
 }
 
 // CreateMachineRequest é o corpo de POST /api/v1/machines.
 type CreateMachineRequest struct {
 	Name      string `json:"name" binding:"required"`
-	Stack     string `json:"stack" binding:"required"`
+	Stack     string `json:"stack"`
 	CPUs      uint8  `json:"cpus"`
 	MemoryMiB uint32 `json:"memory_mib"`
 	DiskGiB   int    `json:"disk_gib"`
 	GPU       bool   `json:"gpu"`
+	// Os campos do runner.code, um a um.
+	Image       string   `json:"image"`
+	Env         []string `json:"env"`
+	Workdir     string   `json:"workdir"`
+	Init        []string `json:"init"`
+	Workload    []string `json:"workload"`
+	StopSignal  string   `json:"stop_signal"`
+	StopTimeout int      `json:"stop_timeout"`
+	StopOnExit  bool     `json:"stop_on_exit"`
+	GPUVRAMMiB  uint32   `json:"gpu_vram_mib"`
+	// RunnerCode é o texto de um runner.code inteiro; os campos acima que vierem preenchidos
+	// vencem o arquivo, como as flags na CLI.
+	RunnerCode string `json:"runner_code"`
+}
+
+// machine converte o corpo na máquina pedida: o runner.code (se veio) é a base, e todo
+// campo não vazio do JSON vai por cima dele.
+func (r CreateMachineRequest) machine() (domain.Machine, error) {
+	var base domain.Machine
+	if r.RunnerCode != "" {
+		m, err := runfile.Parse([]byte(r.RunnerCode))
+		if err != nil {
+			return base, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: err.Error()}}
+		}
+		base = m
+	}
+	over := domain.Machine{Name: r.Name, Stack: r.Stack, Image: r.Image, CPUs: r.CPUs, MemoryMiB: r.MemoryMiB, DiskGiB: r.DiskGiB,
+		GPU: r.GPU, GPUVRAMMiB: r.GPUVRAMMiB, Env: r.Env, Workdir: r.Workdir, Init: r.Init, Workload: r.Workload,
+		StopSignal: r.StopSignal, StopTimeout: r.StopTimeout, StopOnExit: r.StopOnExit}
+	// No JSON não há "flag passada": o campo conta quando não é o valor zero.
+	set := map[string]bool{"stack": r.Stack != "", "image": r.Image != "", "cpus": r.CPUs != 0, "memory": r.MemoryMiB != 0,
+		"disk-gib": r.DiskGiB != 0, "gpu": r.GPU, "gpu-vram": r.GPUVRAMMiB != 0, "env": len(r.Env) > 0, "workdir": r.Workdir != "",
+		"init": len(r.Init) > 0, "stop-signal": r.StopSignal != "", "stop-timeout": r.StopTimeout != 0, "stop-on-exit": r.StopOnExit}
+	m := runfile.Override(base, over, func(k string) bool { return set[k] })
+	if m.Stack == "" && m.Image == "" {
+		return m, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "stack or image is required"}}
+	}
+	return m, nil
 }
 
 // ExecMachineRequest é o corpo de POST .../exec e .../exec/stream: argv explícito, sem
@@ -121,8 +160,12 @@ func (s *Server) createMachine(c *gin.Context) {
 		machineError(c, domain.ValidationError{Err: fmt.Errorf("invalid request: %w", err)})
 		return
 	}
-	m, err := s.Machines.Create(c.Request.Context(), domain.Machine{Name: req.Name, Stack: req.Stack,
-		CPUs: req.CPUs, MemoryMiB: req.MemoryMiB, DiskGiB: req.DiskGiB, GPU: req.GPU})
+	mc, err := req.machine()
+	if err != nil {
+		machineError(c, err)
+		return
+	}
+	m, err := s.Machines.Create(c.Request.Context(), mc)
 	if err != nil {
 		machineError(c, err)
 		return
@@ -172,9 +215,10 @@ func (s *Server) startMachine(c *gin.Context) {
 	c.JSON(http.StatusOK, st)
 }
 
-// stopMachine atende POST .../stop; ?timeout=N em segundos (0 mata na hora).
+// stopMachine atende POST .../stop; ?timeout=N em segundos (0 mata na hora). Sem timeout
+// vale o stop_timeout da máquina (ou 10 s).
 func (s *Server) stopMachine(c *gin.Context) {
-	timeout := app.DefaultStopTimeout
+	timeout := time.Duration(-1)
 	if t := c.Query("timeout"); t != "" {
 		n, err := strconv.Atoi(t)
 		if err != nil || n < 0 || n > 300 {
@@ -301,10 +345,10 @@ func (l *lazyWriter) Write(p []byte) (int, error) {
 	return l.c.Writer.Write(p)
 }
 
-// machineLogs atende GET .../logs?tail=N em texto puro.
+// machineLogs atende GET .../logs?tail=N&source=all|workload em texto puro.
 func (s *Server) machineLogs(c *gin.Context) {
 	tail, _ := strconv.Atoi(c.Query("tail"))
-	out, err := s.Machines.Logs(c.Param("name"), tail)
+	out, err := s.Machines.Logs(c.Param("name"), tail, c.Query("source"))
 	if err != nil {
 		machineError(c, err)
 		return

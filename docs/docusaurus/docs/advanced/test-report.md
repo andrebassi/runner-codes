@@ -12,7 +12,7 @@ Todo número desta página foi medido; o que não foi testado está dito como n�
 
 | Plataforma | Ambiente | microVM real | Resultado |
 |---|---|---|---|
-| **macOS** | MacBook M1 Pro, macOS 27.0.1, Hypervisor.framework | **sim** | suíte e2e (9 testes, 15 stacks) verde em duas rodadas seguidas |
+| **macOS** | MacBook M1 Pro, macOS 27.0.1, Hypervisor.framework | **sim** | suíte e2e (21 testes, 16 imagens) verde em duas rodadas seguidas (42 de 42) |
 | **Linux** | Ubuntu 26.04.1 LTS no VMPal, kernel 7.0.0-30, aarch64 | **não** (sem `/dev/kvm`) | confinamento Landlock + seccomp aplicado e provado no processo real; 30 testes verdes em duas rodadas |
 | **Windows** | Windows 11 Pro 24H2 (build 26100.9457) ARM64 no VMPal | **não** | fora do escopo: build recusado de propósito; hypervisor não sobe na VM (`EL2 not present`) |
 
@@ -119,6 +119,11 @@ Rodada duas vezes seguidas (`-count=2`), verde nas duas. Cada teste trava um com
 | `TestRunStreams` | `rc run` com Python que escreve, dorme 1,5 s e escreve de novo: a 1ª linha chega ao stdout do host ≥ 1 s antes da 2ª (medido: 0,25 s e 1,75 s depois do início). **Prova de falha:** com o `rc run` acumulando a saída, as duas linhas chegaram com 3,8 µs de distância e o teste reprovou |
 | `TestServeStream` | `POST /api/v1/execute/stream` com a VM real: `text/event-stream`, eventos `stdout` com a 1ª linha ≥ 1 s antes da 2ª, `result` final com `exitCode` 0; job recusado responde 400 antes do stream |
 | `TestMachineLifecycle` | `rc machine`: create, CONFLICT no nome repetido, INVALID_STATE no exec com a máquina parada, start (198–244 ms), gravação em `/etc`, `/opt` e `/workspace`, rc do exec repassado (7), Python da stack rodando dentro, stop, logs com a máquina parada, start de novo: tudo persistiu e `/tmp` voltou vazio; delete não deixa VM. **Prova de falha:** com a máquina subindo sem o `machine.sh`, a gravação em `/etc` falhou e o teste reprovou |
+| `TestMachineShellTTY` | `rc machine shell` sob pseudo-terminal real (40×120) numa máquina ligada: o shell vê um TTY e `40 120`, Ctrl+C interrompe um `sleep 30` sem derrubar o shell, o que o shell grava em `/workspace` aparece para o exec, `exit 4` vira rc 4 e a máquina continua ligada. **Prova de falha:** sem o devpts no `machine.sh` (o defeito real encontrado: `open /dev/ptmx: no such device`), o shell não abriu e o teste reprovou |
+| `TestRunnerCode` | máquina de um `runner.code` com `--cpus 1` por cima do arquivo (a flag vence); o workdir `/app` nasce no start; o workload sobe com env e workdir e aparece no `logs --source workload`; o init roda uma vez (contador em 1 depois de stop+start); o stop manda `SIGINT` e o trap do workload grava antes do sync. **Prova de falha (dois defeitos plantados):** stop mandando SIGTERM no lugar do `stop_signal` → o arquivo do trap não existe; init ignorando o marcador → contador em 2. Os dois reprovaram |
+| `TestRunnerCodeStopOnExit` | com `stop_on_exit`, o fim do workload desliga a máquina sozinha (~0,5 s) e o log mostra a saída e `exited with code 0` |
+| `TestRunnerCodeRefusals` | `net = true` recusado com o motivo e nada criado; sem stack nem image é erro |
+| `TestRunnerCodeImage` | `--image alpine:3.20` (imagem fora do catálogo): construída, liga e roda `cat /etc/alpine-release` |
 | `TestMachineCopy` | `rc machine cp` de 5 MiB (vários pedaços) para a máquina e de volta: sha256 igual dentro e fora |
 | `TestMachineAPI` | rotas `/api/v1/machines`: 201/409/200/204/404, exec com rc 4, exec/stream com a 1ª linha ≥ 1 s antes da 2ª e `exit` no fim, PUT/GET de 2,6 MB idênticos, INVALID_STATE (409) com a máquina parada, stop em menos de 5 s. **Prova de falha:** com a VM destacada sem Wait (zumbi no `rc serve`), o stop levou 10 s e o teste reprovou |
 | `TestGPUVulkan` | `--gpu` na stack `llama`: `vulkaninfo` mostra `Virtio-GPU Venus (Apple M1 Pro)`; sem `--gpu` não existe `/dev/dri`; `--gpu` em stack sem GPU é recusado com E007. **Prova de falha:** com o `Configure` sem a chamada `krun_set_gpu_options2`, o teste reprovou (`no Venus device with --gpu`) |
@@ -148,7 +153,7 @@ em duas rodadas seguintes, as mesmas suítes passaram inteiras.
 
 | Gate | Resultado |
 |---|---|
-| `task test:cov` | 95,8% total, domínio 100%, guest 36,2% (catraca 36%). `COVERAGE_FLOOR=101` reprova |
+| `task test:cov` | 95,6% total, domínio 100%, guest 67,4% (catraca 67%). `COVERAGE_FLOOR=101` e `GUEST_FLOOR=68` reprovam |
 | `task test:targets` | darwin/arm64, linux/amd64 e linux/arm64 compilam; windows/amd64 recusado com o motivo |
 | `go test -race ./internal/...` | verde |
 

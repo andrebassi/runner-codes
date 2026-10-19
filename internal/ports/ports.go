@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"runner.code/internal/domain"
@@ -104,8 +105,14 @@ type GuestClient interface {
 	// RunStream é o Run com a saída entregue a onOutput enquanto o programa roda; o
 	// Result final é o mesmo do Run.
 	RunStream(ctx context.Context, socket string, job protocol.Job, onOutput func(stream, data string)) (protocol.Result, error)
+	// Interactive abre uma sessão de terminal (OpPTY): repassa in ao programa, escreve a
+	// saída em out, manda cada tamanho de resize e devolve o código de saída do programa.
+	Interactive(ctx context.Context, socket string, job protocol.Job, in io.Reader, out io.Writer, resize <-chan Winsize) (int, error)
 	WaitReady(ctx context.Context, socket string) error
 }
+
+// Winsize é o tamanho de um terminal em linhas e colunas.
+type Winsize struct{ Rows, Cols uint16 }
 
 // MachineStore guarda o registro das máquinas persistentes e o diretório de cada uma
 // (disco, spec, socket, logs). Erros de ausência e de nome repetido vêm com os códigos

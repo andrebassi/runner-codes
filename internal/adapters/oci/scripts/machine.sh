@@ -16,6 +16,11 @@ mkdir -p $m/proc $m/sys $m/dev $m/tmp $m/workspace
 mount -t proc proc $m/proc
 mount -t sysfs sysfs $m/sys
 mount --bind /dev $m/dev
+# devpts: sem ele o /dev/ptmx abre com "no such device" e o `rc machine shell` não ganha
+# terminal (medido). Monta direto no /dev/pts do chroot: o --bind acima não leva submontagem,
+# então montar no /dev da raiz antes não aparecia aqui dentro (medido também).
+mkdir -p $m/dev/pts
+mount -t devpts devpts $m/dev/pts -o mode=620,ptmxmode=666
 mount --bind /persist/workspace $m/workspace
 # RUNNER_MACHINE faz o start.sh deixar o HOME em /root (persistente), não no tmpfs.
 export RUNNER_MACHINE=1

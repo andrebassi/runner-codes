@@ -1,22 +1,28 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"runner.code/internal/adapters/guestproto"
 	"runner.code/internal/adapters/machinestore"
+	"runner.code/internal/adapters/runfile"
 	"runner.code/internal/app"
 	"runner.code/internal/domain"
+	"runner.code/internal/ports"
 	"runner.code/internal/protocol"
 )
 
@@ -26,6 +32,11 @@ func (d *deps) newMachines() *app.Machines {
 		Store: machinestore.New(filepath.Join(d.builder.CacheDir, "machines")), Disks: d.builder,
 		Images: d.builder, Catalog: d.catalog, Launcher: d.launcher, Procs: machinestore.Processes{},
 		Guest: guestproto.Client{},
+		// `image` do runner.code: o ext4 sai do mesmo build das stacks.
+		BuildImage: func(ctx context.Context, l domain.Language) error {
+			_, err := d.builder.Build(ctx, l)
+			return err
+		},
 	}
 }
 
@@ -37,7 +48,7 @@ func defaultMachineName() string { return env("RC_MACHINE_NAME", "default") }
 func machineCmd() *cobra.Command {
 	c := &cobra.Command{Use: "machine", Short: "Persistent machines: create, start, exec, cp, logs, stop, delete"}
 	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineStatusCmd(), machineListCmd(),
-		machineDeleteCmd(), machineExecCmd(), machineCopyCmd(), machineLogsCmd())
+		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineCopyCmd(), machineLogsCmd())
 	return c
 }
 
@@ -52,29 +63,69 @@ func withMachines(run func(m *app.Machines, cmd *cobra.Command, args []string) e
 	}
 }
 
-// machineCreateCmd registra uma máquina e o disco dela (não liga).
+// machineCreateCmd registra uma máquina e o disco dela (não liga). A declaração vem do
+// runner.code (-f, ou ./runner.code se existir) e as flags passadas vencem o arquivo; o que
+// vem depois de -- é o workload.
 func machineCreateCmd() *cobra.Command {
 	var mc domain.Machine
 	var cpus uint
+	var file string
 	c := &cobra.Command{
-		Use: "create", Short: "Create a persistent machine (its own writable disk over a stack image)",
-		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, _ []string) error {
+		Use:   "create [flags] [-- workload...]",
+		Short: "Create a persistent machine from flags and/or a runner.code file",
+		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, args []string) error {
 			mc.CPUs = uint8(cpus)
+			mc.Workload = args
+			base := domain.Machine{}
+			if file == "" {
+				if _, err := os.Stat(runfile.DefaultName); err == nil {
+					file = runfile.DefaultName
+				}
+			}
+			if file != "" {
+				var err error
+				if base, err = runfile.Load(file); err != nil {
+					return err
+				}
+			}
+			mc = runfile.Override(base, mc, cmd.Flags().Changed)
+			if mc.Stack == "" && mc.Image == "" {
+				return errors.New("set --stack or --image (or write them in a runner.code)")
+			}
+			if mc.Image != "" {
+				fmt.Fprintf(os.Stderr, "building image %s (first time takes a while)...\n", mc.Image)
+			}
 			out, err := m.Create(cmd.Context(), mc)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("created %s (stack=%s cpus=%d memory=%dMiB disk=%dGiB gpu=%v)\n", out.Name, out.Stack, out.CPUs, out.MemoryMiB, out.DiskGiB, out.GPU)
+			from := "stack=" + out.Stack
+			if out.Image != "" {
+				from = "image=" + out.Image
+			}
+			fmt.Printf("created %s (%s cpus=%d memory=%dMiB disk=%dGiB gpu=%v)\n", out.Name, from, out.CPUs, out.MemoryMiB, out.DiskGiB, out.GPU)
+			if file != "" {
+				fmt.Printf("from %s\n", file)
+			}
 			return nil
 		}),
 	}
-	c.Flags().StringVar(&mc.Name, "name", defaultMachineName(), "machine name")
-	c.Flags().StringVar(&mc.Stack, "stack", "", "stack whose image is the machine base (python, go, ...)")
-	c.Flags().UintVar(&cpus, "cpus", 0, "vCPUs (default 2)")
-	c.Flags().Uint32Var(&mc.MemoryMiB, "memory", 0, "memory ceiling in MiB (default 2048)")
-	c.Flags().IntVar(&mc.DiskGiB, "disk-gib", 0, "writable disk in GiB (default 10, sparse)")
-	c.Flags().BoolVar(&mc.GPU, "gpu", false, "give the machine the host GPU through Vulkan (the stack must declare gpu)")
-	c.MarkFlagRequired("stack")
+	f := c.Flags()
+	f.StringVarP(&file, "file", "f", "", "runner.code file (default ./runner.code when present)")
+	f.StringVar(&mc.Name, "name", defaultMachineName(), "machine name")
+	f.StringVar(&mc.Stack, "stack", "", "stack whose image is the machine base (python, go, ...)")
+	f.StringVar(&mc.Image, "image", "", "any OCI image as the machine base (built on first use)")
+	f.UintVar(&cpus, "cpus", 0, "vCPUs (default 2)")
+	f.Uint32Var(&mc.MemoryMiB, "memory", 0, "memory ceiling in MiB (default 2048)")
+	f.IntVar(&mc.DiskGiB, "disk-gib", 0, "writable disk in GiB (default 10, sparse)")
+	f.BoolVar(&mc.GPU, "gpu", false, "give the machine the host GPU through Vulkan (the stack must declare gpu)")
+	f.Uint32Var(&mc.GPUVRAMMiB, "gpu-vram", 0, "GPU shared memory window in MiB (default: the stack's)")
+	f.StringArrayVarP(&mc.Env, "env", "e", nil, "environment variable K=V for init, workload, exec and shell (repeatable)")
+	f.StringVarP(&mc.Workdir, "workdir", "w", "", "working directory for init, workload, exec and shell")
+	f.StringArrayVar(&mc.Init, "init", nil, "command run once, on the first start (repeatable, in order)")
+	f.StringVar(&mc.StopSignal, "stop-signal", "", "signal sent to the workload on stop (default SIGTERM)")
+	f.IntVar(&mc.StopTimeout, "stop-timeout", 0, "seconds the workload gets to exit on stop (default 10)")
+	f.BoolVar(&mc.StopOnExit, "stop-on-exit", false, "stop the machine when the workload exits")
 	return c
 }
 
@@ -112,7 +163,7 @@ func machineStopCmd() *cobra.Command {
 		}),
 	}
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
-	c.Flags().DurationVar(&timeout, "timeout", app.DefaultStopTimeout, "wait for a clean shutdown before killing (0 kills at once)")
+	c.Flags().DurationVar(&timeout, "timeout", -1, "wait for a clean shutdown before killing (0 kills at once; default: the machine's stop_timeout, or 10s)")
 	return c
 }
 
@@ -237,6 +288,65 @@ func machineExecCmd() *cobra.Command {
 	return c
 }
 
+// machineShellCmd abre um terminal de verdade (PTY no guest) numa máquina ligada: Ctrl+C,
+// job control, editores de tela cheia e o tamanho da janela funcionam. O rc do `rc` é o do
+// shell (ou do comando passado depois de --).
+func machineShellCmd() *cobra.Command {
+	var name, workdir string
+	var envs []string
+	c := &cobra.Command{
+		Use: "shell [flags] [-- COMMAND [ARGS...]]", Short: "Open an interactive terminal in a running machine (bash if the image has it)",
+		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, args []string) error {
+			req := app.ShellRequest{Argv: args, Env: append([]string{"TERM=" + env("TERM", "xterm")}, envs...), Cwd: workdir}
+			code, err := runMachineShell(cmd.Context(), m, name, req)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				os.Exit(code) // depois do runMachineShell: os defer de lá já restauraram o terminal
+			}
+			return nil
+		}),
+	}
+	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
+	c.Flags().StringArrayVarP(&envs, "env", "e", nil, "environment variable K=V (repeatable)")
+	c.Flags().StringVarP(&workdir, "workdir", "w", "", "working directory inside the machine (default $HOME)")
+	return c
+}
+
+// runMachineShell liga o terminal do host à sessão. Com terminal de verdade: modo raw (para
+// o Ctrl+C ir ao guest em vez de matar o rc), tamanho inicial da janela e SIGWINCH virando
+// resize. Os defer restauram o terminal em qualquer saída.
+func runMachineShell(ctx context.Context, m *app.Machines, name string, req app.ShellRequest) (int, error) {
+	fd := int(os.Stdin.Fd())
+	resize := make(chan ports.Winsize, 1)
+	if term.IsTerminal(fd) && term.IsTerminal(int(os.Stdout.Fd())) {
+		if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			req.Size = ports.Winsize{Rows: uint16(h), Cols: uint16(w)}
+		}
+		state, err := term.MakeRaw(fd)
+		if err != nil {
+			return 0, err
+		}
+		defer term.Restore(fd, state)
+		winch := make(chan os.Signal, 1)
+		signal.Notify(winch, syscall.SIGWINCH)
+		defer signal.Stop(winch)
+		go func() {
+			for range winch {
+				if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+					// Não bloqueia: se um resize ainda não saiu, o próximo já traz o tamanho atual.
+					select {
+					case resize <- ports.Winsize{Rows: uint16(h), Cols: uint16(w)}:
+					default:
+					}
+				}
+			}
+		}()
+	}
+	return m.Shell(ctx, name, req, os.Stdin, os.Stdout, resize)
+}
+
 // splitMachinePath separa "nome:/caminho"; sem nome antes dos dois-pontos é caminho local.
 func splitMachinePath(s string) (name, path string, remote bool) {
 	i := strings.Index(s, ":")
@@ -303,10 +413,11 @@ func machineCopyCmd() *cobra.Command {
 func machineLogsCmd() *cobra.Command {
 	var name string
 	var tail int
+	var source string
 	c := &cobra.Command{
 		Use: "logs", Short: "Show a machine's console (readable while stopped)",
 		RunE: withMachines(func(m *app.Machines, _ *cobra.Command, _ []string) error {
-			out, err := m.Logs(name, tail)
+			out, err := m.Logs(name, tail, source)
 			if err != nil {
 				return err
 			}
@@ -316,5 +427,6 @@ func machineLogsCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
 	c.Flags().IntVar(&tail, "tail", 0, "only the last N lines")
+	c.Flags().StringVar(&source, "source", app.LogSourceAll, "all, or workload (only the runner.code workload output)")
 	return c
 }

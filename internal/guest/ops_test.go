@@ -141,7 +141,7 @@ func TestServerOps(t *testing.T) {
 
 	synced, exited := false, make(chan int, 1)
 	syncDisks, exitProcess = func() { synced = true }, func(code int) { exited <- code }
-	defer func() { syncDisks, exitProcess = syncDisksDefault, os.Exit }()
+	defer func() { syncDisks, exitProcess = syncDisksDefault, osExit }()
 	if res := call(Job{Op: protocol.OpShutdown}); res.Status != "success" || !synced {
 		t.Fatalf("shutdown: %+v synced=%v", res, synced)
 	}

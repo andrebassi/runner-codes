@@ -37,6 +37,8 @@ func DefaultServerConfig() ServerConfig {
 type Server struct {
 	config   ServerConfig
 	executor *Executor
+	// wl é o workload da máquina persistente (no máximo um vivo).
+	wl workload
 }
 
 // NewServer creates a new guest server
@@ -142,9 +144,17 @@ func (s *Server) handleConnection(conn net.Conn) {
 	case protocol.OpGet:
 		writeResult(conn, getChunk(job))
 		return
+	case protocol.OpPTY:
+		ptySession(conn, job)
+		return
+	case protocol.OpWorkload:
+		writeResult(conn, s.startWorkload(job))
+		return
 	case protocol.OpShutdown:
-		// Grava o disco antes de responder: quando o host recebe o ok, o que estava em
-		// cache já está no ext4 da máquina. A saída do processo desliga a VM.
+		// Primeiro o workload: stop_signal e até Timeout segundos para ele salvar o que
+		// precisa (um servidor gravando estado). Depois o disco, antes de responder: quando
+		// o host recebe o ok, o que estava em cache já está no ext4. A saída desliga a VM.
+		s.stopWorkload(job.Signal, time.Duration(job.Timeout)*time.Second)
 		syncDisks()
 		writeResult(conn, Result{TraceID: job.TraceID, Status: "success"})
 		exitProcess(0)
@@ -221,7 +231,10 @@ func writeResult(conn net.Conn, res Result) {
 }
 
 // exitProcess encerra o guest; trocado no teste para o processo de teste não sair.
-var exitProcess = os.Exit
+var exitProcess = osExit
+
+// osExit é o os.Exit de verdade, guardado para o teste restaurar depois de trocar.
+var osExit = os.Exit
 
 // sendError responde com um Result de falha quando o pedido nem chega a virar job.
 func (s *Server) sendError(conn net.Conn, traceID, message string) {

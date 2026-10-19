@@ -46,6 +46,47 @@ func TestMachineDefaultsAndValidate(t *testing.T) {
 	}
 }
 
+// TestMachineWorkloadRules: workload, init e política de parada válidos passam; cada
+// regra quebrada é CONFIG_ERROR.
+func TestMachineWorkloadRules(t *testing.T) {
+	ok := Machine{Name: "a", Stack: "python", Env: []string{"A=1", "EMPTY="}, Workdir: "/app",
+		Init: []string{"echo hi"}, Workload: []string{"python3", "-m", "http.server"},
+		StopSignal: "SIGINT", StopTimeout: 60, StopOnExit: true}.WithDefaults()
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	mut := func(f func(*Machine)) Machine { m := ok; f(&m); return m }
+	for name, m := range map[string]Machine{
+		"timeout too big":      mut(func(m *Machine) { m.StopTimeout = MaxStopTimeout + 1 }),
+		"negative timeout":     mut(func(m *Machine) { m.StopTimeout = -1 }),
+		"stop_on_exit no work": mut(func(m *Machine) { m.Workload = nil }),
+		"relative workdir":     mut(func(m *Machine) { m.Workdir = "app" }),
+		"bad signal":           mut(func(m *Machine) { m.StopSignal = "SIGNOPE" }),
+		"env without equals":   mut(func(m *Machine) { m.Env = []string{"JUSTKEY"} }),
+		"env with empty key":   mut(func(m *Machine) { m.Env = []string{"=x"} }),
+		"vram without gpu":     mut(func(m *Machine) { m.GPUVRAMMiB = 2048 }),
+	} {
+		var me MachineError
+		if err := m.Validate(); !errors.As(err, &me) || me.Code != CodeConfig {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+// TestSignalNumber: nome com e sem SIG, minúsculo, número, vazio (SIGTERM) e inválidos.
+func TestSignalNumber(t *testing.T) {
+	for in, want := range map[string]int{"": 15, "SIGTERM": 15, "int": 2, "SIGQUIT": 3, "9": 9, "64": 64, "SIGUSR1": 10} {
+		if got, err := SignalNumber(in); err != nil || got != want {
+			t.Fatalf("%q: %d %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"SIGFOO", "0", "65", "abc"} {
+		if _, err := SignalNumber(bad); err == nil {
+			t.Fatalf("%q must be refused", bad)
+		}
+	}
+}
+
 // TestMachineErrors trava os códigos estáveis: é por eles que a API e a CLI decidem.
 func TestMachineErrors(t *testing.T) {
 	cases := map[string]error{
