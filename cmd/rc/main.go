@@ -30,6 +30,7 @@ import (
 	"runner.code/internal/app"
 	"runner.code/internal/domain"
 	"runner.code/internal/ports"
+	"runner.code/internal/protocol"
 )
 
 // Version é preenchida no release por -ldflags "-X main.Version=<tag>".
@@ -228,12 +229,19 @@ func runCmd() *cobra.Command {
 			pool.Start(nil)
 			defer pool.Close()
 			start := time.Now()
-			res, err := exec.Run(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout})
+			// A saída aparece enquanto o programa roda: cada pedaço vai direto para o
+			// stdout/stderr do host, e o Result final só traz o status.
+			res, err := exec.RunStream(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout},
+				func(stream, data string) {
+					if stream == protocol.EventStderr {
+						fmt.Fprint(os.Stderr, data)
+						return
+					}
+					fmt.Print(data)
+				})
 			if err != nil {
 				return err
 			}
-			fmt.Print(res.Stdout)
-			fmt.Fprint(os.Stderr, res.Stderr)
 			fmt.Fprintf(os.Stderr, "[status=%s exit=%d exec=%v total=%v timeout=%v]\n", res.Status, res.ExitCode,
 				res.Duration.Round(time.Millisecond), time.Since(start).Round(time.Millisecond), res.TimedOut)
 			// status "success" só diz que a API executou; o programa falhou se saiu ≠ 0, estourou

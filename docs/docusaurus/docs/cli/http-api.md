@@ -30,6 +30,7 @@ A API **não tem autenticação**. O padrão é escutar só em loopback. Para ex
 | GET | `/api/v1/languages` |
 | POST | `/api/v1/run` |
 | POST | `/api/v1/execute` |
+| POST | `/api/v1/execute/stream` (SSE: saída enquanto roda) |
 
 Formatos, erros e limites em [Visão geral da API](/api-reference/overview).
 

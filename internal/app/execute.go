@@ -45,6 +45,19 @@ func (e *Executor) Known(lang string) bool {
 
 // Run valida, pega uma VM, executa e destrói a VM em qualquer desfecho.
 func (e *Executor) Run(ctx context.Context, job domain.Job) (domain.Result, error) {
+	return e.run(ctx, job, nil)
+}
+
+// RunStream é o Run com a saída entregue a onOutput (stream "stdout" ou "stderr")
+// enquanto o programa roda. Validação, timeout e destruição da VM são os mesmos; o
+// onOutput nunca é chamado para um job recusado na validação, o que deixa o chamador
+// responder o erro antes de começar a transmitir.
+func (e *Executor) RunStream(ctx context.Context, job domain.Job, onOutput func(stream, data string)) (domain.Result, error) {
+	return e.run(ctx, job, onOutput)
+}
+
+// run é o caminho comum; onOutput nil escolhe o protocolo sem streaming.
+func (e *Executor) run(ctx context.Context, job domain.Job, onOutput func(stream, data string)) (domain.Result, error) {
 	job = job.Normalize()
 	if err := job.Validate(e.Known); err != nil {
 		return domain.Result{TraceID: job.TraceID}, err
@@ -58,7 +71,12 @@ func (e *Executor) Run(ctx context.Context, job domain.Job) (domain.Result, erro
 	runCtx, cancel := context.WithTimeout(ctx, job.Timeout+timeoutGrace)
 	defer cancel()
 	start := time.Now()
-	res, err := e.Guest.Run(runCtx, vm.Socket, toProtocol(job))
+	var res protocol.Result
+	if onOutput != nil {
+		res, err = e.Guest.RunStream(runCtx, vm.Socket, toProtocol(job), onOutput)
+	} else {
+		res, err = e.Guest.Run(runCtx, vm.Socket, toProtocol(job))
+	}
 	elapsed := time.Since(start)
 	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return domain.Result{TraceID: job.TraceID, Status: "failed", TimedOut: true, Duration: elapsed, Error: domain.ErrTimeout.Error()}, nil
