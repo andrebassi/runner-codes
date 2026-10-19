@@ -20,6 +20,15 @@ const tsiHijackInet = 1
 // logLevelError é KRUN_LOG_LEVEL_ERROR: só erro no stderr do processo vmm.
 const logLevelError = 1
 
+// gpuVenusFlags são VIRGLRENDERER_VENUS (1<<6) | VIRGLRENDERER_NO_VIRGL (1<<7) em libkrun.h:
+// só Vulkan (Venus), sem o virgl de OpenGL, porque o MoltenVK do macOS só traduz Vulkan. É
+// a mesma combinação do krunkit e do `--gpu`.
+const gpuVenusFlags = 1<<6 | 1<<7
+
+// DefaultGPUVRAMMiB é a VRAM do guest quando a spec não diz: 4 GiB, o padrão. É
+// uma janela de endereço do host, não RAM reservada; o host só aloca o que o guest usa.
+const DefaultGPUVRAMMiB = 4096
+
 // API é o subconjunto da libkrun 1.19 que o runner usa. Os retornos seguem a
 // convenção C: negativo é -errno, zero ou positivo é sucesso (ou o id do contexto).
 type API interface {
@@ -38,6 +47,7 @@ type API interface {
 	SetExec(ctx uint32, path string, argv, envp []string) int32
 	DisableImplicitConsole(ctx uint32) int32
 	AddVirtioConsoleDefault(ctx uint32, inFD, outFD, errFD int32) int32
+	SetGPUOptions2(ctx uint32, virglFlags uint32, shmSize uint64) int32
 	StartEnter(ctx uint32) int32
 }
 
@@ -88,6 +98,13 @@ func Configure(api API, s Spec) (uint32, error) {
 		// como terminal do programa (libkrun.h, krun_add_virtio_console_default).
 		add("krun_disable_implicit_console", func() int32 { return api.DisableImplicitConsole(ctx) })
 		add("krun_add_virtio_console_default", func() int32 { return api.AddVirtioConsoleDefault(ctx, 0, 1, 2) })
+	}
+	if s.GPU {
+		vram := s.GPUVRAMMiB
+		if vram == 0 {
+			vram = DefaultGPUVRAMMiB
+		}
+		add("krun_set_gpu_options2", func() int32 { return api.SetGPUOptions2(ctx, gpuVenusFlags, uint64(vram)<<20) })
 	}
 	if s.Console != "" {
 		add("krun_set_console_output", func() int32 { return api.SetConsoleOutput(ctx, s.Console) })

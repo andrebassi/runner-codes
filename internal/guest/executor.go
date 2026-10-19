@@ -215,6 +215,15 @@ func NewExecutor() *Executor {
 				Command:   "sh",
 				Args:      []string{},
 			},
+			// llama: o job é um script sh que chama o llama.cpp da imagem (llama-cli,
+			// llama-bench) contra o modelo gravado em /opt/models no build. Script e não
+			// prompt solto, para o chamador escolher binário, modelo e flags (-ngl para GPU).
+			"llama": {
+				Name:      "llama",
+				Extension: ".sh",
+				Command:   "sh",
+				Args:      []string{},
+			},
 			"lua": {
 				Name:      "lua",
 				Extension: ".lua",

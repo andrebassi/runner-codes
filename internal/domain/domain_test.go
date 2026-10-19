@@ -105,12 +105,13 @@ func TestValidateLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := map[string]Language{
-		"no name":         {Image: "x", CPUs: 1, MemoryMiB: 512},
-		"name with slash": {Name: "a/b", Image: "x", CPUs: 1, MemoryMiB: 512},
-		"name with dot":   {Name: "a.b", Image: "x", CPUs: 1, MemoryMiB: 512},
-		"no image":        {Name: "a", CPUs: 1, MemoryMiB: 512},
-		"no cpu":          {Name: "a", Image: "x", MemoryMiB: 512},
-		"small memory":    {Name: "a", Image: "x", CPUs: 1, MemoryMiB: 64},
+		"no name":          {Image: "x", CPUs: 1, MemoryMiB: 512},
+		"name with slash":  {Name: "a/b", Image: "x", CPUs: 1, MemoryMiB: 512},
+		"name with dot":    {Name: "a.b", Image: "x", CPUs: 1, MemoryMiB: 512},
+		"no image":         {Name: "a", CPUs: 1, MemoryMiB: 512},
+		"no cpu":           {Name: "a", Image: "x", MemoryMiB: 512},
+		"small memory":     {Name: "a", Image: "x", CPUs: 1, MemoryMiB: 64},
+		"vram without gpu": {Name: "a", Image: "x", CPUs: 1, MemoryMiB: 512, GPUVRAMMiB: 1024},
 	}
 	for name, l := range bad {
 		t.Run(name, func(t *testing.T) {
@@ -118,5 +119,24 @@ func TestValidateLanguage(t *testing.T) {
 				t.Fatal("expected rejection")
 			}
 		})
+	}
+}
+
+// TestCheckGPU: pedir GPU numa stack sem GPU é recusa de validação (vira 400) com o
+// código E007; sem pedido, qualquer stack serve; com GPU declarada, o pedido passa.
+func TestCheckGPU(t *testing.T) {
+	cpu := Language{Name: "python"}
+	gpu := Language{Name: "llama", GPU: true}
+	var ve ValidationError
+	var ng ErrNoGPU
+	err := Job{GPU: true}.CheckGPU(cpu)
+	if !errors.As(err, &ve) || !errors.As(err, &ng) || !strings.HasPrefix(err.Error(), "E007") {
+		t.Fatalf("GPU on a CPU-only stack: %v", err)
+	}
+	if err := (Job{}).CheckGPU(cpu); err != nil {
+		t.Fatalf("no GPU requested: %v", err)
+	}
+	if err := (Job{GPU: true}).CheckGPU(gpu); err != nil {
+		t.Fatalf("GPU on a GPU stack: %v", err)
 	}
 }

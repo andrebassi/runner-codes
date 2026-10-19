@@ -29,8 +29,11 @@ const sandboxDisabledEnv = "RUNNER_SANDBOX"
 // SandboxEnabled diz se a spec recebe confinamento. Só VM de job: root em disco, sem rede.
 // A VM de build usa diretório do host por virtiofs e TSI, roda só código nosso, e não
 // caberia nesta política.
+// VM com GPU também fica de fora: no Linux o virglrenderer abre /dev/dri e sobe o render
+// server com execve, que o seccomp nega; liberar isso exige medir num host Linux com GPU,
+// que não temos. Fica declarado como dívida, e o vmm avisa no stderr.
 func SandboxEnabled(s Spec) bool {
-	return s.RootDisk != "" && !s.Network && os.Getenv(sandboxDisabledEnv) != "off"
+	return s.RootDisk != "" && !s.Network && !s.GPU && os.Getenv(sandboxDisabledEnv) != "off"
 }
 
 // PolicyFor monta a política de uma VM de job. libDirs são os diretórios das

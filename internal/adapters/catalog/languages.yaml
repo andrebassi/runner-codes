@@ -102,3 +102,22 @@ languages:
     cpus: 1
     memory_mib: 256
     warmup: apk add --no-cache -q sqlite
+
+  # IA com GPU: llama.cpp com backend Vulkan sobre o Venus (virtio-gpu) do guest.
+  # - Fedora e não Alpine: o Mesa padrão aloca blobs alinhados a 4 KiB e o hv_vm_map do macOS
+  #   exige 16 KiB, então o vkCreateInstance falha (medido no Alpine edge: "Error adding memory
+  #   map" e ERROR_OUT_OF_HOST_MEMORY). O Mesa com o patch de 16 KiB só existe pronto no COPR
+  #   slp/mesa-libkrun-vulkan (do autor da libkrun), para Fedora; 
+  # - llama.cpp compilado aqui: o pacote do Fedora não tem backend Vulkan (só CPU e HIP).
+  #   Tag e tarball fixos, conferidos por sha256. Estático e só os dois binários: o
+  #   `cmake --install` tenta instalar os testes, que não foram compilados, e falha (medido).
+  # - O modelo vai para a imagem porque a VM do job não tem rede; o sha256 é o etag LFS do
+  #   Hugging Face. Os timeouts seguram download pendurado.
+  # gpu: true libera `--gpu`; sem ele a mesma stack roda na CPU (é a comparação do e2e).
+  - name: llama
+    image: fedora:43
+    cpus: 4
+    memory_mib: 4096
+    gpu: true
+    gpu_vram_mib: 4096
+    warmup: dnf -y -q install dnf-plugins-core && dnf -y -q copr enable slp/mesa-libkrun-vulkan && dnf -y -q install mesa-vulkan-drivers vulkan-tools vulkan-loader-devel vulkan-headers spirv-headers-devel glslc cmake gcc-c++ make && mkdir -p /tmp/l /opt/models && cd /tmp/l && timeout 300 curl -fsSL -o l.tgz https://github.com/ggml-org/llama.cpp/archive/refs/tags/v0.7.0.tar.gz && echo "55d67acf3ad2ad747a9bbeb75f9f0e173dbcc0d1753a471038a90c819421c5e1  l.tgz" | sha256sum -c - && tar xzf l.tgz && cmake -S llama.cpp-0.7.0 -B b -DGGML_VULKAN=ON -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build b -j4 --target llama-cli llama-bench >/dev/null && install -m 755 b/bin/llama-cli b/bin/llama-bench /usr/local/bin/ && cd / && rm -rf /tmp/l && timeout 600 curl -fsSL -o /opt/models/qwen2.5-0.5b-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf && echo "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  /opt/models/qwen2.5-0.5b-q4_k_m.gguf" | sha256sum -c - && dnf clean all
