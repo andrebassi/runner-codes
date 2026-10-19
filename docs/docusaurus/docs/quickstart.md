@@ -1,214 +1,92 @@
 ---
-title: 'Quickstart'
-description: 'Get Runner Codes running in 5 minutes'
+title: 'Início rápido'
+description: 'Instalar a libkrun, compilar, construir a imagem Python e rodar o primeiro job'
+sidebar_position: 2
 ---
 
-## Prerequisites
+## Pré-requisitos
 
-Before you begin, ensure you have:
+- macOS em Apple Silicon, **ou** Linux x86_64/aarch64 com acesso de leitura e escrita a `/dev/kvm`.
+- Go e [Task](https://taskfile.dev) para compilar.
+- Acesso à internet para baixar as imagens OCI das linguagens (só no build da imagem; a VM do job não tem rede).
 
+Windows não é suportado.
 
+## 1. Instalar a libkrun e a libkrunfw
 
+### macOS
 
-:::note
-
-  **Mac Users**: Firecracker does not run on macOS. Use an AWS EC2 metal instance or a Linux VM with nested virtualization.
-
-:::
-
-## Step 1: Download infra.operator
-
-Download the latest release:
-
-```bash title="Download binary"
-curl -L -o infra.operator https://github.com/your-org/llm-infra-operator/releases/latest/download/infra.operator-linux-amd64
+```bash
+brew tap slp/krun
+brew trust slp/krun
+brew install slp/krun/libkrunfw slp/krun/libkrun
 ```
 
-```bash title="Make executable and install"
-chmod +x infra.operator
+O `brew trust` é necessário: sem ele o brew recusa instalar a partir de um tap não confiado.
+
+### Linux
+
+Pelo nixpkgs (libkrun 1.19.5, libkrunfw 5.5.0 no momento da escrita):
+
+```bash
+nix profile install nixpkgs#libkrun nixpkgs#libkrunfw
 ```
 
-```bash title="Move to system path"
-sudo mv infra.operator /usr/local/bin/
+A task `task krun:install` faz o passo certo para o sistema em uso.
+
+## 2. Compilar
+
+```bash
+task build
 ```
 
-## Step 2: Run Setup
+Gera em `bin/`:
 
-The `setup` command automatically installs all dependencies:
+- `runner.code` — o host (API, CLI, build de imagem e o processo de cada VM);
+- `runner.code-guest-linux-<arch>` — o guest estático que roda dentro da VM.
 
-```bash title="Run setup command"
-sudo infra.operator setup
+No macOS, o build assina o `runner.code` com o entitlement `com.apple.security.hypervisor`. Sem ele, `krun_start_enter` falha.
+
+## 3. Conferir o host
+
+```bash
+task doctor
 ```
 
-- **Docker** - Required for creating rootfs images (auto-installs if missing)
-- **Firecracker v1.7.0** - The microVM hypervisor
-- **Linux Kernel 5.10** - Required for Node.js and modern runtimes
-- **Directory structure** - `/srv/firecracker/images`, `/dev/shm/snapshots`
+O `doctor` confere a plataforma (Apple Silicon ou `/dev/kvm` acessível), se a libkrun carrega, se o binário do guest existe e quais imagens já foram construídas. Cada falha vem com o motivo.
 
-**Expected Output:**
-```
-Setting up Firecracker environment...
+## 4. Construir a imagem da linguagem
 
-[1/5] Creating directories...
-  Created: /srv/firecracker
-  Created: /srv/firecracker/images
-  Created: /dev/shm/snapshots
-
-[2/5] Checking Docker...
-  Docker already installed
-
-[3/5] Downloading Firecracker v1.7.0...
-  Installed: /usr/local/bin/firecracker
-
-[4/5] Downloading kernel 5.10...
-  NOTE: Kernel 5.10+ is REQUIRED for Node.js support!
-  Installed: /srv/firecracker/vmlinux
-
-[5/5] Verifying setup...
-  Firecracker: OK
-  Kernel: OK
-  /dev/kvm: OK
-  Docker: OK
-
-Setup complete!
-
-Next steps:
-  1. Create a rootfs:  infra.operator rootfs from-docker --name nodejs --image node:22-alpine --size 200
-  2. Create snapshot:  infra.operator snapshot create --lang nodejs --mem 512 --vcpus 1
-  3. Test execution:   infra.operator host --lang nodejs --code "console.log('hello')" --mem 512 --vcpus 1
+```bash
+task image:build -- --lang python
 ```
 
-### Setup Options
+Baixa `python:3.12-alpine`, gera o ext4 read-only com o guest e o warmup gravados, e guarda no cache. Na máquina medida, a imagem Python levou ~8–10 s. Um segundo build com as mesmas entradas sai do cache. Para todas as linguagens do catálogo: `task image:build -- --all`.
 
-```bash title="Skip Docker installation (if already installed)"
-sudo infra.operator setup --skip-docker
+## 5. Rodar um job pela CLI
+
+```bash
+task run -- --lang python --code 'print(1)'
 ```
 
-```bash title="Skip Firecracker download"
-sudo infra.operator setup --skip-firecracker
+Cada `run` sobe uma VM nova (boot frio) e a destrói no fim. O comando sai com rc 1 se o programa falhar ou estourar o tempo. Veja [`run`](/cli/run).
+
+## 6. Subir a API
+
+```bash
+task serve
 ```
 
-```bash title="Skip kernel download"
-sudo infra.operator setup --skip-kernel
+Escuta em `127.0.0.1:8080` e mantém um [pool](/concepts/pool) de 2 VMs prontas por linguagem com imagem construída. Em outro terminal:
+
+```bash
+curl -s http://127.0.0.1:8080/api/v1/run \
+  -H 'Content-Type: application/json' \
+  -d '{"language":"python","files":[{"name":"main.py","content":"print(input()[::-1])"}],"stdin":"abc"}'
 ```
 
-```bash title="Use specific versions"
-sudo infra.operator setup --kernel-version 6.1 --firecracker-version 1.7.0
+```json
+{"status":"success","stdout":"cba\n","stderr":null,"exception":null,"executionTime":35}
 ```
 
-## Step 3: Create Your First Rootfs
-
-Create a Python rootfs from the official Docker image:
-
-```bash title="Create Python rootfs"
-sudo infra.operator rootfs from-docker --name python --image python:3.12-alpine --size 150
-```
-
-**Expected Output:**
-```
-Creating rootfs for python from Docker image...
-  Docker Image: python:3.12-alpine
-  Size: 150 MB
-[1/6] Pulling Docker image: python:3.12-alpine...
-[2/6] Creating ext4 image (150MB)...
-[3/6] Exporting Docker filesystem...
-[4/6] Configuring init system...
-[5/6] Installing guest-runner...
-[6/6] Creating service...
-Created: /srv/firecracker/images/rootfs-python.ext4
-```
-
-## Step 4: Create a Snapshot
-
-Create a snapshot for fast boot:
-
-```bash title="Create snapshot for fast boot"
-sudo infra.operator snapshot create --lang python --mem 512 --vcpus 1
-```
-
-:::note
-
-  If Firecracker or kernel are missing, they will be downloaded automatically!
-
-:::
-
-**Expected Output:**
-```
-Creating snapshot for python (python)...
-  Rootfs: /srv/firecracker/images/rootfs-python.ext4
-  Memory: 512 MB
-  vCPUs:  1
-[1/5] Starting Firecracker...
-[2/5] Configuring VM...
-[3/5] Starting VM...
-[3.5/5] Waiting for guest-runner...
-[3.6/5] Syncing filesystem...
-[4/5] Pausing VM...
-[5/5] Creating snapshot...
-
-Snapshot created successfully!
-  vmstate.snapshot: 13516 bytes
-  mem.snapshot:     536870912 bytes (512.00 MB)
-  Location: /dev/shm/snapshots/python
-```
-
-## Step 5: Run Your First Code
-
-Execute Python code in the microVM:
-
-```bash title="Execute Python code in microVM"
-sudo infra.operator host --lang python --code "print('Hello from Firecracker!')" --mem 512 --vcpus 1 --snapshot
-```
-
-**Expected Output:**
-```json title="JSON data"
-{
-  "trace_id": "tr-1764485208308504533",
-  "status": "success",
-  "stdout": "Hello from Firecracker!\n",
-  "stderr": null,
-  "exception": null,
-  "executionTime": 34
-}
-```
-
-## Quick Reference Commands
-
-### Setup Commands
-
-| Command | Description |
-|---------|-------------|
-| `sudo infra.operator setup` | Full setup (Docker, Firecracker, kernel) |
-| `sudo infra.operator setup --skip-docker` | Skip Docker installation |
-| `sudo infra.operator setup --kernel-version 6.1` | Use kernel 6.1 instead of 5.10 |
-
-### Rootfs Commands
-
-| Command | Description |
-|---------|-------------|
-| `infra.operator rootfs from-docker --name X --image Y --size Z` | Create rootfs from Docker image |
-| `infra.operator rootfs create --name X --base alpine --packages "pkg1,pkg2"` | Create rootfs from base OS |
-| `infra.operator rootfs list` | List local rootfs images |
-| `infra.operator rootfs upload --lang X --bucket Y` | Upload to S3 |
-
-### Snapshot Commands
-
-| Command | Description |
-|---------|-------------|
-| `infra.operator snapshot create --lang X --mem Y --vcpus Z` | Create snapshot |
-| `infra.operator snapshot list` | List local snapshots |
-| `infra.operator snapshot upload --lang X --bucket Y` | Upload to S3 |
-
-### Execution Commands
-
-| Command | Description |
-|---------|-------------|
-| `infra.operator host --lang X --code "..." --mem Y --vcpus Z --snapshot` | Execute code (warm boot) |
-| `infra.operator host --lang X --code "..." --kernel /path/to/vmlinux` | Execute code (cold boot) |
-
-## What's Next?
-
-
-
-
-
+O valor de `executionTime` varia a cada execução. A API não tem autenticação: mantenha-a em loopback. Veja [API HTTP](/cli/http-api).

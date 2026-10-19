@@ -1,202 +1,94 @@
 ---
-title: 'Architecture'
-description: 'Deep dive into Runner Codes system architecture'
+title: 'Arquitetura'
+description: 'As peças do Runner Codes e o caminho de um job do HTTP até a microVM'
+sidebar_position: 3
 ---
 
-## System Overview
+## Visão geral
 
-Runner Codes uses a layered architecture designed for security, performance, and scalability.
-
-![System Architecture](/img/system-architecture.svg)
-
-## Component Details
-
-### Host Mode (infra.operator host)
-
-The host mode is the main orchestrator running on the EC2 host. It manages the lifecycle of Firecracker microVMs and handles job execution.
-
-```go title="pkg/host/runner.go"
-// Runner handles VM lifecycle and code execution
-type Runner struct {
-    config *RunnerConfig
-    fc     *FirecrackerClient
-    cache  *SnapshotCache
-}
-
-// Run executes code in a microVM
-func (r *Runner) Run() (*RunResult, error) {
-    // 1. Ensure snapshot is cached (download from S3 if needed)
-    // 2. Start Firecracker with snapshot restore
-    // 3. Connect via vsock
-    // 4. Send job, receive result
-    // 5. Shutdown VM
-}
+```
+ cliente HTTP / CLI
+        │
+        ▼
+┌───────────────────────────────┐
+│ runner.code serve | run    │  host (macOS ou Linux)
+│  ├─ domínio: valida o job     │
+│  ├─ pool: VMs prontas por     │
+│  │   linguagem                │
+│  └─ launcher: spawn do vmm    │
+└──────────────┬────────────────┘
+               │ spawn (nunca fork)
+               ▼
+┌───────────────────────────────┐
+│ runner.code vmm --spec     │  um processo por VM
+│  libkrun (purego) +           │
+│  libkrunfw (kernel Linux)     │
+│  HVF no macOS / KVM no Linux  │
+└──────────────┬────────────────┘
+               │ socket Unix  ⇄  vsock porta 5000
+               ▼
+┌───────────────────────────────┐
+│ microVM                       │
+│  root: ext4 read-only (vda)   │
+│  /tmp: tmpfs 256 MiB          │
+│  /opt/runner/start.sh         │
+│  /opt/runner/guest (estático) │
+│  sem rede                     │
+└───────────────────────────────┘
 ```
 
-```bash title="Configure VM machine config"
-PUT /machine-config     {"vcpu_count":1,"mem_size_mib":512,"smt":false}
-```
+## Binários
 
-```bash title="Configure boot source"
-PUT /boot-source        {"kernel_image_path":"...","boot_args":"..."}
-```
+| Binário | Onde roda | O que faz |
+|---------|-----------|-----------|
+| `runner.code` | host | `serve` (API + pool), `run` (job pela CLI), `image build`, `languages`, `doctor` e o subcomando interno `vmm` |
+| `runner-guest` | dentro da VM | escuta a porta vsock 5000, escreve os arquivos, compila se for o caso, executa e devolve o resultado. Guardado como `bin/runner.code-guest-linux-<arch>` |
 
-```bash title="Configure rootfs drive"
-PUT /drives/rootfs      {"drive_id":"rootfs","path_on_host":"..."}
-```
+São dois binários porque o purego força link dinâmico contra a glibc no Linux, e as imagens das linguagens são Alpine (musl). Um guest dinâmico falha dentro da VM com `not found`; o guest é compilado estático.
 
-```bash title="Configure vsock"
-PUT /vsock              {"guest_cid":3,"uds_path":"/tmp/fc.vsock"}
-```
+## Camadas do host
 
-```bash title="Start VM instance"
-PUT /actions            {"action_type":"InstanceStart"}
-```
+O código do host segue arquitetura hexagonal:
 
-```bash title="Send shutdown signal"
-PUT /actions            {"action_type":"SendCtrlAltDel"}
-```
+| Camada | Pacote | Responsabilidade |
+|--------|--------|------------------|
+| domínio | `internal/domain` | job, resultado, limites (stdin, arquivos, tamanho, timeout) e erros E005/E006 |
+| aplicação | `internal/app` | executor e pool de VMs |
+| adapters | `internal/adapters/krun` | carga da libkrun, spec da VM, launcher e processo `vmm` |
+| | `internal/adapters/oci` | pull da imagem OCI e build do ext4 |
+| | `internal/adapters/catalog` | `languages.yaml` embutido |
+| | `internal/adapters/guestproto` | cliente do protocolo vsock |
+| | `internal/adapters/httpapi` | API HTTP |
+| guest | `internal/guest` | servidor vsock e executor por linguagem |
 
-### Guest Mode (infra.operator guest)
+## Caminho de um job pela API
 
-The guest mode executes inside the microVM and handles code execution requests.
+1. `POST /api/v1/run` chega ao `httpapi`, que monta o job.
+2. O domínio valida: linguagem no catálogo (senão E006), stdin ≤ 1.000.000 bytes (senão E005), até 32 arquivos, código total ≤ 4 MiB, nomes de arquivo válidos, timeout entre 0 e 300 s. Recusa vira HTTP 400.
+3. O pool entrega uma VM já bootada daquela linguagem. Se o pool estiver vazio, sobe uma VM na hora (boot frio) — nunca recusa.
+4. O host conecta no socket Unix ligado à porta vsock 5000 da VM e manda o job como frame (4 bytes de tamanho + JSON).
+5. O guest grava os arquivos num diretório em `/tmp`, compila se a linguagem exigir, executa com o stdin do job e o timeout, e responde com outro frame.
+6. A VM é destruída (SIGKILL no grupo do processo) e o pool repõe uma VM nova em background.
+7. A API devolve `status`, `stdout`, `stderr`, `exception`, `executionTime`.
 
-```go title="pkg/guest/executor.go"
-type Executor struct {
-    languages map[string]LanguageConfig
-}
+## Ciclo de vida de uma VM
 
-type LanguageConfig struct {
-    Name       string   // "python", "node", etc.
-    Extension  string   // ".py", ".js", etc.
-    Command    string   // "python3", "node", etc.
-    Args       []string // Additional arguments
-    NeedsBuild bool     // For compiled languages
-    BuildCmd   string   // "rustc", "go", etc.
-    BuildArgs  []string // Build arguments
-}
+- O launcher cria o processo `runner.code vmm --spec <arquivo>` por **spawn**. Fork de processo multi-thread é morto pelo Hypervisor.framework cerca de 2 s depois, por isso nunca se usa fork.
+- O processo `vmm` carrega a libkrun, configura a VM a partir da spec e chama `krun_start_enter`, que assume o processo até a VM terminar.
+- Timeout de job: SIGKILL no grupo do processo.
+- Se o pai morre, a VM morre: `Pdeathsig` no Linux; no macOS, um pipe de vigia no fd 3.
 
-func (e *Executor) Execute(job Job) Result {
-    // 1. Create temp directory
-    // 2. Write code to file
-    // 3. Execute (or compile then execute)
-    // 4. Capture stdout/stderr
-    // 5. Return result
-}
-```
+Detalhes em [libkrun](/concepts/libkrun).
 
-### Vsock Communication
+## Imagens
 
-The host and guest communicate via virtio-vsock, a virtual socket for VM-to-host communication.
+Cada linguagem tem um ext4 read-only gerado a partir da imagem OCI oficial, com o guest, o `start.sh` e o warmup gravados. O build roda numa VM Alpine própria. Veja [Imagens](/concepts/images).
 
-```text title="1. Host connects to vsock"
-connect(/tmp/fc-{instance_id}.vsock)
-```
+## Configuração por ambiente
 
-```text title="2. Host sends connect request"
-CONNECT 5000\n
-```
-
-```text title="3. Guest responds"
-OK 5000\n
-```
-
-```text title="4. Message format"
-Messages use 4-byte big-endian length prefix + JSON payload
-```
-
-## Data Flow
-
-### Job Execution Flow
-
-![Data Flow](/img/data-flow.svg)
-
-### Boot Timeline
-
-| Phase | Duration | Description |
-|-------|----------|-------------|
-| Firecracker API calls | ~100ms | Configure VM via API socket |
-| Kernel boot | ~900ms | Linux kernel initialization |
-| Systemd init | ~1.5s | Service startup |
-| Infra.operator guest ready | ~500ms | Vsock server listening |
-| **Total cold boot** | **~3s** | Full boot time |
-
-With snapshot restore:
-
-| Phase | Duration | Description |
-|-------|----------|-------------|
-| Load snapshot | ~50ms | Restore VM state |
-| Resume VM | ~20ms | Continue execution |
-| **Total warm start** | **~70ms** | Snapshot restore time |
-
-## Security Model
-
-### Isolation Layers
-
-![Security Isolation Layers](/img/isolation-layers.svg)
-
-### Security Features (Production)
-
-:::warning
-
-The following features are recommended for production but not yet implemented:
-
-:::
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Jailer | Planned | chroot + dropped capabilities |
-| Seccomp | Planned | Per-language syscall filtering |
-| Read-only rootfs | Planned | Overlay filesystem for writes |
-| cgroups | Planned | Resource enforcement |
-| eBPF | Planned | Network blocking |
-
-## Storage Architecture
-
-### S3-Backed Rootfs
-
-Rootfs images are stored in S3 and downloaded on demand:
-
-![S3 Storage Architecture](/img/s3-storage-architecture.svg)
-
-### Rootfs Image Structure
-
-Each rootfs is an ext4 filesystem image containing:
-
-```text title="rootfs-python.ext4"
-rootfs-python.ext4
-├── bin/                    # Core binaries
-├── etc/
-│   └── systemd/system/
-│       └── infra.operator.service
-├── lib/                    # Shared libraries
-├── usr/
-│   ├── bin/
-│   │   └── python3
-│   └── local/
-│       └── bin/
-│           └── infra.operator
-└── var/                    # Variable data
-```
-
-## Environment Variables
-
-The executor sets these environment variables for code execution:
-
-```go title="Environment configuration"
-cmd.Env = append(os.Environ(),
-    "HOME=/tmp",
-    "GOCACHE=/tmp/go-cache",
-    "GOPATH=/tmp/go",
-    "GOROOT=/usr/local/go",
-    "CARGO_HOME=/opt/cargo",
-    "RUSTUP_HOME=/opt/rustup",
-    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin:/opt/cargo/bin",
-)
-```
-
-## Next Steps
-
-- [CLI Reference](/cli/overview) - Command line interface
-- [API Reference](/api-reference/overview) - HTTP API documentation
-- [Security Guide](/advanced/security) - Security best practices
+| Variável | Padrão | Uso |
+|----------|--------|-----|
+| `RUNNER_LISTEN` | `127.0.0.1:8080` | endereço da API (`serve`) |
+| `RUNNER_CACHE_DIR` | `~/Library/Caches/runner-codes` (macOS), `~/.cache/runner-codes` (Linux) | imagens, VM de build e sockets |
+| `RUNNER_KRUN_LIB` | `/opt/homebrew/lib/libkrun.dylib` (macOS), `libkrun.so.1` (Linux) | caminho da libkrun |
+| `RUNNER_GUEST_BIN` | `runner.code-guest-linux-<arch>` ao lado do host | guest injetado nas imagens |
