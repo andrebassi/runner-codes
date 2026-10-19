@@ -16,6 +16,7 @@ serve_pid=""
 cleanup() {
   [ -n "$serve_pid" ] && kill "$serve_pid" 2>/dev/null
   $rc machine delete --name "$name" -f >/dev/null 2>&1
+  $rc machine delete --name "$name-rc" -f >/dev/null 2>&1
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -75,8 +76,70 @@ $rc machine exec --name "$name" -- sh -c 'echo a; sleep 1; echo b; exit 7' >/dev
 code=$?
 expect "rc do comando repassado (7)" test "$code" = 7
 
+step "7b. Terminal interativo na máquina"
+# Um pseudo-terminal de verdade (python pty) faz o papel de quem digita: confere TTY, o
+# tamanho da janela, Ctrl+C no sleep e o rc do exit.
+out=$(RC="$rc" NAME="$name" python3 - <<'PY'
+import os, pty, time, select, struct, fcntl, termios
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(os.environ["RC"], ["rc", "machine", "shell", "--name", os.environ["NAME"]])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 33, 111, 0, 0))
+buf = b""
+def read(seconds):
+    global buf
+    end = time.time() + seconds
+    while time.time() < end:
+        if select.select([fd], [], [], 0.1)[0]:
+            try: buf += os.read(fd, 4096)
+            except OSError: return
+read(2)
+for keys, wait in ((b"test -t 0 && echo IS-T''TY; stty size\r", 1.5), (b"sleep 30\r", 1), (b"\x03", 1),
+                   (b"echo ALIVE-$((40+2))\r", 1.5), (b"exit 4\r", 2)):
+    os.write(fd, keys); read(wait)
+_, st = os.waitpid(pid, 0)
+text = buf.decode(errors="replace")
+print("tty" if "IS-TTY" in text else "", "size" if "33 111" in text else "", "alive" if "ALIVE-42" in text else "", "rc=%d" % os.WEXITSTATUS(st))
+PY
+)
+expect "shell enxerga um terminal" grep -q "tty" <<<"$out"
+expect "tamanho da janela chega (33x111)" grep -q "size" <<<"$out"
+expect "Ctrl+C interrompe só o comando" grep -q "alive" <<<"$out"
+expect "rc do exit repassado (4)" grep -q "rc=4" <<<"$out"
+
 step "8. Logs da máquina"
 expect "logs não vazios" sh -c "$rc machine logs --name '$name' --tail 10 | grep -q ."
+
+step "8b. Máquina declarada num runner.code"
+# Mesmo arquivo do runbook: init uma vez por disco, workload com SIGINT no stop, flag vencendo o arquivo.
+mkdir -p "$tmp/rc" && cat >"$tmp/rc/runner.code" <<'TOML'
+stack = "python"
+cpus = 2
+env = ["GREETING=hello"]
+workdir = "/app"
+init = ["echo $(( $(cat count 2>/dev/null || echo 0) + 1 )) > count"]
+entrypoint = ["sh", "-c"]
+cmd = ["trap 'echo saved > saved; exit 0' INT; echo \"up $GREETING in $(pwd)\"; while :; do sleep 0.2; done"]
+stop_signal = "SIGINT"
+stop_timeout = 5
+TOML
+out=$(cd "$tmp/rc" && "$OLDPWD/$rc" machine create --name "$name-rc" --cpus 1 2>&1)
+expect "create lê ./runner.code sozinho" grep -q "from runner.code" <<<"$out"
+expect "--cpus vence o arquivo" sh -c "$rc machine status --name '$name-rc' --json | grep -Eq '\"cpus\": ?1,'"
+expect "start roda init e workload" $rc machine start --name "$name-rc"
+sleep 1
+out=$($rc machine logs --name "$name-rc" --source workload)
+expect "logs --source workload: env e workdir chegaram" grep -q "up hello in /app" <<<"$out"
+out=$($rc machine exec --name "$name-rc" -- sh -c 'cat count; echo $GREETING; pwd')
+expect "exec herda env e workdir; init rodou 1 vez" test "$out" = $'1\nhello\n/app'
+expect "stop manda SIGINT ao workload" $rc machine stop --name "$name-rc"
+$rc machine start --name "$name-rc" >/dev/null
+out=$($rc machine exec --name "$name-rc" -- sh -c 'cat count saved')
+expect "init não roda de novo; o trap gravou antes do sync" test "$out" = $'1\nsaved'
+expect "stop" $rc machine stop --name "$name-rc"
+printf 'stack = "python"\nnet = true\n' >"$tmp/rc/bad.code"
+out=$($rc machine create --name "$name-bad" -f "$tmp/rc/bad.code" 2>&1)
+expect "chave de rede recusada com o motivo" grep -q '"net" is not supported yet' <<<"$out"
 
 step "9. GPU (pula se a imagem llama não estiver construída)"
 if $rc doctor 2>&1 | grep -q "ok    image llama"; then

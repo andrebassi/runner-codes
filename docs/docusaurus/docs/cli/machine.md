@@ -13,6 +13,7 @@ entre `stop` e `start`. É o equivalente do `outro runtime machine`.
 rc machine create --name dev --stack python      # registra e cria o disco (não liga)
 rc machine start  --name dev                     # liga; a VM continua depois que o comando sai
 rc machine exec   --name dev -- python3 -V       # roda um comando (saída em streaming)
+rc machine shell  --name dev                     # terminal interativo (Ctrl+C, vi, resize)
 rc machine cp ./app.py dev:/workspace/app.py     # sobe arquivo
 rc machine exec   --name dev -- python3 /workspace/app.py
 rc machine cp dev:/workspace/result.json .       # baixa arquivo
@@ -24,6 +25,9 @@ rc machine delete --name dev                     # apaga máquina e disco (-f se
 
 `--name` é opcional em todos: o padrão é `$RC_MACHINE_NAME` ou, sem ela, `default`. Com o direnv dá para fixar uma
 máquina por projeto.
+
+Com um [`runner.code`](/cli/runner-code) no diretório, o `create` lê dele a base (stack ou imagem), os recursos, o
+ambiente, o init e o workload; as flags passadas vencem o arquivo.
 
 ## O que persiste
 
@@ -61,6 +65,10 @@ host (macOS)                                      │ guest
   jobs efêmeros não mudam: a VM deles continua morrendo junto com o pai.
 - **Stop**: o host pede `shutdown` ao guest, que faz `sync` (grava no ext4 o que está em cache), responde e sai, e a
   VM desliga. Se não terminar em `--timeout` (padrão 10 s), recebe `SIGKILL`. `--timeout 0` mata na hora.
+- **Terminal (`shell`)**: o guest abre um PTY (devpts montado pelo `machine.sh`) e roda o shell nele. A conexão vira
+  um canal de frames nos dois sentidos: `input` (teclas, em base64 para não perder byte de controle) e `resize` do
+  host; `output` e `exit` do guest. O terminal do host fica em modo raw, e o `SIGWINCH` vira `resize`. Fechar o
+  terminal mata o programa no guest; a máquina continua ligada.
 - **Imagem atualizada**: o start usa a imagem atual da stack. Se a imagem for reconstruída, a máquina passa a ver a
   nova por baixo do que ela mesma gravou, como uma atualização de sistema.
 
@@ -68,15 +76,16 @@ host (macOS)                                      │ guest
 
 | Comando | Flags | Observação |
 |---------|-------|------------|
-| `create` | `--name`, `--stack` (obrigatório), `--cpus` (2), `--memory` MiB (2048), `--disk-gib` (10), `--gpu` | não liga a máquina |
-| `start` | `--name` | espera o guest responder (até 30 s); se não responder, mata e mostra o fim do console |
-| `stop` | `--name`, `--timeout` (10s) | parar uma máquina já parada não é erro |
+| `create` | `--name`, `-f FILE`, `--stack` ou `--image`, `--cpus` (2), `--memory` MiB (2048), `--disk-gib` (10), `--gpu`, `--gpu-vram`, `-e K=V`, `-w DIR`, `--init CMD`, `--stop-signal`, `--stop-timeout`, `--stop-on-exit`, `-- WORKLOAD` | não liga a máquina. Sem `-f`, lê `./runner.code` se existir. Veja [runner.code](/cli/runner-code) |
+| `start` | `--name` | espera o guest responder (até 30 s); se não responder, mata e mostra o fim do console. Depois roda o init (1ª vez do disco) e sobe o workload |
+| `stop` | `--name`, `--timeout` (padrão: o `stop_timeout` da máquina, ou 10s) | manda o `stop_signal` ao workload antes do sync; parar uma máquina já parada não é erro |
 | `status` | `--name`, `--json` | `running` ou `stopped`, com o pid |
 | `ls` | `--json` | todas as máquinas |
 | `delete` | `--name`, `-f` | ligada só com `-f` |
 | `exec` | `--name`, `-e K=V` (repete), `-w DIR`, `-i` (repassa o stdin), `--timeout` (0 = sem limite) | argv **sem shell implícito**: para shell, `-- sh -c '...'`. O rc do `rc` é o do comando (124 no timeout) |
+| `shell` | `--name`, `-e K=V`, `-w DIR`, `-- CMD` opcional | terminal de verdade (PTY no guest): Ctrl+C interrompe só o comando, tamanho da janela acompanha o host. Sem comando, abre `bash` se a imagem tiver, senão `sh`. O rc do `rc` é o do `exit` |
 | `cp` | `SRC DST`, com `nome:/caminho` em um dos lados | pedaços de 1 MiB; atômico nos dois lados; até 4 GiB |
-| `logs` | `--name`, `--tail N` | console da VM: o que o guest e o `machine.sh` escrevem |
+| `logs` | `--name`, `--tail N`, `--source all\|workload` | console da VM: o que o guest, o `machine.sh` e o workload escrevem; `workload` filtra só ele |
 
 ## Erros
 
@@ -106,6 +115,6 @@ As mesmas operações em `rc serve`. Veja [Visão geral da API](/api-reference/o
 
 ## Fora desta versão
 
-Rede (`--net`, `--allow-host`), `--secret-env`, `--ssh-agent`, shell interativo com TTY na máquina
-(`rc machine shell`), `machine update` e `machine stats`. O plano está na
+Rede (`--net`, `--allow-host`), `--secret-env`, `--ssh-agent`, o WebSocket interativo da API (o terminal hoje é só
+pela CLI), `machine update` e `machine stats`. O plano está na
 [Referência para agentes](/agents#plano-de-evolução).

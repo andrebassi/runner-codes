@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 floor=${COVERAGE_FLOOR:-90}
-guest_floor=${GUEST_FLOOR:-58}
+guest_floor=${GUEST_FLOOR:-67}
 out=$(mktemp)
 trap 'rm -f "$out" "$out.guest"' EXIT
 

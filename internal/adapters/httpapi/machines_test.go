@@ -24,10 +24,13 @@ type fakeMachines struct {
 	stopped  time.Duration
 	forced   bool
 	tail     int
+	source   string
+	created  domain.Machine
 }
 
 // Create devolve a máquina pedida.
 func (f *fakeMachines) Create(_ context.Context, m domain.Machine) (domain.Machine, error) {
+	f.created = m
 	return m.WithDefaults(), f.err
 }
 
@@ -98,7 +101,8 @@ func (f *fakeMachines) CopyOut(_ context.Context, _, p string, w io.Writer) (int
 }
 
 // Logs devolve um console fixo e grava o tail.
-func (f *fakeMachines) Logs(_ string, tail int) (string, error) {
+func (f *fakeMachines) Logs(_ string, tail int, source string) (string, error) {
+	f.source = source
 	f.tail = tail
 	return "boot ok\n", f.err
 }
@@ -128,6 +132,16 @@ func TestMachineRoutesHappyPath(t *testing.T) {
 		!strings.Contains(body, `"state":"stopped"`) || !strings.Contains(body, `"disk_gib":3`) {
 		t.Fatalf("create: %d %s", code, body)
 	}
+	// runner.code no corpo: o arquivo é a base e o campo do JSON vence.
+	rc := `{"name":"web","cpus":3,"runner_code":"stack = \"python\"\ncpus = 1\ncmd = [\"srv\"]\nstop_timeout = 7"}`
+	if code, body := do(t, s, "POST", "/api/v1/machines", rc); code != 201 || f.created.CPUs != 3 || f.created.Stack != "python" ||
+		f.created.Workload[0] != "srv" || f.created.StopTimeout != 7 {
+		t.Fatalf("runner_code create: %d %s %+v", code, body, f.created)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines", `{"name":"i","image":"alpine","env":["A=1"],"init":["true"],"workload":["sleep","9"],"stop_signal":"SIGINT","stop_on_exit":true,"workdir":"/w","gpu_vram_mib":64,"gpu":true}`); code != 201 ||
+		f.created.Image != "alpine" || f.created.Env[0] != "A=1" || !f.created.StopOnExit || f.created.GPUVRAMMiB != 64 || f.created.Workdir != "/w" {
+		t.Fatalf("image create: %d %+v", code, f.created)
+	}
 	if code, body := do(t, s, "GET", "/api/v1/machines", ""); code != 200 || !strings.Contains(body, `"name":"dev"`) {
 		t.Fatalf("list: %d %s", code, body)
 	}
@@ -140,7 +154,7 @@ func TestMachineRoutesHappyPath(t *testing.T) {
 	if code, _ := do(t, s, "POST", "/api/v1/machines/dev/stop?timeout=3", ""); code != 204 || f.stopped != 3*time.Second {
 		t.Fatalf("stop: %d %v", code, f.stopped)
 	}
-	if code, _ := do(t, s, "POST", "/api/v1/machines/dev/stop", ""); code != 204 || f.stopped != app.DefaultStopTimeout {
+	if code, _ := do(t, s, "POST", "/api/v1/machines/dev/stop", ""); code != 204 || f.stopped != -1 {
 		t.Fatalf("stop default: %v", f.stopped)
 	}
 	code, body := do(t, s, "POST", "/api/v1/machines/dev/exec", `{"command":["ls","-l"],"env":["A=1"],"workdir":"/w","stdin":"x","timeout":5}`)
@@ -169,7 +183,7 @@ func TestMachineRoutesHappyPath(t *testing.T) {
 	if code, body := do(t, s, "GET", "/api/v1/machines/dev/files?path=/empty", ""); code != 200 || body != "" {
 		t.Fatalf("empty file: %d %q", code, body)
 	}
-	if code, body := do(t, s, "GET", "/api/v1/machines/dev/logs?tail=5", ""); code != 200 || body != "boot ok\n" || f.tail != 5 {
+	if code, body := do(t, s, "GET", "/api/v1/machines/dev/logs?tail=5&source=workload", ""); code != 200 || body != "boot ok\n" || f.tail != 5 || f.source != "workload" {
 		t.Fatalf("logs: %d %q %d", code, body, f.tail)
 	}
 	if code, _ := do(t, s, "DELETE", "/api/v1/machines/dev?force=true", ""); code != 204 || !f.forced {
@@ -219,6 +233,8 @@ func TestMachineRoutesErrors(t *testing.T) {
 	s := machineServer(&fakeMachines{files: map[string][]byte{}})
 	for _, r := range [][3]string{
 		{"POST", "/api/v1/machines", `{"stack":"python"}`},
+		{"POST", "/api/v1/machines", `{"name":"x"}`},
+		{"POST", "/api/v1/machines", `{"name":"x","runner_code":"net = true"}`},
 		{"POST", "/api/v1/machines/dev/exec", `{"command":[]}`},
 		{"POST", "/api/v1/machines/dev/exec/stream", `{`},
 		{"POST", "/api/v1/machines/dev/stop?timeout=999", ""},

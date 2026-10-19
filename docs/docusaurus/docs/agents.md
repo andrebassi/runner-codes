@@ -80,6 +80,7 @@ rc machine create --name N --stack S [--cpus 2] [--memory 2048] [--disk-gib 10] 
 rc machine start|stop|status|delete [--name N]          # stop --timeout 10s; delete -f
 rc machine ls [--json]
 rc machine exec [--name N] [-e K=V] [-w DIR] [-i] [--timeout D] -- CMD ARGS...
+rc machine shell [--name N] [-e K=V] [-w DIR] [-- CMD]  # terminal interativo (PTY)
 rc machine cp SRC DST                                    # um lado é nome:/caminho
 rc machine logs [--name N] [--tail N]
 rc serve  [--listen 127.0.0.1:8080] [--pool-size 2]
@@ -223,12 +224,14 @@ que o `rc` executa **jobs descartáveis** de código não confiável, gerencia *
 | `machine cp`, `/workspace` persistente | **sim** | pedaços de 1 MiB, atômico, até 4 GiB; ~84 MB/s de subida e ~88 MB/s de descida |
 | `machine logs`, `status` | **sim** | `logs` lê o console, legível com a máquina parada |
 | `machine stats`, `update`, `monitor` | **não** | Fase D |
-| `machine shell` (TTY na máquina) e WebSocket interativo | **não** | próximo passo da Fase A |
+| `machine shell` (TTY na máquina) | **sim**: `rc machine shell` | PTY no guest; Ctrl+C, resize e rc do `exit` |
+| exec interativo por WebSocket na API | **não** | o terminal hoje é só pela CLI |
 | erros com código estável | **sim** nas máquinas | `NOT_FOUND`, `CONFLICT`, `INVALID_STATE`, `CONFIG_ERROR` |
 | `--secret-env` / `--secret-file` | **não** | Fase B |
 | `--ssh-agent` | **não** | Fase B |
 | `--net`, `--allow-host`, `--allow-cidr`, `--block-private` | **não** | Fase C: o TSI não filtra destino, precisa de virtio-net com filtro nosso |
-| runner.code (TOML) | **não** | Fase D; o equivalente hoje é a entrada do catálogo |
+| runner.code (TOML) | **sim**: [`runner.code`](/cli/runner-code) | stack ou imagem, recursos, env, workdir, init (uma vez por disco), workload com `stop_signal`/`stop_timeout`/`stop_on_exit`, perfil `[dev]`; chave de rede, montagem ou segredo é recusada com o motivo |
+| `--image` de registro (imagem arbitrária) | **sim**, nas máquinas | `rc machine create --image redis:7-alpine`; sem warmup |
 | `--image ./img.tar`, `--image -` | **não** | Fase D |
 | `--error-format json` | parcial | a API já devolve códigos E00x estáveis |
 | `pack` (`.`) | **não** | fora do plano por ora |
@@ -240,14 +243,15 @@ que o `rc` executa **jobs descartáveis** de código não confiável, gerencia *
 ## Plano de evolução
 
 Cada fase fecha como as anteriores: story AIOX, e2e duas vezes seguidas, defeito plantado de propósito para provar que
-o teste pega, e gate de 90%. A **Fase A está feita** (story 7.1), menos o `machine shell` com TTY; as outras ainda não.
+o teste pega, e gate de 90%. A **Fase A está feita** (stories 7.1 e 7.2), e da Fase D o `runner.code` com imagem
+arbitrária (story 7.3); o resto ainda não.
 
 | Fase | O que entra | Decisão de desenho | Risco conhecido |
 |------|-------------|--------------------|-----------------|
-| **A — máquinas** ✅ | `rc machine create/start/stop/delete/ls/status/exec/logs/cp`; rotas `/api/v1/machines/...` (falta `shell` com TTY) | estado em `<cache>/machines/<nome>/`; disco ext4 gravável por máquina; overlayfs no guest (imagem por baixo, disco por cima) para o que for instalado persistir; `/workspace` no disco; o `vmm` roda destacado, com registro de PID e teste de vida | hoje o `vmm` morre com o pai de propósito, e os jobs efêmeros precisam continuar assim |
+| **A — máquinas** ✅ | `rc machine create/start/stop/delete/ls/status/exec/shell/logs/cp`; rotas `/api/v1/machines/...` | estado em `<cache>/machines/<nome>/`; disco ext4 gravável por máquina; overlayfs no guest (imagem por baixo, disco por cima) para o que for instalado persistir; `/workspace` no disco; o `vmm` roda destacado, com registro de PID e teste de vida | hoje o `vmm` morre com o pai de propósito, e os jobs efêmeros precisam continuar assim |
 | **B — segredos e SSH** | `--secret-env`, `--secret-file`, `--ssh-agent` | segredo resolvido na hora do start, nunca gravado no registro; recusado pela API (seria leitura arbitrária do host); SSH por uma porta vsock ligada ao `SSH_AUTH_SOCK`, sem a chave entrar na VM | root no guest lê o env do processo; é defesa em camadas, não sigilo absoluto |
 | **C — rede com filtro** | `--net`, `--allow-host`, `--allow-cidr`, `--block-private`, `-p` | virtio-net com pilha de rede em userspace no host (ex.: gvproxy) e o filtro feito por nós; o TSI segue só para a VM de build | é a parte mais cara e mais sensível; medir antes de prometer |
-| **D — conveniências** | runner.code, `--image ./img.tar` e `-`, `machine stats`, `--error-format json` | o go-containerregistry já lê `docker save`/OCI layout | — |
+| **D — conveniências** | ~~runner.code~~ ✅ `runner.code` (7.3), `--image ./img.tar` e `-`, `machine stats`, `--error-format json` | o go-containerregistry já lê `docker save`/OCI layout | — |
 
 Ordem sugerida: A → B → D → C, com C por último porque abrir rede é o que mais mexe na garantia central do projeto.
 
