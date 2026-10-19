@@ -18,6 +18,9 @@ type runner struct {
 	mu      sync.Mutex
 	jobs    []domain.Job
 	respond func(domain.Job) (domain.Result, error)
+	// chunks e streamErr controlam o RunStream falso.
+	chunks    [][2]string
+	streamErr error
 }
 
 // Run anota o job e delega.
@@ -26,6 +29,21 @@ func (r *runner) Run(_ context.Context, j domain.Job) (domain.Result, error) {
 	r.jobs = append(r.jobs, j)
 	r.mu.Unlock()
 	return r.respond(j)
+}
+
+// RunStream entrega os pedaços configurados em chunks e depois delega ao respond; com
+// streamErr, falha depois de mandar os pedaços (erro no meio do streaming).
+func (r *runner) RunStream(ctx context.Context, j domain.Job, onOutput func(stream, data string)) (domain.Result, error) {
+	if j.Language != "python" {
+		return domain.Result{}, domain.ValidationError{Err: errors.New("E006: unsupported language")}
+	}
+	for _, c := range r.chunks {
+		onOutput(c[0], c[1])
+	}
+	if r.streamErr != nil {
+		return domain.Result{}, r.streamErr
+	}
+	return r.Run(ctx, j)
 }
 
 // Known aceita só python.

@@ -16,10 +16,13 @@ rc run --stack <linguagem> (--code '<código>' | --file <arquivo>) [--stdin '<te
 | `--file` | — | lê o código de um arquivo local (substitui `--code`) |
 | `--stdin` | vazio | entrada padrão do programa |
 | `--timeout` | `10s` | duração no formato Go (`500ms`, `5s`, `2m`); máximo 300 s |
+| `--gpu` | desligado | VM com a GPU do host por Vulkan (virtio-gpu/Venus); só em stack com `gpu` no catálogo, senão E007. Veja [GPU](/advanced/gpu) |
 
 ## O que acontece
 
 O `run` não usa pool: sobe uma VM nova (boot frio), executa o job e destrói a VM. Na máquina medida, um job Python levou ~240 ms no total, com 31–38 ms de execução.
+
+A saída sai em **streaming**: cada pedaço aparece no terminal enquanto o programa roda, não só no fim.
 
 - O stdout do programa vai para o stdout.
 - O stderr do programa vai para o stderr, seguido de uma linha de resumo:
@@ -29,6 +32,18 @@ O `run` não usa pool: sobe uma VM nova (boot frio), executa o job e destrói a 
 ```
 
 (valores ilustrativos)
+
+### Buffer da linguagem
+
+O streaming entrega o que o programa **escreve** no pipe. Quando a saída não é um terminal, várias linguagens
+acumulam o stdout num buffer e só escrevem no fim (ou a cada bloco):
+
+| Linguagem | Comportamento no streaming |
+|-----------|----------------------------|
+| Python | linha a linha: o runner liga `PYTHONUNBUFFERED=1` no modo streaming |
+| Node.js, Go, Bash, sh | linha a linha, sem configuração |
+| C, C++ (`printf`), Ruby, Perl | em bloco: chama `fflush(stdout)`, `$stdout.sync = true` ou `$\| = 1` no programa |
+| stderr | sem buffer em todas |
 
 ## Código de saída
 

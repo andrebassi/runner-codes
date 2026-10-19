@@ -2,6 +2,7 @@ package krun
 
 import (
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -26,6 +27,9 @@ type libAPI struct {
 	startEnter           func(uint32) int32
 	disableImplConsole   func(uint32) int32
 	addVirtioConsoleDef  func(uint32, int32, int32, int32) int32
+	// setGPUOptions2 fica nil quando a libkrun foi compilada sem GPU=1 (a do nixpkgs no
+	// Linux): o símbolo nem existe, e só a VM que pedir GPU deve falhar.
+	setGPUOptions2 func(uint32, uint32, uint64) int32
 }
 
 // keepAlive segura os arrays argv/envp passados à libkrun: krun_start_enter não volta
@@ -62,8 +66,25 @@ func Load(path string) (api API, err error) {
 	reg(&l.startEnter, "krun_start_enter")
 	reg(&l.disableImplConsole, "krun_disable_implicit_console")
 	reg(&l.addVirtioConsoleDef, "krun_add_virtio_console_default")
+	// Opcional: confere com Dlsym antes, porque o RegisterLibFunc entraria em pânico e o
+	// recover acima recusaria a biblioteca inteira.
+	if _, err := purego.Dlsym(h, "krun_set_gpu_options2"); err == nil {
+		reg(&l.setGPUOptions2, "krun_set_gpu_options2")
+	}
 	return l, nil
 }
+
+// SetGPUOptions2 repassa a krun_set_gpu_options2; sem o símbolo devolve -ENOTSUP, que o
+// Configure transforma em erro com o nome da chamada.
+func (l *libAPI) SetGPUOptions2(ctx uint32, virglFlags uint32, shmSize uint64) int32 {
+	if l.setGPUOptions2 == nil {
+		return -int32(syscall.ENOTSUP)
+	}
+	return l.setGPUOptions2(ctx, virglFlags, shmSize)
+}
+
+// HasGPU diz se a libkrun carregada foi compilada com GPU (tem krun_set_gpu_options2).
+func (l *libAPI) HasGPU() bool { return l.setGPUOptions2 != nil }
 
 // cStringArray monta um `const char *const[]` terminado em NULL e o mantém vivo.
 func cStringArray(items []string) unsafe.Pointer {

@@ -9,6 +9,11 @@ if [ -f /opt/runner/env ]; then
 fi
 mkdir -p /tmp/home
 export HOME=/tmp/home
+# Numa máquina persistente (machine.sh) a raiz é gravável e o HOME tem de sobreviver ao stop.
+if [ -n "${RUNNER_MACHINE:-}" ]; then
+  mkdir -p /root
+  export HOME=/root
+fi
 # Cache de build aquecido na imagem (Go) só funciona gravável: copia para o tmpfs, no
 # caminho que o executor do guest força (GOCACHE=/tmp/go-cache, internal/guest/executor.go).
 # Copiar para outro nome deixava cada `go run` compilando a stdlib do zero (3,4 s medidos).

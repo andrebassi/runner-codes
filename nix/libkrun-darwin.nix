@@ -15,7 +15,10 @@
   cargo,
   rustc,
   zig,
+  pkg-config,
   libkrunfw,
+  virglrenderer,
+  libepoxy,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
@@ -37,6 +40,15 @@ stdenv.mkDerivation (finalAttrs: {
     rustPlatform.cargoSetupHook
     cargo
     rustc
+    pkg-config
+    # O crate de display gera bindings em C com bindgen quando GPU=1.
+    rustPlatform.bindgenHook
+  ];
+
+  # GPU=1: o rutabaga_gfx acha o virglrenderer (com Venus) e o libepoxy por pkg-config.
+  buildInputs = [
+    virglrenderer
+    libepoxy
   ];
 
   postPatch = ''
@@ -58,15 +70,17 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   # BLK=1 liga virtio-blk: sem ele não existe krun_add_disk2, e o root read-only das VMs de job
-  # depende disso. Rede (NET), GPU e som ficam de fora: o runner não usa.
+  # depende disso. GPU=1 liga o virtio-gpu (Venus), usado só por VM que pede GPU. Rede (NET) e
+  # som ficam de fora: o runner não usa.
   makeFlags = [
     "PREFIX=${placeholder "out"}"
     "BLK=1"
+    "GPU=1"
     "SYSROOT_LINUX=/nonexistent"
   ];
 
   meta = {
-    description = "VMM em biblioteca (Hypervisor.framework), sem rede/GPU, com virtio-blk";
+    description = "VMM em biblioteca (Hypervisor.framework), com virtio-blk e virtio-gpu (Venus), sem rede";
     homepage = "https://github.com/containers/libkrun";
     license = lib.licenses.asl20;
     platforms = [ "aarch64-darwin" ];

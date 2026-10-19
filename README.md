@@ -48,6 +48,12 @@ cliente ──HTTP──▶ rc serve ──▶ pool (N VMs prontas por linguagem
 
 Detalhes em [docs/architecture.md](docs/architecture.md); requisitos em [docs/prd.md](docs/prd.md).
 
+Para testar à mão, passo a passo: [docs/runbook.md](docs/runbook.md) (`task runbook` executa e confere a mesma sequência).
+
+Referência para agentes (cada comando, flag, rota e erro, a comparação com o outro runtime e o plano de evolução):
+[docs/docusaurus/docs/agents.md](docs/docusaurus/docs/agents.md). GPU de ponta a ponta:
+[docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md).
+
 ## Instalação
 
 Tudo pelo [Nix](https://nixos.org), sem Homebrew nem Docker. O `flake.nix` do repo expõe `.#krun` (libkrun +
@@ -81,6 +87,34 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/j
 aparece como `exception: "Timeout"`.
 
 A API **não tem autenticação**. Por isso o padrão é escutar só em `127.0.0.1`.
+
+### Saída em streaming
+
+O `rc run` mostra o stdout e o stderr enquanto o programa roda. Pela API, `POST /api/v1/execute/stream` (mesmo corpo
+do `/execute`) responde em Server-Sent Events: eventos `stdout`/`stderr` com o pedaço como string JSON e um `result`
+no fim.
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/api/v1/execute/stream -H 'content-type: application/json' \
+  -d '{"language":"python","code":"import time\nprint(\"early\")\ntime.sleep(1.5)\nprint(\"late\")"}'
+```
+
+C, Ruby e Perl acumulam o stdout quando a saída é pipe: o programa precisa dar flush para o pedaço sair antes do fim.
+
+### GPU (Vulkan) para IA
+
+`--gpu` dá à VM a GPU do host por virtio-gpu/Venus (Vulkan → MoltenVK → Metal no macOS).
+Vale em stack com `gpu: true` no catálogo; a stack `llama` traz o llama.cpp com backend Vulkan e um modelo
+Qwen2.5 0.5B.
+
+```bash
+./bin/rc image build --stack llama          # ~6 min na 1ª vez: Mesa com patch de 16 KiB + llama.cpp + modelo
+./bin/rc run --stack llama --gpu --code 'vulkaninfo --summary | grep deviceName'
+# deviceName = Virtio-GPU Venus (Apple M1 Pro)
+```
+
+Medido no M1 Pro: prompt 893–1.365 t/s na GPU contra 193–264 na CPU. CUDA não é suportado (exige host Linux com NVIDIA), e
+GPU no Linux não foi testada. Detalhes em [GPU](docs/docusaurus/docs/advanced/gpu.md).
 
 ### Shell dentro da VM
 

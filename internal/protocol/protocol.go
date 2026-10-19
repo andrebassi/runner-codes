@@ -33,6 +33,55 @@ type Job struct {
 	Stdin   interface{}       `json:"stdin,omitempty"` // string, ou []string para lote
 	Timeout int               `json:"timeout"`
 	Meta    map[string]string `json:"meta,omitempty"`
+	// Stream pede a saída em pedaços (frames Event) antes do resultado. Sem ele o guest
+	// responde com um único frame Result, como sempre fez.
+	Stream bool `json:"stream,omitempty"`
+
+	// Op escolhe a operação; vazio é rodar código de uma linguagem (o job de sempre).
+	// As outras servem às máquinas persistentes.
+	Op string `json:"op,omitempty"`
+	// Argv, Env e Cwd são do OpExec: o programa roda sem shell implícito.
+	Argv []string `json:"argv,omitempty"`
+	Env  []string `json:"env,omitempty"`
+	Cwd  string   `json:"cwd,omitempty"`
+	// Path, Offset, Data, Final e Mode são do OpPut/OpGet (cópia de arquivo em pedaços).
+	Path   string `json:"path,omitempty"`
+	Offset int64  `json:"offset,omitempty"`
+	Data   []byte `json:"data,omitempty"`
+	Final  bool   `json:"final,omitempty"`
+	Mode   uint32 `json:"mode,omitempty"`
+}
+
+// Operações de Job. OpRun é o vazio, para o fio dos jobs efêmeros não mudar.
+const (
+	OpRun      = ""
+	OpExec     = "exec"
+	OpPut      = "put"
+	OpGet      = "get"
+	OpShutdown = "shutdown"
+)
+
+// ChunkBytes é o pedaço de cópia de arquivo: 1 MiB. Em base64 no JSON vira
+// ~1,4 MiB, longe do teto do frame, e o arquivo grande não precisa caber na memória.
+const ChunkBytes = 1 << 20
+
+// MaxCopyBytes é o teto de um arquivo copiado (4 GiB, o): acima disso, montar
+// diretório é o caminho, não copiar.
+const MaxCopyBytes = 4 << 30
+
+// Tipos de Event no modo streaming: pedaços de saída e o resultado que encerra a conversa.
+const (
+	EventStdout = "stdout"
+	EventStderr = "stderr"
+	EventResult = "result"
+)
+
+// Event é um frame do modo streaming. Pedaço de saída leva Data; o último frame tem
+// Type EventResult e o Result completo (stdout/stderr inteiros, para o contrato não mudar).
+type Event struct {
+	Type   string  `json:"type"`
+	Data   string  `json:"data,omitempty"`
+	Result *Result `json:"result,omitempty"`
 }
 
 // Result é a resposta do guest. Stderr e Exception são null quando vazios, contrato da API.
@@ -46,6 +95,10 @@ type Result struct {
 	ExitCode      int         `json:"exit_code,omitempty"`
 	Error         string      `json:"error,omitempty"`
 	Stdin         string      `json:"stdin,omitempty"`
+	// Data e Size são do OpGet: o pedaço lido a partir do Offset e o tamanho total do
+	// arquivo, para o host saber quando parar.
+	Data []byte `json:"data,omitempty"`
+	Size int64  `json:"size,omitempty"`
 }
 
 // WriteFrame serializa v em JSON e escreve prefixo e corpo numa única chamada,

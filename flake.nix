@@ -26,14 +26,16 @@
         let
           libkrunfw =
             if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/libkrunfw-darwin.nix { } else pkgs.libkrunfw;
+          virglrenderer =
+            if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/virglrenderer-darwin.nix { } else pkgs.virglrenderer;
           libkrun =
             if pkgs.stdenv.hostPlatform.isDarwin then
-              pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw; }
+              pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw virglrenderer; }
             else
               pkgs.libkrun.override { withBlk = true; };
         in
         {
-          inherit libkrun libkrunfw;
+          inherit libkrun libkrunfw virglrenderer;
           # Um diretório lib/ só com as duas: é o que vai para o perfil.
           krun = pkgs.runCommand "krun-${libkrun.version}" { } ''
             mkdir -p $out/lib
@@ -45,5 +47,23 @@
           default = libkrun;
         }
       );
+
+      # `nix develop` dá o ambiente de desenvolvimento sem nada instalado no perfil global:
+      # Go no mínimo do go.mod (1.26), task, coreutils (o `timeout` dos scripts) e o Node
+      # do Docusaurus. A libkrun continua vindo do `.#krun`, que é o que o `rc` carrega.
+      devShells = forAll (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.go_1_26
+            pkgs.go-task
+            pkgs.coreutils
+            pkgs.nodejs_24
+          ];
+          # O host carrega a libkrun por purego e o guest é estático: nada usa cgo. Com o
+          # compilador C do mkShell no PATH, o Go ligaria cgo e o `GOOS=linux go vet`
+          # quebraria compilando runtime/cgo contra o SDK do macOS.
+          env.CGO_ENABLED = "0";
+        };
+      });
     };
 }

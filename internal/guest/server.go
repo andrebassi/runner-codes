@@ -8,10 +8,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/mdlayher/vsock"
+
+	"runner.code/internal/protocol"
 )
 
 const (
@@ -121,8 +124,40 @@ func (s *Server) handleConnection(conn net.Conn) {
 		return
 	}
 
-	log.Printf("Received job: trace_id=%s lang=%s code_len=%d timeout=%d",
-		job.TraceID, job.Lang, len(job.Code), job.Timeout)
+	log.Printf("Received job: trace_id=%s lang=%s code_len=%d timeout=%d stream=%v",
+		job.TraceID, job.Lang, len(job.Code), job.Timeout, job.Stream)
+
+	switch job.Op {
+	case protocol.OpRun:
+	case protocol.OpExec:
+		if job.Stream {
+			s.streamJob(conn, job, func(sink Sink) Result { return execArgv(job, sink) })
+			return
+		}
+		writeResult(conn, execArgv(job, nil))
+		return
+	case protocol.OpPut:
+		writeResult(conn, putChunk(job))
+		return
+	case protocol.OpGet:
+		writeResult(conn, getChunk(job))
+		return
+	case protocol.OpShutdown:
+		// Grava o disco antes de responder: quando o host recebe o ok, o que estava em
+		// cache já está no ext4 da máquina. A saída do processo desliga a VM.
+		syncDisks()
+		writeResult(conn, Result{TraceID: job.TraceID, Status: "success"})
+		exitProcess(0)
+		return
+	default:
+		s.sendError(conn, job.TraceID, "unknown op: "+job.Op)
+		return
+	}
+
+	if job.Stream {
+		s.streamJob(conn, job, func(sink Sink) Result { return s.executor.ExecuteStream(job, sink) })
+		return
+	}
 
 	// Execute
 	startTime := time.Now()
@@ -152,6 +187,43 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+// streamJob roda o job mandando cada pedaço de saída como frame Event e fecha com o
+// Event de resultado. O mutex existe porque o exec copia stdout e stderr em goroutines
+// separadas: dois frames escritos ao mesmo tempo se intercalariam no socket.
+// Depois de uma escrita falhar (host fechou a conexão), os pedaços seguintes são
+// descartados; o programa segue até o fim ou o timeout, e o host já matou a VM.
+func (s *Server) streamJob(conn net.Conn, job Job, run func(Sink) Result) {
+	var mu sync.Mutex
+	broken := false
+	send := func(ev protocol.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		if broken {
+			return
+		}
+		if err := protocol.WriteFrame(conn, ev); err != nil {
+			log.Printf("Failed to write stream frame: %v", err)
+			broken = true
+		}
+	}
+	result := run(func(stream, data string) {
+		send(protocol.Event{Type: stream, Data: data})
+	})
+	send(protocol.Event{Type: protocol.EventResult, Result: &result})
+}
+
+// writeResult manda o Result num frame; erro de escrita só vai para o log, porque o host
+// que sumiu não tem a quem avisar.
+func writeResult(conn net.Conn, res Result) {
+	if err := protocol.WriteFrame(conn, res); err != nil {
+		log.Printf("Failed to write result: %v", err)
+	}
+}
+
+// exitProcess encerra o guest; trocado no teste para o processo de teste não sair.
+var exitProcess = os.Exit
+
+// sendError responde com um Result de falha quando o pedido nem chega a virar job.
 func (s *Server) sendError(conn net.Conn, traceID, message string) {
 	result := Result{
 		TraceID:   traceID,

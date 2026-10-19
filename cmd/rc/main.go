@@ -30,6 +30,7 @@ import (
 	"runner.code/internal/app"
 	"runner.code/internal/domain"
 	"runner.code/internal/ports"
+	"runner.code/internal/protocol"
 )
 
 // Version é preenchida no release por -ldflags "-X main.Version=<tag>".
@@ -132,7 +133,7 @@ func (d *deps) newExecutor(poolSize int) (*app.Executor, *app.Pool) {
 // main registra os subcomandos.
 func main() {
 	root := &cobra.Command{Use: "rc", Short: "Run untrusted code in libkrun microVMs", Version: Version, SilenceUsage: true}
-	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), serveCmd(), languagesCmd(), doctorCmd())
+	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -210,6 +211,7 @@ func imageCmd() *cobra.Command {
 func runCmd() *cobra.Command {
 	var lang, code, file, stdin string
 	var timeout time.Duration
+	var gpu bool
 	c := &cobra.Command{
 		Use: "run", Short: "Run code in a fresh microVM",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -228,12 +230,19 @@ func runCmd() *cobra.Command {
 			pool.Start(nil)
 			defer pool.Close()
 			start := time.Now()
-			res, err := exec.Run(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout})
+			// A saída aparece enquanto o programa roda: cada pedaço vai direto para o
+			// stdout/stderr do host, e o Result final só traz o status.
+			res, err := exec.RunStream(cmd.Context(), domain.Job{TraceID: "cli", Language: lang, Code: code, Stdin: stdin, Timeout: timeout, GPU: gpu},
+				func(stream, data string) {
+					if stream == protocol.EventStderr {
+						fmt.Fprint(os.Stderr, data)
+						return
+					}
+					fmt.Print(data)
+				})
 			if err != nil {
 				return err
 			}
-			fmt.Print(res.Stdout)
-			fmt.Fprint(os.Stderr, res.Stderr)
 			fmt.Fprintf(os.Stderr, "[status=%s exit=%d exec=%v total=%v timeout=%v]\n", res.Status, res.ExitCode,
 				res.Duration.Round(time.Millisecond), time.Since(start).Round(time.Millisecond), res.TimedOut)
 			// status "success" só diz que a API executou; o programa falhou se saiu ≠ 0, estourou
@@ -249,6 +258,7 @@ func runCmd() *cobra.Command {
 	c.Flags().StringVar(&file, "file", "", "file with the source code")
 	c.Flags().StringVar(&stdin, "stdin", "", "stdin for the program")
 	c.Flags().DurationVar(&timeout, "timeout", domain.DefaultTimeout, "job timeout")
+	c.Flags().BoolVar(&gpu, "gpu", false, "give the VM the host GPU through Vulkan (virtio-gpu/Venus); the stack must declare gpu")
 	return c
 }
 
@@ -258,6 +268,7 @@ func runCmd() *cobra.Command {
 // acha a libkrunfw (DYLD_LIBRARY_PATH/LD_LIBRARY_PATH) quando o processo nasce.
 func shellCmd() *cobra.Command {
 	var stack string
+	var gpu bool
 	c := &cobra.Command{
 		Use: "shell", Short: "Open an interactive shell inside a fresh microVM of a stack",
 		RunE: func(*cobra.Command, []string) error {
@@ -273,12 +284,18 @@ func shellCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("image for %s not built (run `rc image build --stack %s`)", stack, stack)
 			}
+			if err := (domain.Job{GPU: gpu}).CheckGPU(l); err != nil {
+				return err
+			}
 			// Com terminal de verdade no stdin a VM ganha console TTY (/dev/hvc0): Ctrl+C,
 			// job control e tamanho da janela funcionam. Com pipe (script, teste) fica o
 			// console implícito, que entrega stdin/stdout como fluxo.
 			interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 			spec := ports.VMSpec{CPUs: l.CPUs, MemoryMiB: l.MemoryMiB, RootDisk: image, Exec: "/opt/runner/shell.sh",
 				Env: []string{"TERM=" + env("TERM", "xterm")}, TTY: interactive}
+			if gpu {
+				spec.GPU, spec.GPUVRAMMiB = true, l.GPUVRAMMiB
+			}
 			if err := os.MkdirAll(d.launcher.WorkDir, 0o700); err != nil {
 				return err
 			}
@@ -313,6 +330,7 @@ func shellCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&stack, "stack", "", "stack whose image the VM boots (python, go, rust, ...)")
+	c.Flags().BoolVar(&gpu, "gpu", false, "give the VM the host GPU through Vulkan (virtio-gpu/Venus)")
 	c.MarkFlagRequired("stack")
 	return c
 }
@@ -366,7 +384,7 @@ func serveCmd() *cobra.Command {
 			}
 			pool.Start(built)
 			defer pool.Close()
-			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Languages: func() []httpapi.LanguageInfo {
+			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: d.newMachines(), Languages: func() []httpapi.LanguageInfo {
 				return languageInfo(d)
 			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -436,8 +454,14 @@ func doctorCmd() *cobra.Command {
 				fmt.Printf("ok    %s\n", name)
 			}
 			check("platform", platformOK())
-			_, err = krun.Load(d.launcher.LibPath)
+			api, err := krun.Load(d.launcher.LibPath)
 			check("libkrun", err)
+			// GPU é opcional: a libkrun sem GPU=1 (a do nixpkgs no Linux) só não aceita --gpu.
+			if g, ok := api.(interface{ HasGPU() bool }); ok && g.HasGPU() {
+				fmt.Println("ok    gpu: libkrun built with virtio-gpu (Venus); use --gpu on a stack with gpu")
+			} else if err == nil {
+				fmt.Println("info  gpu: this libkrun has no virtio-gpu; --gpu is unavailable")
+			}
 			_, err = os.Stat(d.builder.GuestBinary)
 			check("guest", err)
 			// O confinamento do processo vmm depende do kernel: diz o que ele cobre aqui.

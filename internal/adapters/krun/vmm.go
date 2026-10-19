@@ -61,7 +61,11 @@ var applySandbox = ApplySandbox
 // carregada e o console criado, porque depois do Landlock esses open falhariam.
 func sandbox(s Spec) error {
 	if !SandboxEnabled(s) {
-		if s.RootDisk != "" && !s.Network && SandboxSupported {
+		switch {
+		case !SandboxSupported || s.RootDisk == "" || s.Network:
+		case s.GPU:
+			fmt.Fprintln(os.Stderr, "warning: GPU VM runs without Landlock/seccomp (the virglrenderer needs /dev/dri and execve)")
+		default:
 			fmt.Fprintf(os.Stderr, "warning: sandbox disabled by %s=off\n", sandboxDisabledEnv)
 		}
 		return nil
