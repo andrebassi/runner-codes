@@ -46,12 +46,7 @@ snapshots/
 .env
 .env.local
 
-# AWS artifacts (SENSITIVE - never commit)
-aws/keys/
-aws/.instance-id
-aws/.public-ip
-aws/.ami-id
-aws/.sg-id
+# Chave privada nunca entra no repo
 *.pem
 
 # Node modules
@@ -67,9 +62,6 @@ coverage.out
 
 # Claude instructions (may contain secrets)
 CLAUDE.md
-
-# Scripts with credentials
-scripts/benchmark-on-demand.sh
 
 # Release artifacts
 dist/
