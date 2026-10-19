@@ -15,8 +15,11 @@ branch=$(git rev-parse --abbrev-ref HEAD)
 
 # 20 tentativas a cada 3 s: cobre uma queda de rádio do celular sem esperar para sempre.
 for i in $(seq 1 20); do
-  timeout 20s pass-route status 2>&1 | grep -q "agente do zfold: ✅" && break
-  timeout 20s pass-route status 2>&1 | grep -q "YubiKey: ✅" && break
+  # Captura antes do grep: com pipefail, `status | grep -q` dava falso justamente no sucesso
+  # (o grep -q fecha o pipe ao achar, o status leva SIGPIPE e o pipe inteiro "falha").
+  # Medido em 19/10/2026: 20 voltas de espera com a YubiKey e o celular respondendo.
+  st=$(timeout 20s pass-route status 2>&1)
+  grep -qE "agente do zfold: ✅|YubiKey: ✅" <<<"$st" && break
   echo "waiting for a signing/pass agent ($i/20)"
   sleep 3
 done
