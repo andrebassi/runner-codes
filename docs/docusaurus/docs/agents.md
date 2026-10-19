@@ -46,7 +46,15 @@ Sem Homebrew nem Docker: tudo pelo Nix. `nix develop` dá Go, task, coreutils e 
 # GPU do host por Vulkan (só em stack com gpu)
 ./bin/rc run --stack llama --gpu --code 'vulkaninfo --summary | grep deviceName'
 
-# API HTTP com pool de VMs prontas
+# máquina persistente: o que você grava fica entre comandos e entre stop/start
+./bin/rc machine create --name dev --stack python
+./bin/rc machine start  --name dev
+./bin/rc machine exec   --name dev -- sh -c 'mkdir -p /workspace/out && echo pronto > /etc/motd'   # sem rede: --net é a Fase C
+./bin/rc machine cp ./app.py dev:/workspace/app.py
+./bin/rc machine exec   --name dev -- python3 /workspace/app.py
+./bin/rc machine stop   --name dev
+
+# API HTTP com pool de VMs prontas (e as rotas de máquina)
 ./bin/rc serve --listen 127.0.0.1:8080 --pool-size 2
 ```
 
@@ -57,6 +65,7 @@ Sem Homebrew nem Docker: tudo pelo Nix. `nix develop` dá Go, task, coreutils e 
 | rodar um trecho de código isolado e pegar a saída | `rc run --stack S --code '...'` |
 | ver a saída enquanto roda (build, teste longo) | `rc run` (já é streaming) ou `POST /api/v1/execute/stream` |
 | explorar a imagem de uma stack à mão | `rc shell --stack S` |
+| ambiente de várias etapas que guarda estado | `rc machine create` → `start` → `exec`/`cp` → `stop` ([machine](/cli/machine)) |
 | servir muitos jobs com latência baixa | `rc serve`: o pool tira o boot do caminho (26–78 ms por job) |
 | usar a GPU (IA, Vulkan) | `--gpu` na stack `llama` ([GPU](/advanced/gpu)) |
 | saber se o host está pronto | `rc doctor` |
@@ -67,6 +76,12 @@ Sem Homebrew nem Docker: tudo pelo Nix. `nix develop` dá Go, task, coreutils e 
 ```
 rc run    --stack S (--code C | --file F) [--stdin T] [--timeout 10s] [--gpu]
 rc shell  --stack S [--gpu]
+rc machine create --name N --stack S [--cpus 2] [--memory 2048] [--disk-gib 10] [--gpu]
+rc machine start|stop|status|delete [--name N]          # stop --timeout 10s; delete -f
+rc machine ls [--json]
+rc machine exec [--name N] [-e K=V] [-w DIR] [-i] [--timeout D] -- CMD ARGS...
+rc machine cp SRC DST                                    # um lado é nome:/caminho
+rc machine logs [--name N] [--tail N]
 rc serve  [--listen 127.0.0.1:8080] [--pool-size 2]
 rc image build (--stack S ... | --all)
 rc languages
@@ -98,6 +113,7 @@ dão rc 1.
 | `RUNNER_KRUN_LIB` | `~/.nix-profile/lib/libkrun.dylib` (macOS); no Linux o do perfil do Nix ou `libkrun.so.1` | qual libkrun carregar |
 | `RUNNER_GUEST_BIN` | `rc-guest-linux-<arch>` ao lado do `rc` | o guest-runner injetado nas imagens |
 | `RUNNER_SANDBOX` | ligado | `off` desliga Landlock + seccomp no Linux (só para diagnóstico; o `vmm` avisa) |
+| `RC_MACHINE_NAME` | `default` | nome de máquina quando `--name` falta (fixe por projeto com direnv) |
 
 ## Catálogo de stacks
 
@@ -129,6 +145,7 @@ assíncrona, com no máximo 4 boots simultâneos no total.
 | POST | `/api/v1/run` | `{language, files[], stdin}`; `stdin` em lista roda um job por item (lote) |
 | POST | `/api/v1/execute` | `{language, code \| files[], stdin, timeout, gpu}` |
 | POST | `/api/v1/execute/stream` | mesmo corpo, resposta em Server-Sent Events |
+| — | `/api/v1/machines/...` | ciclo de vida das máquinas: create, start, stop, exec, exec/stream, files, logs ([detalhes](/api-reference/overview#máquinas)) |
 
 Resposta de `/run` e `/execute`:
 
@@ -202,9 +219,12 @@ que o `rc` executa **jobs descartáveis** de código não confiável, gerencia *
 | rede desligada por padrão | **sim** | e não há como ligar num job (por desenho) |
 | HTTP API (`serve`) | **sim** | rotas de job, não de máquina; com pool pré-bootado não tem |
 | imagens OCI sem Docker | **sim** | pull no host, ext4 gerado numa VM de build |
-| máquinas persistentes (`create`/`start`/`exec`/`stop`/`ls`) | **não** | Fase A do plano |
-| `machine cp`, `/workspace` persistente | **não** | Fase A |
-| `machine logs`, `stats`, `status` | **não** | Fase A/D |
+| máquinas persistentes (`create`/`start`/`exec`/`stop`/`ls`/`delete`) | **sim**: `rc machine` | raiz gravável (overlay) e `/workspace` persistem; `/tmp` é tmpfs |
+| `machine cp`, `/workspace` persistente | **sim** | pedaços de 1 MiB, atômico, até 4 GiB; ~84 MB/s de subida e ~88 MB/s de descida |
+| `machine logs`, `status` | **sim** | `logs` lê o console, legível com a máquina parada |
+| `machine stats`, `update`, `monitor` | **não** | Fase D |
+| `machine shell` (TTY na máquina) e WebSocket interativo | **não** | próximo passo da Fase A |
+| erros com código estável | **sim** nas máquinas | `NOT_FOUND`, `CONFLICT`, `INVALID_STATE`, `CONFIG_ERROR` |
 | `--secret-env` / `--secret-file` | **não** | Fase B |
 | `--ssh-agent` | **não** | Fase B |
 | `--net`, `--allow-host`, `--allow-cidr`, `--block-private` | **não** | Fase C: o TSI não filtra destino, precisa de virtio-net com filtro nosso |
@@ -220,11 +240,11 @@ que o `rc` executa **jobs descartáveis** de código não confiável, gerencia *
 ## Plano de evolução
 
 Cada fase fecha como as anteriores: story AIOX, e2e duas vezes seguidas, defeito plantado de propósito para provar que
-o teste pega, e gate de 90%. Nada aqui está implementado ainda.
+o teste pega, e gate de 90%. A **Fase A está feita** (story 7.1), menos o `machine shell` com TTY; as outras ainda não.
 
 | Fase | O que entra | Decisão de desenho | Risco conhecido |
 |------|-------------|--------------------|-----------------|
-| **A — máquinas** | `rc machine create/start/stop/delete/ls/status/exec/shell/logs/cp`; rotas `/api/v1/machines/...` | estado em `<cache>/machines/<nome>/`; disco ext4 gravável por máquina; overlayfs no guest (imagem por baixo, disco por cima) para o que for instalado persistir; `/workspace` no disco; o `vmm` roda destacado, com registro de PID e teste de vida | hoje o `vmm` morre com o pai de propósito, e os jobs efêmeros precisam continuar assim |
+| **A — máquinas** ✅ | `rc machine create/start/stop/delete/ls/status/exec/logs/cp`; rotas `/api/v1/machines/...` (falta `shell` com TTY) | estado em `<cache>/machines/<nome>/`; disco ext4 gravável por máquina; overlayfs no guest (imagem por baixo, disco por cima) para o que for instalado persistir; `/workspace` no disco; o `vmm` roda destacado, com registro de PID e teste de vida | hoje o `vmm` morre com o pai de propósito, e os jobs efêmeros precisam continuar assim |
 | **B — segredos e SSH** | `--secret-env`, `--secret-file`, `--ssh-agent` | segredo resolvido na hora do start, nunca gravado no registro; recusado pela API (seria leitura arbitrária do host); SSH por uma porta vsock ligada ao `SSH_AUTH_SOCK`, sem a chave entrar na VM | root no guest lê o env do processo; é defesa em camadas, não sigilo absoluto |
 | **C — rede com filtro** | `--net`, `--allow-host`, `--allow-cidr`, `--block-private`, `-p` | virtio-net com pilha de rede em userspace no host (ex.: gvproxy) e o filtro feito por nós; o TSI segue só para a VM de build | é a parte mais cara e mais sensível; medir antes de prometer |
 | **D — conveniências** | runner.code, `--image ./img.tar` e `-`, `machine stats`, `--error-format json` | o go-containerregistry já lê `docker save`/OCI layout | — |

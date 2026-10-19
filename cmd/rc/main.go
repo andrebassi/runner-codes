@@ -133,7 +133,7 @@ func (d *deps) newExecutor(poolSize int) (*app.Executor, *app.Pool) {
 // main registra os subcomandos.
 func main() {
 	root := &cobra.Command{Use: "rc", Short: "Run untrusted code in libkrun microVMs", Version: Version, SilenceUsage: true}
-	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), serveCmd(), languagesCmd(), doctorCmd())
+	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -384,7 +384,7 @@ func serveCmd() *cobra.Command {
 			}
 			pool.Start(built)
 			defer pool.Close()
-			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Languages: func() []httpapi.LanguageInfo {
+			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: d.newMachines(), Languages: func() []httpapi.LanguageInfo {
 				return languageInfo(d)
 			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"runner.code/internal/domain"
 	"runner.code/internal/protocol"
 )
 
@@ -20,7 +21,10 @@ type VMSpec struct {
 	RootDisk string `json:"root_disk,omitempty"`
 	// RootDir é um diretório compartilhado por virtiofs como /. Só a VM de build usa,
 	// porque virtiofs não impede o guest de alcançar o resto do host (doc da libkrun).
-	RootDir     string `json:"root_dir,omitempty"`
+	RootDir string `json:"root_dir,omitempty"`
+	// DataDisk é o ext4 gravável de uma máquina persistente, visto como /dev/vdb no guest
+	// (machine.sh monta o overlay sobre a imagem com ele). Só com RootDisk.
+	DataDisk    string `json:"data_disk,omitempty"`
 	VsockSocket string `json:"vsock_socket,omitempty"`
 	VsockPort   uint32 `json:"vsock_port,omitempty"`
 	Network     bool   `json:"network,omitempty"`
@@ -56,6 +60,10 @@ func (s VMSpec) Validate() error {
 	if s.TTY && s.Console != "" {
 		// O console vira o terminal: gravar em arquivo ao mesmo tempo não tem destino.
 		return errors.New("spec: tty and console are mutually exclusive")
+	}
+	if s.DataDisk != "" && s.RootDisk == "" {
+		// /dev/vdb só existe ao lado de um root em disco; com virtiofs a ordem dos discos muda.
+		return errors.New("spec: data_disk requires root_disk")
 	}
 	if s.GPUVRAMMiB > 0 && !s.GPU {
 		// VRAM sem GPU é erro de quem montou a spec, não algo a ignorar.
@@ -97,6 +105,34 @@ type GuestClient interface {
 	// Result final é o mesmo do Run.
 	RunStream(ctx context.Context, socket string, job protocol.Job, onOutput func(stream, data string)) (protocol.Result, error)
 	WaitReady(ctx context.Context, socket string) error
+}
+
+// MachineStore guarda o registro das máquinas persistentes e o diretório de cada uma
+// (disco, spec, socket, logs). Erros de ausência e de nome repetido vêm com os códigos
+// do domínio (NOT_FOUND, CONFLICT).
+type MachineStore interface {
+	// Create registra a máquina e dá a ela um disco clonado do modelo vazio.
+	Create(m domain.Machine, diskTemplate string) error
+	Load(name string) (domain.Machine, error)
+	List() ([]domain.Machine, error)
+	Delete(name string) error
+	// Dir é o diretório da máquina; os arquivos dela moram ali.
+	Dir(name string) string
+	// PID é o processo vmm registrado (0 se nenhum); SetPID grava ou limpa (0).
+	PID(name string) int
+	SetPID(name string, pid int) error
+}
+
+// DetachedLauncher sobe a VM de uma máquina desligada do processo que pediu.
+type DetachedLauncher interface {
+	StartDetached(spec VMSpec, specPath, logPath string) (pid int, err error)
+}
+
+// Processes olha e mata o processo vmm de uma máquina pelo pid registrado.
+type Processes interface {
+	Alive(pid int) bool
+	// Kill manda SIGKILL ao grupo do processo (o vmm e o que ele criou).
+	Kill(pid int)
 }
 
 // ImageStore diz onde está o ext4 pronto de uma linguagem.

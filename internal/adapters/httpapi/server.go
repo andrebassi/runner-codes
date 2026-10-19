@@ -49,6 +49,8 @@ type Server struct {
 	Version   string
 	// Pool devolve as VMs prontas por linguagem; nil omite o campo no /health.
 	Pool func() map[string]int
+	// Machines liga as rotas /api/v1/machines; nil deixa só as rotas de job.
+	Machines MachineService
 }
 
 // FileRequest é um arquivo no corpo da requisição.
@@ -104,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	v1.POST("/run", s.run)
 	v1.POST("/execute", s.execute)
 	v1.POST("/execute/stream", s.executeStream)
+	s.machineRoutes(v1)
 	return r
 }
 

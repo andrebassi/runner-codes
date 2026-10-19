@@ -44,6 +44,11 @@ func fakeVMM() {
 	case "/env":
 		fmt.Fprint(os.Stderr, os.Getenv(libPathEnv))
 		os.Exit(0)
+	case "/sid":
+		// Prova do Setsid: o processo lidera a própria sessão (sid == pid).
+		sid, _ := syscall.Getsid(0)
+		fmt.Fprintf(os.Stdout, "sid-is-pid=%v lib=%s\n", sid == os.Getpid(), os.Getenv(libPathEnv))
+		os.Exit(0)
 	default:
 		RunVMM(&fakeAPI{failOn: "krun_start_enter"}, s, os.NewFile(3, "watch"))
 		time.Sleep(time.Hour)
@@ -181,5 +186,43 @@ func TestExitCodeOf(t *testing.T) {
 	}
 	if exitCodeOf(fmt.Errorf("other")) != -1 {
 		t.Fatal("error without an exit code should be -1")
+	}
+}
+
+// TestStartDetached: a máquina sobe em sessão própria (sobrevive ao rc), com a spec no
+// caminho pedido (fica lá para o próximo start) e stdout/stderr no log da máquina.
+func TestStartDetached(t *testing.T) {
+	l := newTestLauncher(t, nil)
+	dir := t.TempDir()
+	spec, logPath := filepath.Join(dir, "spec.json"), filepath.Join(dir, "vmm.log")
+	pid, err := l.StartDetached(specExec("/sid"), spec, logPath)
+	if err != nil || pid <= 0 {
+		t.Fatalf("pid=%d err=%v", pid, err)
+	}
+	var out []byte
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if out, _ = os.ReadFile(logPath); bytes.Contains(out, []byte("sid-is-pid")) {
+			break
+		}
+	}
+	if !strings.Contains(string(out), "sid-is-pid=true lib=/lib/krunfw") {
+		t.Fatalf("detached vmm log: %q", out)
+	}
+	if _, err := os.Stat(spec); err != nil {
+		t.Fatal("the spec must stay for the next start")
+	}
+	if _, err := l.StartDetached(Spec{}, spec, logPath); err == nil {
+		t.Fatal("invalid spec must be refused")
+	}
+	if _, err := l.StartDetached(specExec("/sid"), filepath.Join(dir, "no", "spec.json"), logPath); err == nil {
+		t.Fatal("unwritable spec path must fail")
+	}
+	if _, err := l.StartDetached(specExec("/sid"), spec, filepath.Join(dir, "no", "vmm.log")); err == nil {
+		t.Fatal("unwritable log path must fail")
+	}
+	bad := *l
+	bad.Exe = filepath.Join(dir, "missing-binary")
+	if _, err := bad.StartDetached(specExec("/sid"), spec, logPath); err == nil {
+		t.Fatal("missing binary must fail")
 	}
 }

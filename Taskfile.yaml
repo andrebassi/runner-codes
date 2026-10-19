@@ -73,6 +73,12 @@ tasks:
       - task: test:targets
       - task: test:cov
       - task: test:e2e
+      - task: runbook
+
+  runbook:
+    desc: Run docs/runbook.md end to end and check every expected result
+    cmds:
+      - ./scripts/runbook.sh
 
   ship:
     desc: 'Push the current branch, open the PR and merge it (GitHub API; -- "<title>" <body-file>)'

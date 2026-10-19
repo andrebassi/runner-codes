@@ -47,6 +47,10 @@ func PolicyFor(s Spec, libDirs []string) SandboxPolicy {
 	if s.Console != "" {
 		p.ReadWriteFiles = []string{s.Console}
 	}
+	if s.DataDisk != "" {
+		// O disco de uma máquina persistente é o único arquivo dela que a VM grava.
+		p.ReadWriteFiles = append(p.ReadWriteFiles, s.DataDisk)
+	}
 	if s.VsockSocket != "" {
 		p.SocketDir = filepath.Dir(s.VsockSocket)
 	}

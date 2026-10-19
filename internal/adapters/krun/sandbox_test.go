@@ -50,6 +50,11 @@ func TestPolicyFor(t *testing.T) {
 	if p.DeviceFiles[0] != "/dev/kvm" {
 		t.Fatalf("devices: %v", p.DeviceFiles)
 	}
+	m := jobSpec()
+	m.DataDisk = "/m/disk.ext4"
+	if got := PolicyFor(m, nil).ReadWriteFiles; strings.Join(got, ",") != "/run/c.log,/m/disk.ext4" {
+		t.Fatalf("machine disk must be writable, nothing else: %v", got)
+	}
 	bare := jobSpec()
 	bare.Console, bare.VsockSocket, bare.VsockPort = "", "", 0
 	if p := PolicyFor(bare, nil); p.ReadWriteFiles != nil || p.SocketDir != "" {
