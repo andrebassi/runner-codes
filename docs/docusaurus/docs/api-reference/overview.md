@@ -1,366 +1,125 @@
 ---
-title: 'API Overview'
-description: 'Job execution API and vsock communication protocol'
+title: 'Visão geral da API'
+description: 'Endpoints HTTP, formatos de requisição e resposta, erros e limites'
 ---
 
-## Overview
+## Base
 
-Runner Codes uses a JSON-based API over virtio-vsock for communication between the host and guest components of infra.operator. This provides low-latency, secure communication without network stack overhead.
+A API sobe com `runner.code serve` e escuta por padrão em `http://127.0.0.1:8080`. **Não há autenticação.** O padrão é só loopback; não exponha fora dela sem um proxy autenticado na frente.
 
-## Communication Flow
+| Método | Caminho | O que faz |
+|--------|---------|-----------|
+| GET | `/health` | estado e versão |
+| GET | `/api/v1/languages` | catálogo e se a imagem de cada linguagem está pronta |
+| POST | `/api/v1/run` | executa arquivos, com stdin único ou em lote |
+| POST | `/api/v1/execute` | executa `code` solto ou arquivos, com timeout por requisição |
 
-![Communication Flow Sequence Diagram](/img/communication-flow.svg)
+## GET /health
 
-## Protocol Layers
-
-### Layer 1: Vsock Connection
-
-The host connects to Firecracker's vsock Unix Domain Socket (UDS):
-
-```text title="Vsock socket path"
-/tmp/fc-{instance_id}.vsock
+```json
+{"status": "ok", "version": "dev"}
 ```
 
-### Layer 2: Firecracker Vsock Multiplexer
+`version` é a versão gravada no binário no release; em build local, `dev`.
 
-After connecting to the UDS, the host sends a text command to connect to a specific guest port:
+## GET /api/v1/languages
 
-```text title="Connect to guest port"
-CONNECT 5000\n
-```
-
-The guest responds:
-```text title="Guest connection acknowledgment"
-OK 5000\n
-```
-
-### Layer 3: Message Framing
-
-All messages use a 4-byte big-endian length prefix:
-
-![Message Framing Protocol](/img/message-framing.svg)
-
-Example (Python):
-```python title="Send and receive messages with length prefix"
-import struct
-
-def send_message(conn, data):
-    payload = json.dumps(data).encode('utf-8')
-    length = struct.pack('>I', len(payload))  # Big-endian unsigned int
-    conn.sendall(length + payload)
-
-def recv_message(conn):
-    length_bytes = conn.recv(4)
-    length = struct.unpack('>I', length_bytes)[0]
-    payload = conn.recv(length)
-    return json.loads(payload.decode('utf-8'))
-```
-
-### Layer 4: JSON Messages
-
-Messages are JSON objects with defined schemas for requests and responses.
-
-## HTTP API
-
-### POST /api/v1/run
-
-Execute code in a Firecracker microVM.
-
-**Request:**
-```json title="Execute Python code with stdin"
-{
-  "language": "python",
-  "stdin": "Peter",
-  "files": [
-    {
-      "name": "main.py",
-      "content": "import sys\nname = sys.stdin.readline()\nprint('Hello ' + name)"
-    }
-  ]
-}
-```
-
-**Response:**
-```json title="Successful execution result"
-{
-  "status": "success",
-  "stdout": "Hello Peter\n",
-  "stderr": null,
-  "exception": null,
-  "executionTime": 41
-}
-```
-
-### Batch Execution
-
-Pass `stdin` as an array to execute the same code with multiple inputs:
-
-**Request:**
-```json title="Batch execution with multiple stdin values"
-{
-  "language": "python",
-  "stdin": ["Peter", "Brian", "Meg"],
-  "files": [
-    {
-      "name": "main.py",
-      "content": "import sys\nname = sys.stdin.readline()\nprint('Hello ' + name)"
-    }
-  ]
-}
-```
-
-**Response (Array):**
-```json title="Batch execution results"
+```json
 [
-  {
-    "status": "success",
-    "stdout": "Hello Peter\n",
-    "stderr": null,
-    "exception": null,
-    "executionTime": 30,
-    "stdin": "Peter"
-  },
-  {
-    "status": "success",
-    "stdout": "Hello Brian\n",
-    "stderr": null,
-    "exception": null,
-    "executionTime": 26,
-    "stdin": "Brian"
-  },
-  {
-    "status": "success",
-    "stdout": "Hello Meg\n",
-    "stderr": null,
-    "exception": null,
-    "executionTime": 33,
-    "stdin": "Meg"
-  }
+  {"name": "python", "image": "python:3.12-alpine", "ready": true},
+  {"name": "nodejs", "image": "node:22-alpine", "ready": false}
 ]
 ```
 
-## Response Fields
+`ready` diz se o ext4 da linguagem já foi construído neste host. Linguagem com `ready: false` é recusada com E006, como se não estivesse no catálogo; construa a imagem com [`image build`](/cli/image).
 
-| Field | Description |
-|-------|-------------|
-| `status` | `success` or `failed` |
-| `stdout` | Standard output of the code execution |
-| `stderr` | Standard error (null if empty) |
-| `exception` | Exception details (Timeout, Compilation failure, etc.) |
-| `executionTime` | Time taken to execute in milliseconds |
-| `stdin` | Echo of stdin value (batch execution only) |
-| `error` | Error message when `status: failed` |
+## POST /api/v1/run
 
-## Error Codes
-
-| Error | Description |
-|-------|-------------|
-| `E001: operation timed out` | Execution timeout exceeded |
-| `E002: API quota exceeded` | Rate limit reached |
-| `E003: invalid access_token` | Invalid authentication |
-| `E004: access_token missing` | No token provided |
-| `E005: stdin too long` | STDIN exceeds 1MB limit |
-| `E006: unsupported language xyz` | Language not supported |
-
-### Error Response Examples
-
-**Timeout:**
-```json title="Execution timeout error"
+```json
 {
-  "status": "success",
-  "exception": "Timeout",
-  "executionTime": 30000
+  "language": "python",
+  "files": [{"name": "main.py", "content": "print(input())"}],
+  "stdin": "olá"
 }
 ```
 
-**Unsupported Language:**
-```json title="Unsupported language error"
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| `language` | string | sim | nome no catálogo |
+| `files` | lista de `{name, content}` | sim | o primeiro arquivo é o principal |
+| `stdin` | string ou lista | não | lista roda uma vez por item, cada uma numa VM nova |
+
+Resposta com stdin único:
+
+```json
+{"status": "success", "stdout": "olá\n", "stderr": null, "exception": null, "executionTime": 33}
+```
+
+Com `"stdin": ["a", "b"]`, a resposta é uma lista, com o stdin ecoado em cada item:
+
+```json
+[
+  {"status": "success", "stdout": "a\n", "stderr": null, "exception": null, "executionTime": 32, "stdin": "a"},
+  {"status": "success", "stdout": "b\n", "stderr": null, "exception": null, "executionTime": 31, "stdin": "b"}
+]
+```
+
+Os valores de `executionTime` acima são ilustrativos.
+
+## POST /api/v1/execute
+
+```json
 {
-  "status": "failed",
-  "error": "E006: unsupported language brainfuck"
+  "language": "python",
+  "code": "import time; time.sleep(2); print('ok')",
+  "timeout": 5
 }
 ```
 
-**STDIN Too Long:**
-```json title="STDIN size limit error"
-{
-  "status": "failed",
-  "error": "E005: stdin too long"
-}
-```
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| `language` | string | sim | nome no catálogo |
+| `code` | string | não | código do arquivo principal, quando não há `files` |
+| `files` | lista de `{name, content}` | não | arquivos; o primeiro é o principal |
+| `stdin` | string | não | entrada padrão |
+| `timeout` | inteiro (segundos) | não | padrão 10, máximo 300 |
 
-## Vsock Protocol (Internal)
+A resposta tem o mesmo formato de `/api/v1/run`.
 
-### Job Request (Internal Format)
+## Campos da resposta
 
-```json title="Internal job request format"
-{
-  "trace_id": "tr-1764388648079963068",
-  "lang": "python",
-  "code": "print('Hello, World!')",
-  "timeout": 30
-}
-```
+| Campo | Descrição |
+|-------|-----------|
+| `status` | `"success"` quando a API executou o job. **Não** quer dizer que o programa deu certo: veja `stderr` e `exception` |
+| `stdout` | saída padrão |
+| `stderr` | saída de erro, ou `null` quando vazia |
+| `exception` | `null`, `"Timeout"`, `"Compilation failed"` ou a descrição de uma falha de infraestrutura |
+| `executionTime` | tempo de execução dentro da VM, em ms |
+| `error` | presente em recusa (E005, E006 ou o motivo) e quando o guest não responde a tempo (E001) |
+| `stdin` | só no modo lote: o stdin daquele item |
 
-### Job Response (Internal Format)
+## Erros e status HTTP
 
-```json title="Internal job response format"
-{
-  "trace_id": "tr-1764388648079963068",
-  "status": "success",
-  "stdout": "Hello, World!\n",
-  "stderr": null,
-  "exception": null,
-  "executionTime": 41
-}
-```
+| Situação | HTTP | Corpo |
+|----------|------|-------|
+| execução concluída (inclusive programa que falhou ou estourou o tempo) | 200 | resposta normal |
+| JSON inválido ou campo obrigatório ausente | 400 | `{"status": "failed", "error": "requisição inválida: ..."}` |
+| stdin acima de 1 MB | 400 | `"error": "E005: stdin too long"` |
+| linguagem fora do catálogo ou sem imagem construída neste host | 400 | `"error": "E006: unsupported language <nome>"` |
+| outro limite do domínio violado (timeout fora de (0, 300 s], job sem código e sem arquivos, arquivo repetido, nome inválido, muitos arquivos, código grande demais) | 400 | `"error"` com o motivo |
+| guest não respondeu dentro do timeout mais a folga do host | 200 | `{"status": "failed", "error": "E001: operation timed out"}` |
+| falha de infraestrutura (VM não subiu, erro no canal com o guest) | 500 | `{"status": "failed", "exception": "..."}` |
 
-## Supported Languages
+## Limites
 
-Runner Codes supports **45 programming languages**. Here are the most common:
-
-| Language | Identifier | Execution Method |
-|----------|------------|------------------|
-| Python | `python` | `python3 script.py` |
-| Node.js | `node` | `node script.js` |
-| TypeScript | `typescript` | `ts-node script.ts` |
-| Go | `go` | `go run script.go` |
-| Rust | `rust` | `rustc script.rs -o bin && ./bin` |
-| Java | `java` | `javac Main.java && java Main` |
-| Kotlin | `kotlin` | `kotlinc -include-runtime -d Main.jar && java -jar Main.jar` |
-| C | `c` | `gcc script.c -o bin && ./bin` |
-| C++ | `cpp` | `g++ script.cpp -o bin && ./bin` |
-| Ruby | `ruby` | `ruby script.rb` |
-| PHP | `php` | `php script.php` |
-| Bash | `bash` | `bash script.sh` |
-| Haskell | `haskell` | `ghc -o bin script.hs && ./bin` |
-| Elixir | `elixir` | `elixir script.exs` |
-| Julia | `julia` | `julia script.jl` |
-| R | `r` | `Rscript script.R` |
-
-:::note
-
-  See [Language Support Overview](/languages/overview) for the complete list of 45 supported languages with performance benchmarks.
-
-:::
-
-## Quick Reference
-
-
-
-
-
-
-## Code Examples
-
-### Go Implementation
-
-```go title="Host-side vsock connection and job submission"
-// Connect to vsock UDS
-conn, err := net.Dial("unix", "/tmp/fc-12345.vsock")
-if err != nil {
-    return err
-}
-
-// Send CONNECT command
-fmt.Fprintf(conn, "CONNECT 5000\n")
-
-// Read response
-response, _ := bufio.NewReader(conn).ReadString('\n')
-if !strings.HasPrefix(response, "OK") {
-    return errors.New("vsock connect failed")
-}
-
-// Send job request
-job := Job{
-    TraceID: "tr-123",
-    Lang:    "python",
-    Code:    "print('Hello')",
-    Timeout: 30,
-}
-sendMessage(conn, job)
-
-// Receive result
-result := recvMessage(conn)
-```
-
-### Python Implementation
-
-```python title="Client code execution via vsock protocol"
-import json
-import socket
-import struct
-
-def execute_code(sock_path, port, lang, code, timeout=30):
-    # Connect to vsock UDS
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(sock_path)
-
-    # Connect to guest port
-    sock.send(f"CONNECT {port}\n".encode())
-    response = sock.recv(100).decode()
-    if not response.startswith("OK"):
-        raise Exception("Vsock connect failed")
-
-    # Send job
-    job = {
-        "trace_id": f"tr-{uuid.uuid4().hex[:16]}",
-        "lang": lang,
-        "code": code,
-        "timeout": timeout
-    }
-    payload = json.dumps(job).encode()
-    sock.send(struct.pack('>I', len(payload)) + payload)
-
-    # Receive result
-    length = struct.unpack('>I', sock.recv(4))[0]
-    result = json.loads(sock.recv(length).decode())
-
-    sock.close()
-    return result
-```
-
-## Performance Characteristics
-
-| Metric | Value |
+| Limite | Valor |
 |--------|-------|
-| Vsock latency | < 1ms |
-| Message overhead | 4 bytes per message |
-| Max payload size | Limited by memory |
-| Concurrent connections | 1 per VM (current) |
+| stdin | ≤ 1.000.000 bytes |
+| arquivos por job | até 32 |
+| código total (soma dos arquivos) | ≤ 4 MiB |
+| nome de arquivo | sem `/`, sem `..`, sem começar com `.`, ≤ 255 bytes |
+| timeout | padrão 10 s, máximo 300 s |
 
-## Security Considerations
+## Protocolo interno
 
-- Vsock communication is isolated within the VM boundary
-- No network exposure; only host can communicate with guest
-- Each VM has unique vsock UDS path
-- Guest CID (Context ID) is fixed at 3 (Firecracker default)
-
-## Debugging
-
-### Enable Verbose Logging
-
-```bash title="Run with verbose debug output"
-sudo infra.operator host \
-  --kernel /srv/firecracker/vmlinux \
-  --rootfs /srv/firecracker/rootfs.ext4 \
-  --lang python \
-  --code "print('test')" \
-  --verbose  # Enable debug output
-```
-
-### Monitor Vsock Traffic
-
-```bash title="Trace vsock communication"
-# On host, before starting VM
-sudo strace -e trace=read,write -s 1000 infra.operator host ...
-```
-
-### Check Guest Logs
-
-```bash title="Mount rootfs and view logs"
-# SSH into instance, mount rootfs
-sudo mount -o loop /srv/firecracker/rootfs.ext4 /mnt
-cat /mnt/var/log/infra.operator.log
-sudo umount /mnt
-```
+Entre o host e o guest, o job viaja por vsock em frames de tamanho + JSON. Veja [Job request](/api-reference/job-request), [Job response](/api-reference/job-response) e [Protocolo vsock](/api-reference/vsock-protocol).
