@@ -1,12 +1,11 @@
 ---
 title: 'runner.code'
-description: 'O arquivo runner.code: a máquina declarada em TOML (stack ou imagem, recursos, env, init e workload), o equivalente do runner.code'
+description: 'O arquivo runner.code: a máquina declarada em TOML (stack ou imagem, recursos, env, init e workload)'
 ---
 
 `rc machine create` aceita flags, mas uma máquina com ambiente, comandos de preparo e um processo que fica rodando
 vira uma linha longa demais para lembrar e impossível de revisar. O **`runner.code`** é essa declaração num arquivo
-TOML que vai para o repositório junto com o código. É o equivalente do
-[runner.code]().
+TOML que vai para o repositório junto com o código.
 
 ## Em uma tela
 
@@ -47,20 +46,24 @@ rc machine stop   --name web               # SIGINT ao workload, até 30 s, sync
 |-------|------|--------|-----------|
 | `stack` | texto | — | stack do catálogo como base (`python`, `go`, ...). Usa a imagem com warmup |
 | `image` | texto | — | **qualquer** imagem OCI como base (`redis:7-alpine`). Construída no primeiro uso, sem warmup |
-| `cpus` | inteiro | 2 | vCPUs (teto: o catálogo/limite global) |
-| `memory` | inteiro, MiB | 2048 | teto de memória; a libkrun só aloca o que o guest toca |
+| `cpus` | inteiro | 4 | vCPUs (ociosa dorme no hypervisor) |
+| `memory` | inteiro, MiB | 8192 | teto de memória; a libkrun só aloca o que o guest toca |
 | `storage` | inteiro, GiB | 10 | disco gravável da máquina (esparso: ocupa no host o que foi gravado) |
 | `gpu` | booleano | `false` | GPU do host via Vulkan (Venus). Com `stack`, a stack precisa declarar GPU; com `image`, a imagem precisa ter o Mesa com Venus |
-| `gpu_vram` | inteiro, MiB | o da stack | janela de memória compartilhada da GPU. Exige `gpu = true` |
+| `gpu_vram` | inteiro, MiB | o da stack | janela de memória compartilhada da GPU; sem `gpu = true` é ignorado |
 | `env` | lista `K=V` | — | ambiente do init, do workload, do `exec` e do `shell` |
 | `workdir` | caminho absoluto | — | diretório do init, do workload e do `exec`/`shell` sem `-w`. **Criado** no start se não existir |
 | `init` | lista de comandos | — | cada item roda com `sh -c`, em ordem, **uma vez por disco** |
 | `entrypoint` | lista | — | início do argv do workload |
 | `cmd` | lista | — | resto do argv do workload |
-| `stop_signal` | texto | `SIGTERM` | sinal mandado ao workload no stop (`SIGINT`, `SIGTERM`, `SIGQUIT`, `SIGHUP`, `SIGUSR1`, `SIGUSR2`, `SIGKILL`, com ou sem `SIG`, ou o número) |
+| `stop_signal` | texto | `SIGTERM` | sinal mandado ao workload no stop: qualquer nome do Linux (`SIGINT`, `SIGWINCH`, ...), com ou sem `SIG`, `SIGRTMIN+N` (numeração da glibc: `SIGRTMIN+3` = 37, o do systemd) ou o número (1–64). A tabela é a do Linux, e não a do host macOS, onde vários números mudam |
 | `stop_timeout` | inteiro, s | 10 | quanto o workload tem para sair; depois, `SIGKILL`. Máximo 300 |
 | `stop_on_exit` | booleano | `false` | quando o workload sai, a máquina grava o disco e desliga sozinha. Exige workload |
-| `[dev]` | tabela | — | `env` **soma** ao de cima; `workdir` e `init` **substituem** |
+| `volumes` | lista `HOST:GUEST[:ro\|:staged]` ou `/GUEST` | — | diretórios do host por virtiofs, montados a cada start; `:staged` copia para o disco e volta no sync; só `/GUEST` é um diretório no disco da máquina. Relativo à pasta do arquivo; `~` vira o HOME. Veja [Rede e volumes](/cli/network#volumes) |
+| `net` | booleano | `false` | rede de saída pelo gateway do host, com o piso de bloqueio |
+| `ports` | lista `PORTA`, `HOST:GUEST`, faixa `A-B:C-D`, `/udp` | — | portas publicadas no `127.0.0.1` do host; a faixa vira uma porta por número (até 64 no total) |
+| `[network]` | tabela | — | `allow_hosts`, `allow_host_patterns`, `allow_cidrs`, `deny_cidrs`, `block_private`, `allow_private`; qualquer uma implica `net`. `name` junta a máquina a uma [rede nomeada](/cli/network#rede-nomeada) (não implica `net`) |
+| `[dev]` | tabela | — | `env` **soma** ao de cima; `workdir`, `init`, `volumes` e `ports` **substituem** (lista vazia não substitui) |
 
 ## Ordem de precedência
 
@@ -75,6 +78,10 @@ rc machine stop   --name web               # SIGINT ao workload, até 30 s, sync
 | `-w`, `--workdir` | `workdir` | substitui |
 | `--init` (repete) | `init` | substitui a lista inteira |
 | `--stop-signal`, `--stop-timeout`, `--stop-on-exit` | as mesmas | substitui |
+| `-v`, `--volume` (repete) | `volumes` | **soma** (relativo ao diretório atual) |
+| `--net`, `--block-private` | `net`, `block_private` | substitui |
+| `--network` | `[network] name` | substitui |
+| `-p`, `--port`, `--allow-host`, `--allow-host-pattern`, `--allow-cidr`, `--deny-cidr`, `--allow-private` (repetem) | `ports`, `[network]` | **soma** |
 | `-- CMD ...` | `entrypoint` + `cmd` | substitui o workload inteiro |
 
 `--name` não existe no arquivo de propósito: o mesmo `runner.code` serve para várias máquinas.
@@ -140,15 +147,19 @@ Diferença para `stack`: não há warmup nem entrada no catálogo, e a imagem pr
 
 ## O que é recusado
 
-Chave do runner.code que o `runner.code` reconhece mas ainda não implementa é **erro com o motivo**, nunca ignorada em
+Chave que o `runner.code` reconhece mas ainda não implementa é **erro com o motivo**, nunca ignorada em
 silêncio: `[network] allow_hosts` ignorado faria alguém achar que a máquina tem filtro de rede.
 
 | Chave | Situação |
 |-------|----------|
-| `net`, `[network]`, `ports`, `net_backend` | rede: Fase C. A máquina segue **sem rede** |
-| `[auth]`, `[secrets]` | SSH agent e segredos: Fase B |
-| `volumes`, `allow_system_mounts` | montagem de diretório do host: fora, por desenho (copie com `rc machine cp`) |
-| `user`, `overlay`, `health`, `restart`, `[artifact]`, `[pack]`, `rosetta`, `cuda`, ... | não implementados |
+| `net_backend = "tsi"` | toda rede passa pelo gateway com filtro; `"virtio-net"` é aceito |
+| `allow_system_mounts` | montar diretório de sistema do host (`/etc`, `/var/log`) |
+| `nested`, `nested_virt` | aninhar é decisão de quem liga a máquina: `--nested` na CLI |
+| `cuda` | o rc não tem CUDA (o `--gpu` é Vulkan) |
+| `overlay`, `health`, `restart`, `[artifact]`, `[pack]`, `rosetta`, ... | não implementados |
+
+`user`, `docker_socket`, `[secrets]` e `[auth] ssh_agent` são aceitos e valem como as flags
+(`--user`, `--docker-socket`, `--secret-env`/`--secret-file`, `--ssh-agent`).
 | qualquer outra chave | `unknown key(s): ...` (erro de digitação não passa) |
 
 ## API

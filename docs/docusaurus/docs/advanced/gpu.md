@@ -9,8 +9,7 @@ quer usar (seções 1 e 2), para quem precisa entender (3 a 6) e para quem vai d
 ## 1. Em uma frase
 
 Com `--gpu`, a VM ganha uma placa de vídeo virtual (**virtio-gpu**) que fala **Vulkan**. Cada chamada Vulkan do guest
-atravessa a fronteira da VM e é executada pela GPU real do host. No macOS isso passa pelo **Metal**. É o mesmo
-mecanismo do `--gpu`.
+atravessa a fronteira da VM e é executada pela GPU real do host. No macOS isso passa pelo **Metal**.
 
 ## 2. Uso
 
@@ -69,7 +68,7 @@ Dois canais atravessam a fronteira:
   de VRAM do guest com `hv_vm_map`, do Hypervisor.framework. O guest lê e escreve neles sem cópia.
 
 **Por que só Vulkan:** o MoltenVK traduz Vulkan, não OpenGL. Por isso a VM liga o Venus e desliga o *virgl* (o
-caminho de OpenGL), com os flags `VIRGLRENDERER_VENUS | VIRGLRENDERER_NO_VIRGL`. O krunkit usam a mesma
+caminho de OpenGL), com os flags `VIRGLRENDERER_VENUS | VIRGLRENDERER_NO_VIRGL`. O krunkit usa a mesma
 combinação.
 
 ## 4. As peças do host (Nix)
@@ -121,7 +120,7 @@ A imagem é **Fedora 43**, não Alpine. A seção 7 conta o porquê. O warmup do
 (`internal/adapters/catalog/languages.yaml`) roda uma vez, na VM de build, com rede, e faz:
 
 1. **Mesa com o patch de 16 KiB**: `dnf copr enable slp/mesa-libkrun-vulkan` e `dnf install mesa-vulkan-drivers`.
-   O COPR é do autor da libkrun; 
+   O COPR é do autor da libkrun.
 2. **llama.cpp com backend Vulkan**, compilado ali mesmo: tag `v0.7.0`, tarball conferido por sha256, com
    `-DGGML_VULKAN=ON -DBUILD_SHARED_LIBS=OFF`. O pacote `llama-cpp` do Fedora não tem backend Vulkan (só CPU e HIP).
    Só `llama-cli` e `llama-bench` vão para `/usr/local/bin`.
@@ -204,7 +203,7 @@ na CPU. Ele não cobra a geração, pelo motivo acima.
 | macOS Apple Silicon | **testado** de ponta a ponta (`TestGPUVulkan`, `TestGPULlama`, duas rodadas seguidas) |
 | Linux (KVM) | **não testado**: a libkrun do nixpkgs sai sem `GPU=1`, e não há host Linux com KVM e GPU disponível. No Linux o virglrenderer usa o Mesa do host e o *render server* |
 | Linux: confinamento | VM com GPU roda **sem Landlock/seccomp**: o virglrenderer abre `/dev/dri` e sobe o *render server* com `execve`, que a política nega. Liberar isso exige medir num host Linux com GPU |
-| CUDA | **não suportado**. O `--cuda` é *remoting* da API CUDA para o driver NVIDIA do host e exige host Linux com placa NVIDIA |
+| CUDA | **não suportado**. CUDA na VM exigiria *remoting* da API CUDA para o driver NVIDIA do host, com host Linux e placa NVIDIA |
 | Windows | fora (a libkrun upstream não tem WHP) |
 | Isolamento | CPU, memória e disco continuam isolados pela VM, mas a **GPU é compartilhada** por processo do host, não por fronteira de VM. Não use GPU para código de terceiros mutuamente hostis |
 

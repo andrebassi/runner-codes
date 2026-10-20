@@ -9,7 +9,7 @@ O código do job é tratado como hostil. A barreira principal é a VM; a segunda
 
 A documentação da libkrun é explícita: **o guest e o VMM ficam no mesmo contexto de segurança.** Uma fuga da VM cai dentro do processo `rc vmm`, com os privilégios dele. Por isso o isolamento é a VM **mais** o confinamento desse processo — e esse confinamento hoje é diferente por plataforma.
 
-## Camadas que valem nas duas plataformas
+## Camadas de um job (nas duas plataformas)
 
 | Camada | Como |
 |--------|------|
@@ -62,6 +62,28 @@ criação do próprio socket permitidas. Sem o confinamento, a mesma sonda conse
 de uma VM ainda alcança o socket de outra. O `rc doctor` avisa. `RUNNER_SANDBOX=off` desliga o confinamento para
 diagnóstico, com aviso no stderr.
 
+## Máquinas persistentes
+
+Uma máquina abre mão de parte do isolamento de um job (ela guarda estado e pode ter rede), e cada abertura é
+declarada e tem piso:
+
+| Camada | Como |
+|--------|------|
+| rede desligada por padrão | sem `--net` (ou `net`, `-p` sozinho), a máquina não tem placa de rede; com `-p` sem `--net`, o host alcança a porta, mas o guest não sai |
+| política de saída | gateway em userspace no próprio processo `vmm`, sem TSI: allow-host por nome, CIDR, `--block-private`; nome fora da lista recebe NXDOMAIN; IP só vale se veio de um nome permitido. Veja [Rede e volumes](/cli/network) |
+| piso que nenhuma regra abre | metadata de nuvem e todo o link-local; o loopback do host só com `--allow-cidr 127.0.0.1`, nunca por IP aprendido em DNS (DNS rebinding) |
+| recusas registradas | toda saída negada vai para `egress-denials.log` no diretório da máquina |
+| credencial sem ler | o guest vê um placeholder; o gateway troca pelo valor real só no TLS do host da binding, com uma CA da própria máquina (name constraints). Placeholder na URL é recusado com 403. Veja [Credenciais](/cli/credentials) |
+| segredos | `--secret-env`/`--secret-file` são lidos no start e mandados ao guest só em memória; não ficam no registro nem no disco da máquina |
+| agente SSH | o guest usa as chaves do host por um socket encaminhado; a chave privada não entra na VM |
+| volume `:ro` | a proteção está no dispositivo, não só na opção de montagem: `mount -o remount,rw` pelo root do guest não abre o volume (testado) |
+| virtualização aninhada | `--nested` é recusado onde o host não aninha; pela API, só com `rc serve --allow-nested-virt` |
+| tela | o visualizador escuta só no `127.0.0.1` do host, sem senha |
+
+O que uma máquina **não** protege: o root do guest lê o ambiente dos próprios processos, então um segredo entregue
+à máquina está ao alcance do código que roda nela. A substituição de credencial também não impede que o servidor
+devolva o valor no corpo da resposta.
+
 ## O que o teste ponta a ponta prova
 
 | Propriedade | Prova |
@@ -78,9 +100,10 @@ A API HTTP **não tem autenticação**. O padrão é escutar só em `127.0.0.1`.
 
 ## Build de imagem
 
-O pull da imagem acontece no host. O resto do build roda numa VM própria, com rede, porque a instalação de e2fsprogs e GNU tar e o warmup (`apk add`, por exemplo) precisam dela. A rede da VM de build não chega à VM do job. O minirootfs Alpine da VM de build tem o sha256 conferido antes do uso. As imagens de linguagem vêm das imagens OCI oficiais.
+O pull da imagem acontece no host. O resto do build roda numa VM própria, com rede, porque a instalação de e2fsprogs e GNU tar e o warmup (`apk add`, por exemplo) precisam dela. A rede da VM de build não chega à VM do job. O tarball base do Alpine usado pela VM de build tem o sha256 conferido antes do uso. As imagens de linguagem vêm das imagens OCI oficiais.
 
 ## Pendências
 
 - validar uma microVM completa sob Landlock + seccomp num Linux com KVM;
-- autenticação na API (hoje delegada a um proxy).
+- autenticação na API (hoje delegada a um proxy);
+- isolamento de socket Unix entre VMs em kernel com Landlock ABI < 9.

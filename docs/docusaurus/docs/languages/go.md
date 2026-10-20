@@ -15,7 +15,7 @@ O teto de vCPU e RAM existe contra abuso; a memória da libkrun é elástica e o
 
 ## Warmup
 
-O build compila um programa com `GOCACHE=/opt/runner/gocache`, o que popula o cache de build da biblioteca padrão dentro da imagem. Como o root é read-only, o `start.sh` copia esse cache para `/tmp/gocache` no boot e exporta `GOCACHE=/tmp/gocache`. A cópia acontece antes de a VM entrar no pool e não pesa no job.
+O build compila um programa com `GOCACHE=/opt/runner/gocache`, o que popula o cache de build da biblioteca padrão dentro da imagem. Como o root é read-only, o `start.sh` copia esse cache para `/tmp/go-cache` no boot, o caminho que o executor do guest força em `GOCACHE`. A cópia acontece antes de a VM entrar no pool e não pesa no job. Medido: `go run` em 247 ms com o cache aquecido, contra 3,4 s sem ele.
 
 Veja [Imagens](/concepts/images).
 

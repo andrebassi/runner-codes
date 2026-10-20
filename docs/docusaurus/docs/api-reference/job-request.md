@@ -31,6 +31,8 @@ O host converte a requisição HTTP (ou a chamada da CLI) num job e o envia ao g
 | `files` | lista de `{name, content}` | arquivos do job; o **primeiro** é o principal |
 | `stdin` | string | entrada padrão; omitido quando vazio |
 | `timeout` | inteiro | segundos |
+| `stream` | booleano | pede a saída em pedaços antes do resultado; veja [Streaming](/api-reference/vsock-protocol#streaming) |
+| `op` | string | operação; vazio é o job de código. As operações de máquina (`exec`, `put`, `pty`...) estão em [Protocolo vsock](/api-reference/vsock-protocol#operações) |
 
 ## Arquivo principal
 

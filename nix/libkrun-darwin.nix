@@ -58,6 +58,17 @@ stdenv.mkDerivation (finalAttrs: {
     # Sem VARIANT, o Makefile faz `mv libkrun.dylib libkrun.dylib`: o mv do BSD aceita, o do
     # coreutils (o do stdenv) recusa com "are the same file".
     sed -i '/mv target\/release\/libkrun.dylib target\/release\/$(KRUN_BASE_$(OS))/d' Makefile
+    # KRUN_GPU_BACKEND=2d escolhe o componente Rutabaga2D (framebuffer por CPU) no lugar do
+    # virglrenderer. Com o virglrenderer só com Venus (sem virgl, o caso do macOS), o recurso
+    # 2D do guest falha (TRANSFER_TO_HOST_2D -> ERR_UNSPEC, SET_SCANOUT -> INVALID_RESOURCE_ID,
+    # medido) e a tela nunca chega ao backend de display. O rc liga a variável só na VM com
+    # display, que assim perde o Venus.
+    # Duas linhas iguais existem (o builder normal e o de fallback); o que distingue é a linha
+    # seguinte (virgl_flags), por isso o N do sed. O grep derruba o build se a troca não
+    # acontecer exatamente uma vez — patch que passa calado é pior que build quebrado.
+    sed -i '/rutabaga_gfx::RutabagaComponentType::VirglRenderer,$/{N;s/rutabaga_gfx::RutabagaComponentType::VirglRenderer,\(\n *virgl_flags,\)/if env::var("KRUN_GPU_BACKEND").as_deref() == Ok("2d") { rutabaga_gfx::RutabagaComponentType::Rutabaga2D } else { rutabaga_gfx::RutabagaComponentType::VirglRenderer },\1/}' \
+      src/devices/src/virtio/gpu/virtio_gpu.rs
+    test "$(grep -c 'KRUN_GPU_BACKEND' src/devices/src/virtio/gpu/virtio_gpu.rs)" = 1
   '';
 
   preBuild = ''
@@ -70,17 +81,21 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   # BLK=1 liga virtio-blk: sem ele não existe krun_add_disk2, e o root read-only das VMs de job
-  # depende disso. GPU=1 liga o virtio-gpu (Venus), usado só por VM que pede GPU. Rede (NET) e
-  # som ficam de fora: o runner não usa.
+  # depende disso. GPU=1 liga o virtio-gpu (Venus), usado só por VM que pede GPU. NET=1 liga a
+  # virtio-net (krun_add_net_unixstream), que as máquinas com rede usam com o gateway do
+  # runner (internal/adapters/netgw); VM sem rede não ganha a placa. Som fica de fora.
   makeFlags = [
     "PREFIX=${placeholder "out"}"
     "BLK=1"
     "GPU=1"
+    "NET=1"
+    # INPUT=1: virtio-input (teclado e mouse do display); sem ele krun_add_input_device é stub.
+    "INPUT=1"
     "SYSROOT_LINUX=/nonexistent"
   ];
 
   meta = {
-    description = "VMM em biblioteca (Hypervisor.framework), com virtio-blk e virtio-gpu (Venus), sem rede";
+    description = "VMM em biblioteca (Hypervisor.framework), com virtio-blk, virtio-gpu (Venus) e virtio-net";
     homepage = "https://github.com/containers/libkrun";
     license = lib.licenses.asl20;
     platforms = [ "aarch64-darwin" ];

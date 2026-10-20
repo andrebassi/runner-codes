@@ -2,7 +2,7 @@
 #
 # O virglrenderer do nixpkgs sai com `-Dvenus=false` no macOS, e é justamente o Venus que dá
 # Vulkan ao guest. Usa o fork do autor da libkrun (`slp/virglrenderer`, tag 0.10.4e-krunkit), o
-# mesmo da fórmula `slp/krun` que o krunkit usam: ele traz os ajustes para o Venus
+# mesmo da fórmula `slp/krun` que o krunkit usa: ele traz os ajustes para o Venus
 # rodar sobre o MoltenVK (Vulkan → Metal).
 {
   lib,

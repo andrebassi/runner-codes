@@ -5,7 +5,7 @@ description: 'Como o host fala com o guest: socket Unix, porta vsock 5000 e fram
 
 ## O canal
 
-A VM não tem rede. O único canal entre host e guest é um vsock:
+O canal entre host e guest é um vsock (a VM de job nem tem rede):
 
 - o guest escuta na porta vsock **5000**;
 - no host, `krun_add_vsock_port2` com `listen=true` liga essa porta a um **socket Unix** num diretório de trabalho do cache;
@@ -28,7 +28,8 @@ Toda mensagem, nos dois sentidos, é:
 - O tamanho é um inteiro sem sinal de 4 bytes, big-endian, e conta só o payload.
 - O frame máximo é **64 MiB**; o host recusa ler um frame acima disso.
 
-O formato é o mesmo de antes da migração para a libkrun.
+O mesmo frame serve a todas as operações: o job efêmero e as operações das máquinas (`exec`, cópia de arquivo,
+terminal, workload, porta publicada, segredos, agente SSH, S3), escolhidas pelo campo `op` do job.
 
 ## Sequência
 
@@ -37,7 +38,7 @@ host                                guest
  │ connect(socket Unix) ─────────────▶ accept (vsock 5000)
  │ [tamanho][Job JSON] ──────────────▶ executa
  │ ◀────────────── [tamanho][Result JSON]
- │ fecha; a VM é destruída
+ │ fecha; a VM de job é destruída
 ```
 
 ## Prontidão

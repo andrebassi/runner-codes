@@ -21,6 +21,11 @@ type SandboxPolicy struct {
 	DeviceFiles []string
 	// SocketDir: diretório exclusivo desta VM, onde a libkrun cria o socket do vsock.
 	SocketDir string
+	// UnixConnect são os sockets do host que a libkrun disca para o guest (agente SSH,
+	// --mount-socket): só eles ganham o direito de connect, e nenhum outro socket do host.
+	UnixConnect []string
+	// ListenDirs são diretórios fora do SocketDir onde um --expose-socket cria o socket.
+	ListenDirs []string
 }
 
 // sandboxDisabledEnv desliga o confinamento para diagnóstico; o vmm avisa no stderr.
@@ -33,7 +38,9 @@ const sandboxDisabledEnv = "RUNNER_SANDBOX"
 // server com execve, que o seccomp nega; liberar isso exige medir num host Linux com GPU,
 // que não temos. Fica declarado como dívida, e o vmm avisa no stderr.
 func SandboxEnabled(s Spec) bool {
-	return s.RootDisk != "" && !s.Network && !s.GPU && os.Getenv(sandboxDisabledEnv) != "off"
+	// Com rede, o gateway do próprio processo abre sockets e escuta portas, o que o
+	// seccomp de VM de job recusa: a máquina com rede roda sem o confinamento.
+	return s.RootDisk != "" && !s.Network && s.Net == nil && !s.GPU && os.Getenv(sandboxDisabledEnv) != "off"
 }
 
 // PolicyFor monta a política de uma VM de job. libDirs são os diretórios das
@@ -54,6 +61,18 @@ func PolicyFor(s Spec, libDirs []string) SandboxPolicy {
 	if s.VsockSocket != "" {
 		p.SocketDir = filepath.Dir(s.VsockSocket)
 	}
+	if s.SSHAgent != "" {
+		p.UnixConnect = append(p.UnixConnect, s.SSHAgent)
+	}
+	for _, h := range s.HostSockets {
+		p.UnixConnect = append(p.UnixConnect, h.Host)
+	}
+	for _, e := range s.Sockets {
+		if d := filepath.Dir(e.Host); d != p.SocketDir {
+			p.ListenDirs = append(p.ListenDirs, d)
+		}
+	}
+	p.ListenDirs = dedupe(p.ListenDirs)
 	return p
 }
 

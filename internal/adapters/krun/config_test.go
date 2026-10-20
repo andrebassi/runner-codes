@@ -1,18 +1,24 @@
 package krun
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
+
+	"runner.code/internal/ports"
 )
 
 // fakeAPI registra cada chamada e devolve erro na chamada nomeada em failOn.
 type fakeAPI struct {
-	calls  []string
-	failOn string
-	ctxID  int32
-	tsi    uint32
-	disk   struct {
+	calls []string
+	// vsockPorts são as portas vsock pedidas ("porta caminho listen").
+	vsockPorts []string
+	failOn     string
+	ctxID      int32
+	tsi        uint32
+	disk       struct {
 		readOnly bool
 		format   uint32
 	}
@@ -25,6 +31,11 @@ type fakeAPI struct {
 	// dataDisk e dataRO guardam o segundo disco (o da máquina persistente).
 	dataDisk string
 	dataRO   bool
+	// mounts guarda cada virtiofs pedido: "tag=path:ro|rw".
+	mounts []string
+	// netFD e netMAC guardam a virtio-net pedida.
+	netFD  int32
+	netMAC []byte
 }
 
 // rec anota a chamada e devolve -22 (EINVAL) se for a escolhida para falhar.
@@ -78,8 +89,9 @@ func (f *fakeAPI) AddVsock(_ uint32, tsi uint32) int32 {
 	return f.rec("krun_add_vsock")
 }
 
-// AddVsockPort2 anota a chamada.
-func (f *fakeAPI) AddVsockPort2(uint32, uint32, string, bool) int32 {
+// AddVsockPort2 anota a chamada e os argumentos (porta, caminho, listen).
+func (f *fakeAPI) AddVsockPort2(_ uint32, port uint32, path string, listen bool) int32 {
+	f.vsockPorts = append(f.vsockPorts, fmt.Sprintf("%d %s %v", port, path, listen))
 	return f.rec("krun_add_vsock_port2")
 }
 
@@ -111,6 +123,35 @@ func (f *fakeAPI) AddVirtioConsoleDefault(_ uint32, in, out, errFD int32) int32 
 func (f *fakeAPI) SetGPUOptions2(_ uint32, flags uint32, shm uint64) int32 {
 	f.gpuFlags, f.gpuShm = flags, shm
 	return f.rec("krun_set_gpu_options2")
+}
+
+// AddInputDevice anota a chamada.
+func (f *fakeAPI) AddInputDevice(uint32, unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) int32 {
+	return f.rec("krun_add_input_device")
+}
+
+// AddDisplay anota a chamada.
+func (f *fakeAPI) AddDisplay(uint32, uint32, uint32) int32 { return f.rec("krun_add_display") }
+
+// SetDisplayBackend anota a chamada.
+func (f *fakeAPI) SetDisplayBackend(uint32, unsafe.Pointer, uintptr) int32 {
+	return f.rec("krun_set_display_backend")
+}
+
+// AddNetUnixstream anota a chamada e guarda fd e MAC.
+func (f *fakeAPI) AddNetUnixstream(_ uint32, fd int32, mac []byte) int32 {
+	f.netFD, f.netMAC = fd, mac
+	return f.rec("krun_add_net_unixstream")
+}
+
+// AddVirtiofs3 anota a chamada e guarda tag, caminho e modo.
+func (f *fakeAPI) AddVirtiofs3(_ uint32, tag, path string, shm uint64, ro bool) int32 {
+	mode := "rw"
+	if ro {
+		mode = "ro"
+	}
+	f.mounts = append(f.mounts, fmt.Sprintf("%s=%s:%s:%d", tag, path, mode, shm))
+	return f.rec("krun_add_virtiofs3")
 }
 
 // StartEnter anota a chamada; o fake "volta" como se a VM tivesse falhado ao iniciar.
@@ -232,6 +273,29 @@ func TestConfigureDataDisk(t *testing.T) {
 	}
 }
 
+// TestConfigureMounts: cada montagem vira um virtiofs3 com a tag e o modo pedidos, sem janela
+// DAX, antes do exec; VM sem montagem não expõe nada do host.
+func TestConfigureMounts(t *testing.T) {
+	f := &fakeAPI{}
+	s := jobSpec()
+	s.Mounts = []ports.VMMount{{Tag: "vol0", HostPath: "/h/www"}, {Tag: "vol1", HostPath: "/h/models", ReadOnly: true}}
+	if _, err := Configure(f, s); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(f.mounts, ",") != "vol0=/h/www:rw:0,vol1=/h/models:ro:0" {
+		t.Fatalf("mounts: %v", f.mounts)
+	}
+	got := strings.Join(f.calls, ",")
+	if strings.LastIndex(got, "krun_add_virtiofs3") > strings.Index(got, "krun_set_exec") {
+		t.Fatalf("mounts must come before exec: %s", got)
+	}
+	f = &fakeAPI{}
+	Configure(f, jobSpec())
+	if len(f.mounts) != 0 {
+		t.Fatal("a VM without mounts must not share any host directory")
+	}
+}
+
 // TestConfigureGPU trava a chamada de GPU: Venus sem virgl (1<<6|1<<7, o que o MoltenVK
 // aceita), VRAM em bytes, 4 GiB por padrão; e VM sem GPU não chama nada de GPU.
 func TestConfigureGPU(t *testing.T) {
@@ -271,9 +335,11 @@ func TestConfigureFailsOnEachCall(t *testing.T) {
 	tty.Console, tty.TTY = "", true
 	gpu := jobSpec()
 	gpu.GPU = true
+	mnt := jobSpec()
+	mnt.Mounts = []ports.VMMount{{Tag: "vol0", HostPath: "/h"}}
 	names := map[string]Spec{
-		"krun_set_gpu_options2": gpu,
-		"krun_create_ctx":       full, "krun_set_vm_config": full, "krun_add_disk2": full,
+		"krun_set_gpu_options2": gpu, "krun_add_virtiofs3": mnt,
+		"krun_create_ctx": full, "krun_set_vm_config": full, "krun_add_disk2": full,
 		"krun_set_root_disk_remount": full, "krun_disable_implicit_vsock": full, "krun_add_vsock": full,
 		"krun_add_vsock_port2": full, "krun_set_console_output": full, "krun_setgid": full,
 		"krun_setuid": full, "krun_set_exec": full, "krun_set_root": dir,
@@ -304,6 +370,9 @@ func TestValidate(t *testing.T) {
 		"argv with space":     mut(func(s *Spec) { s.Args = []string{"-c", "echo oi"} }),
 		"empty argv":          mut(func(s *Spec) { s.Args = []string{""} }),
 		"exec with tab":       mut(func(s *Spec) { s.Exec = "/bin/a\tb" }),
+		"mount without tag":   mut(func(s *Spec) { s.Mounts = []ports.VMMount{{HostPath: "/h"}} }),
+		"mount relative":      mut(func(s *Spec) { s.Mounts = []ports.VMMount{{Tag: "v", HostPath: "h"}} }),
+		"mount tag twice":     mut(func(s *Spec) { s.Mounts = []ports.VMMount{{Tag: "v", HostPath: "/a"}, {Tag: "v", HostPath: "/b"}} }),
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {
@@ -324,5 +393,83 @@ func TestValidate(t *testing.T) {
 func TestCallErr(t *testing.T) {
 	if got := fmt.Sprint(callErr("krun_x", -2)); got != "krun_x failed: errno 2" {
 		t.Fatalf("unexpected message: %s", got)
+	}
+}
+
+// TestConfigureSSHAgent: com o agente SSH, a libkrun liga a porta 5001 do guest ao
+// SSH_AUTH_SOCK do host com listen=false (quem conecta é o guest); sem ele, só a porta do guest.
+func TestConfigureSSHAgent(t *testing.T) {
+	api := &fakeAPI{}
+	s := jobSpec()
+	s.SSHAgent = "/tmp/agent.sock"
+	if _, err := configure(api, s, -1); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.vsockPorts) != 2 || api.vsockPorts[1] != "5001 /tmp/agent.sock false" || !strings.HasSuffix(api.vsockPorts[0], " true") {
+		t.Fatalf("vsock ports: %v", api.vsockPorts)
+	}
+	api = &fakeAPI{}
+	configure(api, jobSpec(), -1)
+	if len(api.vsockPorts) != 1 {
+		t.Fatalf("without the agent, only the guest port: %v", api.vsockPorts)
+	}
+}
+
+// nestedFake é um fakeAPI com a parte opcional de nested: check é o que o host responde.
+type nestedFake struct {
+	fakeAPI
+	check int32
+	on    bool
+}
+
+// CheckNestedVirt devolve a resposta configurada do host.
+func (f *nestedFake) CheckNestedVirt() int32 { return f.check }
+
+// SetNestedVirt anota o pedido.
+func (f *nestedFake) SetNestedVirt(_ uint32, on bool) int32 {
+	f.on = on
+	return f.rec("krun_set_nested_virt")
+}
+
+// TestConfigureNested: host que aninha liga o nested; host que não aninha, erro na checagem e
+// libkrun sem o símbolo recusam antes do boot; VM sem Nested nem pergunta.
+func TestConfigureNested(t *testing.T) {
+	s := jobSpec()
+	s.Nested = true
+	api := &nestedFake{check: 1}
+	if _, err := configure(api, s, -1); err != nil || !api.on {
+		t.Fatalf("supported host: %v on=%v", err, api.on)
+	}
+	if _, err := configure(&nestedFake{check: 0}, s, -1); !errors.Is(err, ErrNestedUnsupported) {
+		t.Fatalf("host without nested: %v", err)
+	}
+	if _, err := configure(&nestedFake{check: -22}, s, -1); err == nil || !strings.Contains(err.Error(), "krun_check_nested_virt") {
+		t.Fatalf("failed check: %v", err)
+	}
+	if _, err := configure(&fakeAPI{}, s, -1); err == nil || !strings.Contains(err.Error(), "krun_set_nested_virt") {
+		t.Fatalf("libkrun without nested: %v", err)
+	}
+	api = &nestedFake{check: 0}
+	if _, err := configure(api, jobSpec(), -1); err != nil || api.on {
+		t.Fatalf("a VM without Nested must not ask: %v", err)
+	}
+	fail := &nestedFake{check: 1}
+	fail.failOn = "krun_set_nested_virt"
+	if _, err := configure(fail, s, -1); err == nil {
+		t.Fatal("a failing krun_set_nested_virt must fail the configure")
+	}
+}
+
+// TestConfigureHostSockets: cada socket do host montado no guest vira uma porta vsock em que
+// a libkrun disca (listen=false), como o agente SSH.
+func TestConfigureHostSockets(t *testing.T) {
+	api := &fakeAPI{}
+	s := jobSpec()
+	s.HostSockets = []ports.VMSocket{{Host: "/h/a.sock", Guest: "/run/a.sock", Port: 5100}, {Host: "/h/b.sock", Guest: "/run/b.sock", Port: 5101}}
+	if _, err := configure(api, s, -1); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.vsockPorts) != 3 || api.vsockPorts[1] != "5100 /h/a.sock false" || api.vsockPorts[2] != "5101 /h/b.sock false" {
+		t.Fatalf("vsock ports: %v", api.vsockPorts)
 	}
 }

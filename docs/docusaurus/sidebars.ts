@@ -23,13 +23,14 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'CLI',
-      items: ['cli/overview', 'cli/run', 'cli/machine', 'cli/runner-code', 'cli/image', 'cli/http-api'],
+      items: ['cli/overview', 'cli/run', 'cli/machine', 'cli/runner-code', 'cli/network', 'cli/credentials', 'cli/display', 'cli/pack', 'cli/image', 'cli/http-api'],
     },
     {
       type: 'category',
       label: 'Referência da API',
       items: [
         'api-reference/overview',
+        'api-reference/sdks',
         'api-reference/job-request',
         'api-reference/job-response',
         'api-reference/vsock-protocol',
@@ -76,7 +77,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Guias',
-      items: ['guides/database-parsers-setup'],
+      items: ['guides/examples', 'guides/database-parsers-setup'],
     },
   ],
 };

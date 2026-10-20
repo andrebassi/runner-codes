@@ -51,6 +51,9 @@ type Server struct {
 	Pool func() map[string]int
 	// Machines liga as rotas /api/v1/machines; nil deixa só as rotas de job.
 	Machines MachineService
+	// AllowNested aceita nested no create de máquina. Desligado, quem alcança a porta não
+	// entrega as extensões de virtualização do host a um guest (rc serve --allow-nested-virt).
+	AllowNested bool
 }
 
 // FileRequest é um arquivo no corpo da requisição.

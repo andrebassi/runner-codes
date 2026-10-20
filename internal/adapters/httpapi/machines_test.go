@@ -18,6 +18,8 @@ import (
 
 // fakeMachines responde conforme err (se houver) e grava o que recebeu.
 type fakeMachines struct {
+	// chunks, se houver, são os pedaços de saída que o Exec manda (stream, texto).
+	chunks   [][2]string
 	err      error
 	files    map[string][]byte
 	lastExec app.ExecRequest
@@ -26,6 +28,27 @@ type fakeMachines struct {
 	tail     int
 	source   string
 	created  domain.Machine
+}
+
+// Pause devolve o erro configurado.
+func (f *fakeMachines) Pause(string) error { return f.err }
+
+// Resume devolve o erro configurado.
+func (f *fakeMachines) Resume(string) error { return f.err }
+
+// Sync devolve o erro configurado.
+func (f *fakeMachines) Sync(context.Context, string) error { return f.err }
+
+// Branch devolve a máquina nova.
+func (f *fakeMachines) Branch(_ context.Context, _, to string) (domain.Machine, error) {
+	return domain.Machine{Name: to}, f.err
+}
+
+// Update aplica a mudança numa máquina vazia e devolve o resultado.
+func (f *fakeMachines) Update(name string, change func(*domain.Egress)) (domain.Machine, error) {
+	m := domain.Machine{Name: name}
+	change(&m.Network.Egress)
+	return m, f.err
 }
 
 // Create devolve a máquina pedida.
@@ -73,7 +96,11 @@ func (f *fakeMachines) Exec(_ context.Context, _ string, req app.ExecRequest, ou
 	if f.err != nil {
 		return domain.Result{}, f.err
 	}
-	if out != nil {
+	if out != nil && f.chunks != nil {
+		for _, c := range f.chunks {
+			out(c[0], c[1])
+		}
+	} else if out != nil {
 		out("stdout", "a\n")
 		out("stderr", "e\n")
 	}
@@ -142,6 +169,25 @@ func TestMachineRoutesHappyPath(t *testing.T) {
 		f.created.Image != "alpine" || f.created.Env[0] != "A=1" || !f.created.StopOnExit || f.created.GPUVRAMMiB != 64 || f.created.Workdir != "/w" {
 		t.Fatalf("image create: %d %+v", code, f.created)
 	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines", `{"name":"n","stack":"python","net":true,"ports":["8080:80"],"egress":{"allow_hosts":["example.com"]},"network":"lab"}`); code != 201 ||
+		f.created.Network.Name != "lab" || !f.created.Network.Enabled || f.created.Network.Ports[0].Guest != 80 || f.created.Network.Egress.AllowHosts[0] != "example.com" {
+		t.Fatalf("network create: %d %+v", code, f.created.Network)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines/n/pause", ""); code != 204 {
+		t.Fatalf("pause: %d", code)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines/n/sync", ""); code != 204 {
+		t.Fatalf("sync: %d", code)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines/n/resume", ""); code != 204 {
+		t.Fatalf("resume: %d", code)
+	}
+	if code, body := do(t, s, "POST", "/api/v1/machines/n/branch", `{"name":"kid"}`); code != 201 || !strings.Contains(body, `"name":"kid"`) {
+		t.Fatalf("branch: %d %s", code, body)
+	}
+	if code, body := do(t, s, "PUT", "/api/v1/machines/n/egress", `{"allow_hosts":["a.com"]}`); code != 200 || !strings.Contains(body, `"a.com"`) {
+		t.Fatalf("egress update: %d %s", code, body)
+	}
 	if code, body := do(t, s, "GET", "/api/v1/machines", ""); code != 200 || !strings.Contains(body, `"name":"dev"`) {
 		t.Fatalf("list: %d %s", code, body)
 	}
@@ -166,7 +212,7 @@ func TestMachineRoutesHappyPath(t *testing.T) {
 	}
 	code, body = do(t, s, "POST", "/api/v1/machines/dev/exec/stream", `{"command":["ls"]}`)
 	evs := parseSSE(t, body)
-	if code != 200 || len(evs) != 3 || evs[0] != (sseEvent{"stdout", `"a\n"`}) || evs[1].name != "stderr" ||
+	if code != 200 || len(evs) != 3 || evs[0] != (sseEvent{"stdout", "a"}) || evs[1].name != "stderr" ||
 		evs[2].name != "exit" || !strings.Contains(evs[2].data, `"exitCode":3`) {
 		t.Fatalf("stream: %d %+v", code, evs)
 	}
@@ -223,6 +269,11 @@ func TestMachineRoutesErrors(t *testing.T) {
 			{"POST", "/api/v1/machines/dev/exec/stream", `{"command":["ls"]}`},
 			{"PUT", "/api/v1/machines/dev/files?path=/x", "data"},
 			{"GET", "/api/v1/machines/dev/logs", ""},
+			{"PUT", "/api/v1/machines/dev/egress", `{}`},
+			{"POST", "/api/v1/machines/dev/pause", ""},
+			{"POST", "/api/v1/machines/dev/resume", ""},
+			{"POST", "/api/v1/machines/dev/sync", ""},
+			{"POST", "/api/v1/machines/dev/branch", `{"name":"x"}`},
 		} {
 			code, body := do(t, s, r[0], r[1], r[2])
 			if code != c.status || errorCode(t, body) != c.code {
@@ -234,7 +285,11 @@ func TestMachineRoutesErrors(t *testing.T) {
 	for _, r := range [][3]string{
 		{"POST", "/api/v1/machines", `{"stack":"python"}`},
 		{"POST", "/api/v1/machines", `{"name":"x"}`},
+		{"POST", "/api/v1/machines", `{"name":"x","stack":"python","ports":["nope"]}`},
+		{"PUT", "/api/v1/machines/dev/egress", `{`},
+		{"POST", "/api/v1/machines/dev/branch", `{}`},
 		{"POST", "/api/v1/machines", `{"name":"x","runner_code":"net = true"}`},
+		{"POST", "/api/v1/machines", `{"name":"x","runner_code":"stack = \"python\"\nvolumes = [\"/:/host\"]"}`},
 		{"POST", "/api/v1/machines/dev/exec", `{"command":[]}`},
 		{"POST", "/api/v1/machines/dev/exec/stream", `{`},
 		{"POST", "/api/v1/machines/dev/stop?timeout=999", ""},
@@ -244,6 +299,13 @@ func TestMachineRoutesErrors(t *testing.T) {
 		if code, body := do(t, s, r[0], r[1], r[2]); code != 400 || errorCode(t, body) != domain.CodeConfig {
 			t.Fatalf("%s %s: %d %s", r[0], r[1], code, body)
 		}
+	}
+	// Volume s3:// não toca o disco do servidor: passa pela API (diretório do host não, acima).
+	if code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"s","runner_code":"stack = \"python\"\nnet = true\nvolumes = [\"s3://bkt/x:/data:ro\"]"}`); code != 201 {
+		t.Fatalf("s3 volume over the API: %d %s", code, body)
+	}
+	if code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"cr","stack":"python","credentials":[{"name":"gh","environment_variable":"GH","allowed_hosts":["api.github.com"]}]}`); code != 201 {
+		t.Fatalf("credentials over the API: %d %s", code, body)
 	}
 	if code, body := do(t, s, "GET", "/api/v1/machines/dev/files?path=/missing", ""); code != 404 || errorCode(t, body) != domain.CodeNotFound {
 		t.Fatalf("missing file: %d %s", code, body)
@@ -270,5 +332,112 @@ func TestMachineStreamErrorAfterStart(t *testing.T) {
 	evs := parseSSE(t, body)
 	if code != 200 || len(evs) != 2 || evs[1].name != "error" || !strings.Contains(evs[1].data, "connection reset") {
 		t.Fatalf("%d %+v", code, evs)
+	}
+}
+
+// TestAlternateBodyShapes: as formas alternativas do corpo funcionam: network booleano (o
+// mesmo que --net), memoryMb, cmd, o caminho do arquivo no URL (%2F ou não) e o código do erro
+// no topo do corpo. "network" em texto continua sendo a rede nomeada.
+func TestAlternateBodyShapes(t *testing.T) {
+	f := &fakeMachines{files: map[string][]byte{}}
+	s := machineServer(f)
+	if code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"sv","image":"python:3.12-alpine","network":true,"memoryMb":2048,"cmd":["sh","-c","sleep 1"]}`); code != 201 ||
+		!f.created.Network.Enabled || f.created.Network.Name != "" || f.created.MemoryMiB != 2048 || strings.Join(f.created.Workload, " ") != "sh -c sleep 1" {
+		t.Fatalf("alternate create: %d %s %+v", code, body, f.created)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines", `{"name":"nn","stack":"python","network":"lab"}`); code != 201 || f.created.Network.Name != "lab" || f.created.Network.Enabled {
+		t.Fatalf("named network: %+v", f.created.Network)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines", `{"name":"bad","stack":"python","network":3}`); code != 400 {
+		t.Fatal("a network that is neither text nor boolean must be refused")
+	}
+	if code, _ := do(t, s, "PUT", "/api/v1/machines/dev/files/%2Ftmp%2Fabs.txt", "PAYLOAD123"); code != 200 || string(f.files["/tmp/abs.txt"]) != "PAYLOAD123" {
+		t.Fatalf("PUT files/%%2F...: %d %v", code, f.files)
+	}
+	if code, body := do(t, s, "GET", "/api/v1/machines/dev/files/tmp/abs.txt", ""); code != 200 || body != "PAYLOAD123" {
+		t.Fatalf("GET files/<path>: %d %q", code, body)
+	}
+	_, body := do(t, s, "GET", "/api/v1/machines/dev/files/%2Fnope", "")
+	var top struct{ Code string }
+	json.Unmarshal([]byte(body), &top)
+	if top.Code != domain.CodeNotFound || errorCode(t, body) != domain.CodeNotFound {
+		t.Fatalf("the code must be at the top and inside error: %s", body)
+	}
+}
+
+// TestStreamLines: o streaming sai uma linha por evento, texto cru: pedaço
+// que corta a linha espera o resto, pedaço com várias linhas vira vários eventos, e o resto
+// sem \n sai antes do exit.
+func TestStreamLines(t *testing.T) {
+	f := &fakeMachines{files: map[string][]byte{}, chunks: [][2]string{
+		{"stdout", "li"}, {"stdout", "ne1\nline2\nli"}, {"stderr", "aviso\n"}, {"stdout", "ne3"},
+	}}
+	_, body := do(t, machineServer(f), "POST", "/api/v1/machines/dev/exec/stream", `{"command":["x"]}`)
+	evs := parseSSE(t, body)
+	var got []string
+	for _, e := range evs {
+		got = append(got, e.name+"="+e.data)
+	}
+	want := "stdout=line1 stdout=line2 stderr=aviso stdout=line3"
+	if strings.Join(got[:len(got)-1], " ") != want || evs[len(evs)-1].name != "exit" {
+		t.Fatalf("lines: %v", got)
+	}
+}
+
+// TestStrictBodies: campo desconhecido é recusado com o nome dele, em toda rota de máquina com
+// corpo. Antes era ignorado: um `allowedHost` errado criava a máquina sem a restrição pedida.
+func TestStrictBodies(t *testing.T) {
+	f := &fakeMachines{files: map[string][]byte{}}
+	s := machineServer(f)
+	for _, c := range []struct{ method, path, body string }{
+		{"POST", "/api/v1/machines", `{"name":"x","stack":"python","allowedHost":["a.com"]}`},
+		{"POST", "/api/v1/machines/dev/exec", `{"command":["true"],"cwd":"/x"}`},
+		{"POST", "/api/v1/machines/dev/exec/stream", `{"command":["true"],"cwd":"/x"}`},
+		{"PUT", "/api/v1/machines/dev/egress", `{"allowHosts":["a.com"]}`},
+		{"POST", "/api/v1/machines/dev/branch", `{"name":"b","from":"x"}`},
+	} {
+		code, body := do(t, s, c.method, c.path, c.body)
+		if code != 400 || !strings.Contains(body, "unknown field") || errorCode(t, body) != domain.CodeConfig {
+			t.Errorf("%s %s: %d %s", c.method, c.path, code, body)
+		}
+	}
+	// O corpo certo segue passando (prova de que a recusa não é de tudo).
+	if code, body := do(t, s, "POST", "/api/v1/machines/dev/branch", `{"name":"b"}`); code != 201 {
+		t.Fatalf("branch: %d %s", code, body)
+	}
+}
+
+// TestEgressAliases: allowedHosts e allowedCidrs (nomes alternativos) viram a política de saída e
+// ligam a rede, somando-se ao egress do rc.
+func TestEgressAliases(t *testing.T) {
+	f := &fakeMachines{files: map[string][]byte{}}
+	s := machineServer(f)
+	code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"eg","stack":"python","allowedHosts":["api.example.com"],"allowedCidrs":["10.0.0.0/8"],"egress":{"allow_hosts":["b.example.com"]}}`)
+	n := f.created.Network
+	if code != 201 || !n.Enabled || strings.Join(n.Egress.AllowHosts, ",") != "b.example.com,api.example.com" || strings.Join(n.Egress.AllowCIDRs, ",") != "10.0.0.0/8" {
+		t.Fatalf("aliases: %d %s %+v", code, body, n)
+	}
+	if code, _ := do(t, s, "POST", "/api/v1/machines", `{"name":"off","stack":"python"}`); code != 201 || f.created.Network.Enabled {
+		t.Fatal("without aliases the network stays off")
+	}
+}
+
+// TestNestedOverAPI: nested (e o nome alternativo nestedVirt) é recusado por padrão e passa só com o
+// servidor em --allow-nested-virt.
+func TestNestedOverAPI(t *testing.T) {
+	f := &fakeMachines{files: map[string][]byte{}}
+	s := machineServer(f)
+	for _, k := range []string{"nested", "nestedVirt"} {
+		code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"n","stack":"python","`+k+`":true}`)
+		if code != 400 || !strings.Contains(body, "--allow-nested-virt") || f.created.Nested {
+			t.Fatalf("%s refused by default: %d %s", k, code, body)
+		}
+	}
+	s.AllowNested = true
+	for _, k := range []string{"nested", "nestedVirt"} {
+		f.created = domain.Machine{}
+		if code, body := do(t, s, "POST", "/api/v1/machines", `{"name":"n","stack":"python","`+k+`":true}`); code != 201 || !f.created.Nested {
+			t.Fatalf("%s with the server allowing it: %d %s", k, code, body)
+		}
 	}
 }

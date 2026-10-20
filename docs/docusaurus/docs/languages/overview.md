@@ -5,7 +5,7 @@ description: 'O catálogo de linguagens, recursos por linguagem e como adicionar
 
 ## Catálogo
 
-O catálogo vem do `languages.yaml`, embutido no binário (`internal/adapters/catalog/languages.yaml`). São 15 linguagens:
+O catálogo vem do `languages.yaml`, embutido no binário (`internal/adapters/catalog/languages.yaml`). São 15 linguagens (mais a stack `llama`, abaixo):
 
 | Linguagem | Nome na API | Imagem OCI de origem | vCPU | RAM | Warmup |
 |-----------|-------------|----------------------|------|-----|--------|
@@ -75,6 +75,15 @@ rc run --stack <nome> --code '<programa mínimo>'
 
 O binário do executor precisa estar no `PATH` da imagem ou no caminho absoluto que o executor usa. Uma imagem baseada em Alpine (musl) é o caso testado; o guest é estático e roda em qualquer uma.
 
-## Linguagens removidas
+## A stack `llama` (GPU)
 
-A versão com Firecracker documentava outras linguagens (TypeScript, Kotlin, Haskell, Elixir e outras) e os parsers de banco. Elas não têm imagem no catálogo atual. Os parsers estão em [Parsers de banco de dados](/guides/database-parsers-setup).
+Além das 15 linguagens, o catálogo traz a stack `llama` (`fedora:43`, 4 vCPU, 4096 MiB, `gpu: true`): llama.cpp com
+backend Vulkan e um modelo Qwen2.5 0.5B gravado na imagem. Ela existe para `--gpu`; veja [GPU](/advanced/gpu).
+
+## Fora do catálogo
+
+- **Máquinas com imagem qualquer:** `rc machine create --image <ref>` (ou `image = "..."` no
+  [runner.code](/cli/runner-code)) constrói e liga uma imagem OCI que não está no catálogo. Ela serve a máquinas, não
+  aos jobs da API.
+- **Parsers de banco:** o executor do guest ainda tem entradas para validadores de sintaxe SQL e NoSQL, mas eles não
+  têm imagem no catálogo. Veja [Parsers de banco de dados](/guides/database-parsers-setup).

@@ -45,6 +45,6 @@ O valor de `executionTime` é ilustrativo.
 
 ## O que a API faz com o resultado
 
-A API repassa `status`, `stdout`, `stderr`, `exception`, `executionTime` e `error`. O `exit_code` não aparece na resposta HTTP; a CLI o mostra na linha de resumo e sai com rc 1 quando ele é diferente de zero.
+Em `/api/v1/run` e `/api/v1/execute`, a API repassa `status`, `stdout`, `stderr`, `exception`, `executionTime` e `error`; o `exit_code` não aparece. Ele aparece como `exitCode` no evento `result` de `/api/v1/execute/stream` e na resposta do exec de máquina. A CLI o mostra na linha de resumo do `rc run` e sai com rc 1 quando ele é diferente de zero; o `rc machine exec` sai com o próprio código do comando.
 
 Se o guest não responde dentro do timeout do job mais uma folga do host, a VM é morta e a API devolve `"status": "failed"` com `"error": "E001: operation timed out"`.

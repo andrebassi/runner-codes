@@ -65,3 +65,4 @@ CLAUDE.md
 
 # Release artifacts
 dist/
+__pycache__/

@@ -8,14 +8,18 @@
 #   internal/guest      executor herdado (59 linguagens) que só roda com as toolchains
 #                       dentro da VM; dívida declarada com catraca em GUEST_FLOOR
 #   spike/              descartável, sai na story 4.1
+#   *_linux.go          não compilam no macOS, onde o gate roda: a cola FUSE do s3fs e o
+#                       netlink do guest só traduzem chamadas para código que está aqui
+#                       (s3fs.go, netcfg.go), e são provados pelo e2e numa VM real
 set -euo pipefail
 cd "$(dirname "$0")/.."
 floor=${COVERAGE_FLOOR:-90}
-guest_floor=${GUEST_FLOOR:-67}
+guest_floor=${GUEST_FLOOR:-75}
 out=$(mktemp)
 trap 'rm -f "$out" "$out.guest"' EXIT
 
-pkgs=$(go list ./internal/... | grep -v '/internal/guest$')
+# pkg/ é o SDK público: entra com o mesmo piso, desde o primeiro arquivo.
+pkgs=$(go list ./internal/... ./pkg/... | grep -v '/internal/guest$')
 # Falha de teste aparece inteira: medido em 19/10/2026, o >/dev/null com set -e fazia o gate
 # sair rc=1 sem uma linha, e um teste intermitente passou por "cobertura baixa".
 if ! log=$(go test -count=1 -coverprofile="$out" $pkgs 2>&1); then echo "$log" | grep -vE '^(ok|\?)'; echo "🛑 tests failed"; exit 1; fi

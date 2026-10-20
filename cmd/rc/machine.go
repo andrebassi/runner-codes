@@ -18,9 +18,11 @@ import (
 	"golang.org/x/term"
 
 	"runner.code/internal/adapters/guestproto"
+	"runner.code/internal/adapters/hostfs"
 	"runner.code/internal/adapters/machinestore"
-	"runner.code/internal/adapters/runfile"
+	"runner.code/internal/adapters/netgw"
 	"runner.code/internal/app"
+	"runner.code/internal/credca"
 	"runner.code/internal/domain"
 	"runner.code/internal/ports"
 	"runner.code/internal/protocol"
@@ -34,21 +36,30 @@ func (d *deps) newMachines() *app.Machines {
 		Guest: guestproto.Client{},
 		// `image` do runner.code: o ext4 sai do mesmo build das stacks.
 		BuildImage: func(ctx context.Context, l domain.Language) error {
-			_, err := d.builder.Build(ctx, l)
-			return err
+			return buildImage(ctx, d, l)
 		},
+		UpdateEgress: netgw.UpdatePolicy,
+		// Caminho curto de propósito: o socket de cada máquina mora aqui e o macOS limita
+		// caminho de socket Unix a 104 bytes.
+		NetworksDir: filepath.Join(d.builder.CacheDir, "n"),
+		NewCredentialCA: func(hosts []string) ([]byte, []byte, error) {
+			return credca.New(hosts, time.Now())
+		},
+		ApplyGuestModes: hostfs.ApplyGuestModes,
 	}
 }
 
 // defaultMachineName é o nome quando --name falta: $RC_MACHINE_NAME (para fixar uma máquina
-// por projeto com direnv), senão "default"
+// por projeto com direnv), senão "default".
 func defaultMachineName() string { return env("RC_MACHINE_NAME", "default") }
 
 // machineCmd agrupa o ciclo de vida das máquinas persistentes.
 func machineCmd() *cobra.Command {
 	c := &cobra.Command{Use: "machine", Short: "Persistent machines: create, start, exec, cp, logs, stop, delete"}
 	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineStatusCmd(), machineListCmd(),
-		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineCopyCmd(), machineLogsCmd())
+		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineCopyCmd(), machineLogsCmd(), machineUpdateCmd(),
+		machineRunCmd(), machineBranchCmd(), machinePauseCmd(), machineResumeCmd(), machineSyncCmd(), machineDataDirCmd(),
+		imagePruneCmd("prune"))
 	return c
 }
 
@@ -67,35 +78,16 @@ func withMachines(run func(m *app.Machines, cmd *cobra.Command, args []string) e
 // runner.code (-f, ou ./runner.code se existir) e as flags passadas vencem o arquivo; o que
 // vem depois de -- é o workload.
 func machineCreateCmd() *cobra.Command {
-	var mc domain.Machine
-	var cpus uint
-	var file string
+	var mf *machineFlags
 	c := &cobra.Command{
 		Use:   "create [flags] [-- workload...]",
 		Short: "Create a persistent machine from flags and/or a runner.code file",
 		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, args []string) error {
-			mc.CPUs = uint8(cpus)
-			mc.Workload = args
-			base := domain.Machine{}
-			if file == "" {
-				if _, err := os.Stat(runfile.DefaultName); err == nil {
-					file = runfile.DefaultName
-				}
+			mc, file, err := mf.build(cmd.Flags(), args)
+			if err != nil {
+				return err
 			}
-			if file != "" {
-				var err error
-				if base, err = runfile.Load(file); err != nil {
-					return err
-				}
-			}
-			mc = runfile.Override(base, mc, cmd.Flags().Changed)
-			if mc.Stack == "" && mc.Image == "" {
-				return errors.New("set --stack or --image (or write them in a runner.code)")
-			}
-			if mc.Image != "" {
-				fmt.Fprintf(os.Stderr, "building image %s (first time takes a while)...\n", mc.Image)
-			}
-			out, err := m.Create(cmd.Context(), mc)
+			out, err := m.CreateFrom(cmd.Context(), mc, mf.diskFrom)
 			if err != nil {
 				return err
 			}
@@ -110,31 +102,22 @@ func machineCreateCmd() *cobra.Command {
 			return nil
 		}),
 	}
-	f := c.Flags()
-	f.StringVarP(&file, "file", "f", "", "runner.code file (default ./runner.code when present)")
-	f.StringVar(&mc.Name, "name", defaultMachineName(), "machine name")
-	f.StringVar(&mc.Stack, "stack", "", "stack whose image is the machine base (python, go, ...)")
-	f.StringVar(&mc.Image, "image", "", "any OCI image as the machine base (built on first use)")
-	f.UintVar(&cpus, "cpus", 0, "vCPUs (default 2)")
-	f.Uint32Var(&mc.MemoryMiB, "memory", 0, "memory ceiling in MiB (default 2048)")
-	f.IntVar(&mc.DiskGiB, "disk-gib", 0, "writable disk in GiB (default 10, sparse)")
-	f.BoolVar(&mc.GPU, "gpu", false, "give the machine the host GPU through Vulkan (the stack must declare gpu)")
-	f.Uint32Var(&mc.GPUVRAMMiB, "gpu-vram", 0, "GPU shared memory window in MiB (default: the stack's)")
-	f.StringArrayVarP(&mc.Env, "env", "e", nil, "environment variable K=V for init, workload, exec and shell (repeatable)")
-	f.StringVarP(&mc.Workdir, "workdir", "w", "", "working directory for init, workload, exec and shell")
-	f.StringArrayVar(&mc.Init, "init", nil, "command run once, on the first start (repeatable, in order)")
-	f.StringVar(&mc.StopSignal, "stop-signal", "", "signal sent to the workload on stop (default SIGTERM)")
-	f.IntVar(&mc.StopTimeout, "stop-timeout", 0, "seconds the workload gets to exit on stop (default 10)")
-	f.BoolVar(&mc.StopOnExit, "stop-on-exit", false, "stop the machine when the workload exits")
+	mf = addMachineFlags(c.Flags(), defaultMachineName())
 	return c
 }
 
 // machineStartCmd liga a VM destacada e espera o guest responder.
 func machineStartCmd() *cobra.Command {
-	var name string
+	var name, from string
 	c := &cobra.Command{
 		Use: "start", Short: "Start a machine (it keeps running after this command exits)",
 		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, _ []string) error {
+			if from != "" {
+				// O start de um artefato cria a máquina dele na primeira vez.
+				if err := ensurePackMachine(cmd.Context(), m, from, name); err != nil {
+					return err
+				}
+			}
 			start := time.Now()
 			st, err := m.Start(cmd.Context(), name)
 			if err != nil {
@@ -145,6 +128,7 @@ func machineStartCmd() *cobra.Command {
 		}),
 	}
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
+	c.Flags().StringVar(&from, "from", "", "create the machine from this pack first, if it does not exist")
 	return c
 }
 
@@ -190,7 +174,7 @@ func machineStatusCmd() *cobra.Command {
 func machineListCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
-		Use: "ls", Short: "List machines",
+		Use: "ls", Aliases: []string{"list"}, Short: "List machines",
 		RunE: withMachines(func(m *app.Machines, _ *cobra.Command, _ []string) error {
 			ms, err := m.List()
 			if err != nil {
@@ -212,6 +196,11 @@ func printMachines(ms []app.MachineStatus, asJSON bool, w io.Writer) error {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(ms)
+	}
+	if len(ms) == 0 {
+		// Frase fixa: scripts de limpeza procuram por ela.
+		fmt.Fprintln(w, "No machines found")
+		return nil
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tSTACK\tSTATE\tCPUS\tMEMORY\tDISK\tGPU\tCREATED")
@@ -237,13 +226,35 @@ func machineDeleteCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
 	c.Flags().BoolVarP(&force, "force", "f", false, "kill a running machine instead of refusing")
+	// --cascade apagaria junto os filhos de um branch vivo; no rc o branch é uma cópia
+	// independente do disco, então não há o que levar junto. Aceito para scripts que já o
+	// passam rodarem iguais.
+	c.Flags().Bool("cascade", false, "accepted for compatibility (rc branches are independent copies)")
+	return c
+}
+
+// machineDataDirCmd imprime o diretório da máquina no host (disco, console, logs de
+// recusa), o `machine data-dir`.
+func machineDataDirCmd() *cobra.Command {
+	var name string
+	c := &cobra.Command{
+		Use: "data-dir", Short: "Print the machine's directory on the host",
+		RunE: withMachines(func(m *app.Machines, _ *cobra.Command, _ []string) error {
+			if _, err := m.Status(name); err != nil {
+				return err
+			}
+			fmt.Println(m.Store.Dir(name))
+			return nil
+		}),
+	}
+	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
 	return c
 }
 
 // machineExecCmd roda um comando na máquina com a saída em streaming; o rc do `rc` é o
 // do comando (124 no timeout).
 func machineExecCmd() *cobra.Command {
-	var name, workdir string
+	var name, workdir, user string
 	var envs []string
 	var stdin bool
 	var timeout time.Duration
@@ -251,7 +262,7 @@ func machineExecCmd() *cobra.Command {
 		Use: "exec [flags] -- COMMAND [ARGS...]", Short: "Run a command in a running machine (output streams as it runs)",
 		Args: cobra.MinimumNArgs(1),
 		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, args []string) error {
-			req := app.ExecRequest{Argv: args, Env: envs, Cwd: workdir, Timeout: timeout}
+			req := app.ExecRequest{Argv: args, Env: envs, Cwd: workdir, Timeout: timeout, User: user}
 			if stdin {
 				b, err := io.ReadAll(os.Stdin)
 				if err != nil {
@@ -283,6 +294,7 @@ func machineExecCmd() *cobra.Command {
 	c.Flags().StringArrayVarP(&envs, "env", "e", nil, "environment variable K=V (repeatable)")
 	c.Flags().StringVarP(&workdir, "workdir", "w", "", "working directory inside the machine (default /)")
 	c.Flags().BoolVarP(&stdin, "interactive", "i", false, "send this command's stdin to the program")
+	c.Flags().StringVarP(&user, "user", "u", "", "run as this user (passwd name or uid[:gid]); overrides the machine's user")
 	c.Flags().DurationVar(&timeout, "timeout", 0, "kill the command after this long (0 = no limit)")
 	c.Flags().Bool("stream", true, "accepted for compatibility; output always streams")
 	return c
@@ -292,12 +304,12 @@ func machineExecCmd() *cobra.Command {
 // job control, editores de tela cheia e o tamanho da janela funcionam. O rc do `rc` é o do
 // shell (ou do comando passado depois de --).
 func machineShellCmd() *cobra.Command {
-	var name, workdir string
+	var name, workdir, user string
 	var envs []string
 	c := &cobra.Command{
 		Use: "shell [flags] [-- COMMAND [ARGS...]]", Short: "Open an interactive terminal in a running machine (bash if the image has it)",
 		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, args []string) error {
-			req := app.ShellRequest{Argv: args, Env: append([]string{"TERM=" + env("TERM", "xterm")}, envs...), Cwd: workdir}
+			req := app.ShellRequest{Argv: args, Env: append([]string{"TERM=" + env("TERM", "xterm")}, envs...), Cwd: workdir, User: user}
 			code, err := runMachineShell(cmd.Context(), m, name, req)
 			if err != nil {
 				return err
@@ -311,18 +323,30 @@ func machineShellCmd() *cobra.Command {
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
 	c.Flags().StringArrayVarP(&envs, "env", "e", nil, "environment variable K=V (repeatable)")
 	c.Flags().StringVarP(&workdir, "workdir", "w", "", "working directory inside the machine (default $HOME)")
+	c.Flags().StringVarP(&user, "user", "u", "", "run as this user (passwd name or uid[:gid]); overrides the machine's user")
 	return c
 }
 
-// runMachineShell liga o terminal do host à sessão. Com terminal de verdade: modo raw (para
-// o Ctrl+C ir ao guest em vez de matar o rc), tamanho inicial da janela e SIGWINCH virando
-// resize. Os defer restauram o terminal em qualquer saída.
+// runMachineShell abre o terminal de uma máquina ligada.
 func runMachineShell(ctx context.Context, m *app.Machines, name string, req app.ShellRequest) (int, error) {
+	return withTerminal(func(size ports.Winsize, resize <-chan ports.Winsize) (int, error) {
+		if size.Rows > 0 {
+			req.Size = size
+		}
+		return m.Shell(ctx, name, req, os.Stdin, os.Stdout, resize)
+	})
+}
+
+// withTerminal põe o terminal do host em modo raw (Ctrl+C, setas e o resto vão para o
+// guest) e entrega o tamanho atual e um canal com cada resize (SIGWINCH). Sem terminal
+// (pipe) roda direto. O modo raw é desfeito antes de voltar, mesmo em erro.
+func withTerminal(run func(size ports.Winsize, resize <-chan ports.Winsize) (int, error)) (int, error) {
 	fd := int(os.Stdin.Fd())
 	resize := make(chan ports.Winsize, 1)
+	var size ports.Winsize
 	if term.IsTerminal(fd) && term.IsTerminal(int(os.Stdout.Fd())) {
 		if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
-			req.Size = ports.Winsize{Rows: uint16(h), Cols: uint16(w)}
+			size = ports.Winsize{Rows: uint16(h), Cols: uint16(w)}
 		}
 		state, err := term.MakeRaw(fd)
 		if err != nil {
@@ -344,7 +368,7 @@ func runMachineShell(ctx context.Context, m *app.Machines, name string, req app.
 			}
 		}()
 	}
-	return m.Shell(ctx, name, req, os.Stdin, os.Stdout, resize)
+	return run(size, resize)
 }
 
 // splitMachinePath separa "nome:/caminho"; sem nome antes dos dois-pontos é caminho local.

@@ -58,6 +58,28 @@ Com `"stream": true` no job, o guest responde com vários frames em vez de um, t
 - Sem `stream`, o fio é idêntico ao anterior: um frame de resultado. A prova de prontidão (`sh true`) usa esse modo.
 - Se o host recebe um frame sem `type`, o guest da imagem é anterior ao streaming: `rc image build` refaz a imagem.
 
-## Diferença para a versão com Firecracker
+## Operações
 
-O formato do frame e os campos do JSON não mudaram. O que deixou de existir é o handshake textual `CONNECT 5000` / `OK 5000`, que era do socket vsock do Firecracker: na libkrun, o socket Unix já está ligado à porta 5000.
+O campo `op` do job escolhe a operação. Vazio é o job de código de sempre, para o fio dos jobs efêmeros não mudar; as
+outras servem às máquinas persistentes (`internal/protocol`).
+
+| `op` | Campos usados | O que faz |
+|------|---------------|-----------|
+| (vazio) | `lang`, `code`, `files`, `stdin`, `timeout`, `stream` | roda código de uma linguagem |
+| `exec` | `argv`, `env`, `cwd`, `user`, `timeout`, `stream` | roda um programa sem shell implícito |
+| `put` / `get` | `path`, `offset`, `data`, `final`, `mode` | cópia de arquivo em pedaços de 1 MiB (até 4 GiB por arquivo) |
+| `pty` | `argv`, `rows`, `cols`, `user` | terminal interativo: a conexão vira um canal de eventos `input`/`resize` (host) e `output`/`exit` (guest) |
+| `workload` | `argv`, `env`, `cwd`, `user`, `stop_on_exit` | liga o processo que a máquina mantém rodando |
+| `shutdown` | `signal`, `timeout` | manda o sinal ao workload, espera, faz `sync` e desliga |
+| `dial` | `port` | depois do resultado de sucesso, a conexão vira um tubo de bytes até `127.0.0.1:port` dentro do guest (porta publicada) |
+| `set-env` | `env` | guarda os segredos na memória do guest e junta a todo comando seguinte; nunca vão para o disco |
+| `ssh-agent` | `path`, `port` | abre no guest um socket Unix que repassa cada conexão à porta vsock do host (agente SSH) |
+| `mount-s3` | `path`, `s3`, `env` | monta um bucket por FUSE no guest, depois de conferir que ele responde |
+
+## Outras portas vsock
+
+| Porta | Sentido | Uso |
+|-------|---------|-----|
+| 5000 | host → guest | todas as operações acima |
+| 5001 | guest → host | agente SSH (`--ssh-agent`) |
+| 5100 + i | guest → host | o i-ésimo `--mount-socket` |

@@ -1,6 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 40">
-  <rect x="0" y="5" width="30" height="30" rx="5" fill="#3B82F6"/>
-  <path d="M6 12h18v2H6zM6 18h14v2H6zM6 24h16v2H6z" fill="white"/>
-  <circle cx="22" cy="25" r="2.5" fill="white"/>
-  <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="white">Runner Codes</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 138 24" width="138" height="24" role="img" aria-label="runner.codes">
+  <!-- Logo da barra, igual ao da landing: "runner.codes" em mono, o ponto na cor de destaque e um cursor que pisca.
+       textLength fixa a largura do texto para o cursor nunca encostar, qualquer que seja a fonte mono do sistema. -->
+  <style>
+    .t { font: 700 17px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; fill: #ececf1; }
+    .d { fill: #7aa2ff; }
+    .c { fill: #7aa2ff; animation: b 1.1s steps(1) infinite; }
+    @keyframes b { 50% { opacity: 0; } }
+  </style>
+  <text class="t" x="0" y="18" textLength="122" lengthAdjust="spacingAndGlyphs">runner<tspan class="d">.</tspan>codes</text>
+  <rect class="c" x="127" y="4" width="8" height="17" rx="1"/>
 </svg>

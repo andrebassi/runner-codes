@@ -32,7 +32,7 @@
             if pkgs.stdenv.hostPlatform.isDarwin then
               pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw virglrenderer; }
             else
-              pkgs.libkrun.override { withBlk = true; };
+              pkgs.libkrun.override { withBlk = true; withNet = true; };
         in
         {
           inherit libkrun libkrunfw virglrenderer;

@@ -1,0 +1,50 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.docsSidebar.category.Primeiros passos": {
+    "message": "快速上手",
+    "description": "The label for category 'Primeiros passos' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Conceitos": {
+    "message": "概念",
+    "description": "The label for category 'Conceitos' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.CLI": {
+    "message": "CLI",
+    "description": "The label for category 'CLI' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Referência da API": {
+    "message": "API 参考",
+    "description": "The label for category 'Referência da API' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Linguagens": {
+    "message": "语言",
+    "description": "The label for category 'Linguagens' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Interpretadas": {
+    "message": "解释型",
+    "description": "The label for category 'Interpretadas' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Compiladas": {
+    "message": "编译型",
+    "description": "The label for category 'Compiladas' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Shell e utilitários": {
+    "message": "Shell 与工具",
+    "description": "The label for category 'Shell e utilitários' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Tasks": {
+    "message": "Tasks",
+    "description": "The label for category 'Tasks' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Avançado": {
+    "message": "进阶",
+    "description": "The label for category 'Avançado' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Guias": {
+    "message": "指南",
+    "description": "The label for category 'Guias' in sidebar 'docsSidebar'"
+  }
+}

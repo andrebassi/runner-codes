@@ -11,18 +11,25 @@ O `runner-guest` é o processo que executa o código dentro da microVM. Ele é c
 
 ## Como ele sobe
 
-O primeiro processo da VM é `/opt/runner/start.sh`:
+O primeiro processo de uma VM de job é `/opt/runner/start.sh`:
 
 ```sh
 mount -t tmpfs -o size=256m,mode=1777 tmpfs /tmp
+# /dev/stdin, /dev/stdout, /dev/stderr e /dev/fd como links para /proc/self/fd
+...
+# ambiente da config OCI da imagem (PATH, JAVA_HOME...), uma variável por linha
+while IFS= read -r l; do [ -n "$l" ] && export "$l"; done < /opt/runner/env
 mkdir -p /tmp/home
 export HOME=/tmp/home
+# cache de build do Go aquecido na imagem, copiado para o caminho que o executor força
 if [ -d /opt/runner/gocache ]; then
-  cp -a /opt/runner/gocache /tmp/gocache
-  export GOCACHE=/tmp/gocache
+  cp -a /opt/runner/gocache /tmp/go-cache
 fi
 exec /opt/runner/guest --port 5000
 ```
+
+(Resumo do `internal/adapters/oci/scripts/start.sh`.) Numa máquina persistente, o primeiro processo é o
+`/opt/runner/machine.sh`, que monta o disco e o overlay e roda o mesmo guest num `chroot`.
 
 O guest escuta na porta vsock 5000. A libkrun liga essa porta a um socket Unix no host.
 
@@ -43,6 +50,14 @@ O guest escuta na porta vsock 5000. A libkrun liga essa porta a um socket Unix n
 6. Responde com um frame de [resultado](/api-reference/job-response).
 
 Falha de compilação devolve `exception: "Compilation failed"` com o erro do compilador em `stderr`. Estouro de tempo devolve `exception: "Timeout"`.
+
+## Outras operações
+
+Além de rodar código, o guest atende as operações das máquinas, todas pelo mesmo protocolo: `exec` (argv sem shell
+implícito, com env, diretório e usuário), `put`/`get` (cópia de arquivo em pedaços de 1 MiB), `pty` (terminal
+interativo), `workload` (o processo que a máquina mantém rodando), `shutdown` (sinal ao workload, `sync` e saída),
+`dial` (porta publicada, discando o `127.0.0.1` do guest), `set-env` (segredos só em memória), `ssh-agent` (socket do
+agente SSH do host) e `mount-s3` (volume `s3://` por FUSE). Detalhes em [Protocolo vsock](/api-reference/vsock-protocol).
 
 ## Isolamento entre jobs
 

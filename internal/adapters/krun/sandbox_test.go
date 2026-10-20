@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runner.code/internal/ports"
 	"strings"
 	"testing"
 )
@@ -140,5 +141,22 @@ func TestSandboxDisabledWarns(t *testing.T) {
 	RunVMM(&fakeAPI{failOn: "krun_start_enter"}, jobSpec(), nil)
 	if called {
 		t.Fatal("sandbox applied while disabled")
+	}
+}
+
+// TestPolicySockets: connect só nos sockets que a libkrun disca (agente, --mount-socket), e
+// os diretórios dos --expose-socket fora do diretório da VM entram para criar o socket.
+func TestPolicySockets(t *testing.T) {
+	s := jobSpec()
+	s.VsockSocket = "/m/vm/v.sock"
+	s.SSHAgent = "/tmp/agent.sock"
+	s.HostSockets = []ports.VMSocket{{Host: "/run/podman.sock", Guest: "/run/podman.sock", Port: 5100}}
+	s.Sockets = []ports.VMSocket{{Host: "/m/vm/docker.sock"}, {Host: "/srv/app/app.sock"}, {Host: "/srv/app/b.sock"}}
+	p := PolicyFor(s, nil)
+	if strings.Join(p.UnixConnect, ",") != "/tmp/agent.sock,/run/podman.sock" || strings.Join(p.ListenDirs, ",") != "/srv/app" {
+		t.Fatalf("connect %v, listen dirs %v", p.UnixConnect, p.ListenDirs)
+	}
+	if p := PolicyFor(jobSpec(), nil); len(p.UnixConnect)+len(p.ListenDirs) != 0 {
+		t.Fatal("a VM without bridges connects to no host socket")
 	}
 }

@@ -1,0 +1,112 @@
+<!doctype html>
+<!-- Código de página (roda no navegador): o visualizador da tela de uma máquina do rc.
+     Busca os quadros por long-poll e manda teclado e mouse como eventos evdev. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tela da máquina</title>
+<style>
+  :root { --bg: #111; --fg: #ddd; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
+  #bar { padding: 6px 12px; display: flex; gap: 16px; align-items: center; }
+  #wrap { display: flex; justify-content: center; }
+  canvas { max-width: 100vw; max-height: calc(100vh - 34px); outline: none; cursor: default; }
+</style>
+</head>
+<body>
+<div id="bar"><b>runner.code</b><span id="st">conectando…</span><span id="fps"></span></div>
+<div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+<script>
+// Tipos e códigos do evdev (linux/input-event-codes.h).
+const EV_SYN = 0, EV_KEY = 1, EV_ABS = 3, SYN_REPORT = 0, ABS_X = 0, ABS_Y = 1;
+const BTN = [0x110, 0x112, 0x111]; // esquerdo, meio, direito (BTN_LEFT, BTN_MIDDLE, BTN_RIGHT)
+// KeyboardEvent.code -> keycode do evdev (o layout do teclado fica por conta do guest).
+const KEY = {
+  Escape:1, Digit1:2, Digit2:3, Digit3:4, Digit4:5, Digit5:6, Digit6:7, Digit7:8, Digit8:9, Digit9:10, Digit0:11,
+  Minus:12, Equal:13, Backspace:14, Tab:15, KeyQ:16, KeyW:17, KeyE:18, KeyR:19, KeyT:20, KeyY:21, KeyU:22, KeyI:23,
+  KeyO:24, KeyP:25, BracketLeft:26, BracketRight:27, Enter:28, ControlLeft:29, KeyA:30, KeyS:31, KeyD:32, KeyF:33,
+  KeyG:34, KeyH:35, KeyJ:36, KeyK:37, KeyL:38, Semicolon:39, Quote:40, Backquote:41, ShiftLeft:42, Backslash:43,
+  KeyZ:44, KeyX:45, KeyC:46, KeyV:47, KeyB:48, KeyN:49, KeyM:50, Comma:51, Period:52, Slash:53, ShiftRight:54,
+  NumpadMultiply:55, AltLeft:56, Space:57, CapsLock:58, F1:59, F2:60, F3:61, F4:62, F5:63, F6:64, F7:65, F8:66, F9:67,
+  F10:68, F11:87, F12:88, IntlBackslash:86, ControlRight:97, AltRight:100, Home:102, ArrowUp:103, PageUp:104,
+  ArrowLeft:105, ArrowRight:106, End:107, ArrowDown:108, PageDown:109, Insert:110, Delete:111, MetaLeft:125, MetaRight:126,
+};
+const c = document.getElementById("c"), ctx = c.getContext("2d"), st = document.getElementById("st");
+let seq = 0, frames = 0, queue = [], sending = false;
+
+// Busca o próximo quadro; o servidor segura o pedido até a tela mudar.
+async function loop() {
+  for (;;) {
+    try {
+      const r = await fetch("frame?after=" + seq, { cache: "no-store" });
+      if (r.status === 204) continue;
+      if (!r.ok) throw new Error(r.status);
+      seq = Number(r.headers.get("X-Seq"));
+      const bmp = await createImageBitmap(await r.blob());
+      if (c.width !== bmp.width || c.height !== bmp.height) { c.width = bmp.width; c.height = bmp.height; }
+      ctx.drawImage(bmp, 0, 0);
+      frames++;
+      st.textContent = "ao vivo (" + c.width + "×" + c.height + ")";
+    } catch (e) {
+      st.textContent = "sem conexão com a máquina; tentando de novo…";
+      await new Promise(ok => setTimeout(ok, 1000));
+    }
+  }
+}
+setInterval(() => { document.getElementById("fps").textContent = frames + " quadros/s"; frames = 0; }, 1000);
+
+// Junta os eventos e manda em lote, um POST por vez, para não embaralhar a ordem.
+function send(evs) {
+  queue.push(...evs, { type: EV_SYN, code: SYN_REPORT, value: 0 });
+  if (sending) return;
+  sending = true;
+  (async () => {
+    while (queue.length) {
+      const batch = queue.splice(0);
+      try { await fetch("input", { method: "POST", body: JSON.stringify(batch) }); } catch (e) {}
+    }
+    sending = false;
+  })();
+}
+// Posição do mouse em coordenadas absolutas 0..32767 (o eixo ABS que o guest declara).
+function pos(e) {
+  const r = c.getBoundingClientRect();
+  const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  return [{ type: EV_ABS, code: ABS_X, value: Math.round(x * 32767) }, { type: EV_ABS, code: ABS_Y, value: Math.round(y * 32767) }];
+}
+c.addEventListener("mousemove", e => send(pos(e)));
+c.addEventListener("mousedown", e => { c.focus(); send([...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 1 }]); e.preventDefault(); });
+c.addEventListener("mouseup", e => send([...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 0 }]));
+c.addEventListener("contextmenu", e => e.preventDefault());
+c.addEventListener("wheel", e => { send([{ type: 2, code: 8, value: e.deltaY > 0 ? -1 : 1 }]); e.preventDefault(); }, { passive: false });
+// Modificadores pelo estado do evento (ctrlKey, shiftKey...): automação e alguns teclados mandam
+// "U com ctrlKey" sem o keydown do Control antes. Cada mudança vira um pacote próprio.
+const MODS = [["ctrlKey", KEY.ControlLeft], ["shiftKey", KEY.ShiftLeft], ["altKey", KEY.AltLeft], ["metaKey", KEY.MetaLeft]];
+const held = {};
+function syncMods(e) {
+  for (const [flag, code] of MODS) {
+    if (!!e[flag] !== !!held[code] && e.keyCode !== undefined) {
+      held[code] = !!e[flag];
+      send([{ type: EV_KEY, code: code, value: held[code] ? 1 : 0 }]);
+    }
+  }
+}
+const isMod = code => MODS.some(([, c]) => c === KEY[code]) || code === "ShiftRight" || code === "ControlRight" || code === "AltRight" || code === "MetaRight";
+c.addEventListener("keydown", e => {
+  const k = KEY[e.code]; if (!k) return;
+  if (!isMod(e.code)) syncMods(e); else held[k] = true;
+  send([{ type: EV_KEY, code: k, value: e.repeat ? 2 : 1 }]); e.preventDefault();
+});
+c.addEventListener("keyup", e => {
+  const k = KEY[e.code]; if (!k) return;
+  if (isMod(e.code)) held[k] = false;
+  send([{ type: EV_KEY, code: k, value: 0 }]);
+  if (!isMod(e.code)) syncMods(e);
+  e.preventDefault();
+});
+loop();
+</script>
+</body>
+</html>

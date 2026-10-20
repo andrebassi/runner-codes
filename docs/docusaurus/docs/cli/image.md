@@ -26,6 +26,15 @@ task image:build -- --stack python
 task image:build -- --all
 ```
 
+## image prune
+
+```bash
+rc image prune          # builds antigos, que nenhum nome aponta mais (o guest ou o start.sh mudaram, a chave mudou)
+rc image prune --all    # também as imagens e os packs que nenhuma máquina usa
+```
+
+Imagens fora do catálogo (`rc machine create --image ...`) usam o mesmo build, sem warmup.
+
 ## Saída
 
 Uma linha por linguagem:
@@ -40,7 +49,7 @@ python <caminho do ext4> cached=false elapsed=<tempo> <métricas do build>
 ## O que o build faz
 
 1. Baixa a imagem OCI com go-containerregistry (sem Docker) e achata as camadas num tar.
-2. Sobe uma VM de build Alpine 3.22.6 (minirootfs com sha256 conferido; e2fsprogs e GNU tar via `apk`).
+2. Sobe uma VM de build Alpine 3.22.6 (tarball base oficial do Alpine, com sha256 conferido; e2fsprogs e GNU tar via `apk`).
 3. Dentro dela, como root: extrai o tar num tmpfs, injeta o guest e o `start.sh` em `/opt/runner/`, roda o warmup em chroot e gera o ext4 com `mkfs.ext4 -d`.
 4. Grava `<lang>-<chave>.ext4` no cache e aponta o symlink `<lang>.ext4` para ele.
 
@@ -52,4 +61,5 @@ A chave inclui o digest da imagem, o warmup, o `build.sh`, o `start.sh` e o gues
 
 ## Tempo
 
-Na máquina medida (macOS 27.0.1, Apple Silicon), a imagem Python levou ~8–10 s, sendo 2,7 s de pull e achatamento. O build precisa de rede (pull e warmup); a VM do job não tem.
+Na máquina medida (macOS 27.0.1, Apple Silicon), a imagem Python levou ~8–10 s, sendo 2,7 s de pull e achatamento. A Go
+levou 35 s, 28 deles no `mkfs.ext4`. O build precisa de rede (pull e warmup); a VM do job não tem.

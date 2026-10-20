@@ -13,8 +13,8 @@ import (
 	"runner.code/internal/protocol"
 )
 
-// pollInterval é o intervalo entre tentativas de prontidão: 1 ms faz no
-// primeiro segundo de boot (manager.rs:3926). O boot medido é ~260 ms, então intervalo
+// pollInterval é o intervalo entre tentativas de prontidão: 1 ms no
+// primeiro segundo de boot. O boot medido é ~260 ms, então intervalo
 // maior somaria latência direta ao primeiro job.
 const pollInterval = time.Millisecond
 

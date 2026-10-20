@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -80,6 +82,25 @@ func TestStoreLifecycle(t *testing.T) {
 	if s.PID("alpha") != 0 {
 		t.Fatal("unreadable pid counts as none")
 	}
+	upd, _ := s.Load("alpha")
+	upd.Network.Enabled = true
+	if err := s.Save(upd); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := s.Load("alpha"); !again.Network.Enabled {
+		t.Fatal("save must persist")
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir("alpha"), recordFile+".tmp")); !os.IsNotExist(err) {
+		t.Fatal("temporary record left behind")
+	}
+	if err := s.Save(domain.Machine{Name: "ghost"}); code(err) != domain.CodeNotFound {
+		t.Fatalf("save of an unknown machine: %v", err)
+	}
+	os.Chmod(s.Dir("alpha"), 0o500)
+	if err := s.Save(upd); err == nil {
+		t.Fatal("unwritable machine dir must fail")
+	}
+	os.Chmod(s.Dir("alpha"), 0o700)
 	if err := s.Delete("alpha"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +183,20 @@ func TestProcesses(t *testing.T) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
+	}
+	// Pause/Resume mexem no grupo inteiro; o estado do processo (T = parado) prova o sinal.
+	stat := func() string {
+		out, _ := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(cmd.Process.Pid)).Output()
+		return strings.TrimSpace(string(out))
+	}
+	if err := p.Pause(cmd.Process.Pid); err != nil || !strings.HasPrefix(stat(), "T") {
+		t.Fatalf("pause: %v state %q", err, stat())
+	}
+	if err := p.Resume(cmd.Process.Pid); err != nil || strings.HasPrefix(stat(), "T") {
+		t.Fatalf("resume: %v state %q", err, stat())
+	}
+	if p.Pause(0) == nil || p.Resume(-1) == nil {
+		t.Fatal("pid <= 0 must be refused (it would signal the test's own group)")
 	}
 	p.Kill(cmd.Process.Pid)
 	if err := cmd.Wait(); err == nil {

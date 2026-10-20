@@ -150,11 +150,26 @@ func (s *Server) handleConnection(conn net.Conn) {
 	case protocol.OpWorkload:
 		writeResult(conn, s.startWorkload(job))
 		return
+	case protocol.OpDial:
+		dialSession(conn, job)
+		return
+	case protocol.OpMountS3:
+		writeResult(conn, mountS3(job))
+		return
+	case protocol.OpSSHAgent:
+		writeResult(conn, startSSHAgent(job))
+		return
+	case protocol.OpSetEnv:
+		setSecretEnv(job.Env)
+		writeResult(conn, Result{TraceID: job.TraceID, Status: "success"})
+		return
 	case protocol.OpShutdown:
 		// Primeiro o workload: stop_signal e até Timeout segundos para ele salvar o que
 		// precisa (um servidor gravando estado). Depois o disco, antes de responder: quando
 		// o host recebe o ok, o que estava em cache já está no ext4. A saída desliga a VM.
 		s.stopWorkload(job.Signal, time.Duration(job.Timeout)*time.Second)
+		// Volumes s3:// saem antes do sync: o que um programa deixou aberto sobe no release.
+		unmountS3()
 		syncDisks()
 		writeResult(conn, Result{TraceID: job.TraceID, Status: "success"})
 		exitProcess(0)

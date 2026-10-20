@@ -58,6 +58,21 @@ type Job struct {
 	// segundos antes do SIGKILL.
 	Signal     int  `json:"signal,omitempty"`
 	StopOnExit bool `json:"stop_on_exit,omitempty"`
+	// Port é do OpDial: a porta TCP que o guest disca no próprio 127.0.0.1.
+	Port uint16 `json:"port,omitempty"`
+	// User é quem roda o comando (exec, pty, workload): nome do passwd do guest ou
+	// "uid[:gid]". Vazio é root, o padrão do guest.
+	User string `json:"user,omitempty"`
+	// S3 é do OpMountS3: o bucket montado em Path; as credenciais vão em Env (as AWS_* da
+	// máquina), nunca no host.
+	S3 *S3Mount `json:"s3,omitempty"`
+}
+
+// S3Mount é um volume s3://BUCKET[/PREFIX] montado por FUSE dentro do guest.
+type S3Mount struct {
+	Bucket   string `json:"bucket"`
+	Prefix   string `json:"prefix,omitempty"`
+	ReadOnly bool   `json:"read_only,omitempty"`
 }
 
 // Operações de Job. OpRun é o vazio, para o fio dos jobs efêmeros não mudar.
@@ -73,7 +88,31 @@ const (
 	// OpWorkload liga o processo que a máquina mantém rodando (entrypoint + cmd do
 	// runner.code), em segundo plano; a resposta vem assim que ele começou.
 	OpWorkload = "workload"
+	// OpDial liga a conexão a 127.0.0.1:Port dentro do guest: depois do Result de sucesso a
+	// conexão vira um tubo de bytes cru. É por onde chega a porta publicada, para alcançar
+	// também servidor que escuta só em localhost (vite, openclaw, dev servers).
+	OpDial = "dial"
+	// OpMountS3 monta o bucket de S3 em Path (FUSE no guest) e responde depois de conferir que
+	// o bucket responde com as credenciais dadas: bucket errado falha o start, não o 1º ls.
+	OpMountS3 = "mount-s3"
+	// OpSetEnv guarda Env na memória do guest e junta a todo comando seguinte (exec, pty,
+	// workload): os segredos da máquina, mandados a cada start e nunca gravados em disco.
+	OpSetEnv = "set-env"
+	// OpSSHAgent abre no guest o socket Unix Path, que repassa cada conexão à porta vsock Port
+	// do host (CID 2) — o agente SSH de quem deu o start.
+	OpSSHAgent = "ssh-agent"
 )
+
+// SSHAgentPort é a porta vsock do encaminhamento do agente SSH (a 5000 é a do guest).
+const SSHAgentPort = 5001
+
+// MountSocketPortBase é a primeira porta vsock dos sockets do host montados no guest
+// (--mount-socket): o i-ésimo usa MountSocketPortBase+i. Longe da 5000 (guest) e da 5001
+// (agente SSH), com espaço para os 64 que a máquina pode ter.
+const MountSocketPortBase = 5100
+
+// GuestSSHAgentSocket é onde o guest expõe o agente: em /tmp (tmpfs), que some no stop.
+const GuestSSHAgentSocket = "/tmp/rc-ssh-agent.sock"
 
 // Tipos de Event da sessão interativa. Do host para o guest: entrada e tamanho da janela.
 // Do guest para o host: a saída do terminal e a saída do programa (com o código).
@@ -84,11 +123,19 @@ const (
 	EventExit   = "exit"
 )
 
+// Variáveis de ambiente com que o host configura a rede do guest (krun_set_exec): o guest
+// lê no boot e monta eth0, rota e resolv.conf. Ficam aqui porque os dois lados as usam.
+const (
+	EnvNetAddr    = "RUNNER_NET_ADDR"    // IP/prefixo do guest, ex. 100.96.0.2/30
+	EnvNetGateway = "RUNNER_NET_GATEWAY" // rota padrão
+	EnvNetDNS     = "RUNNER_NET_DNS"     // resolvedores, separados por vírgula
+)
+
 // ChunkBytes é o pedaço de cópia de arquivo: 1 MiB. Em base64 no JSON vira
 // ~1,4 MiB, longe do teto do frame, e o arquivo grande não precisa caber na memória.
 const ChunkBytes = 1 << 20
 
-// MaxCopyBytes é o teto de um arquivo copiado (4 GiB, o): acima disso, montar
+// MaxCopyBytes é o teto de um arquivo copiado (4 GiB): acima disso, montar
 // diretório é o caminho, não copiar.
 const MaxCopyBytes = 4 << 30
 

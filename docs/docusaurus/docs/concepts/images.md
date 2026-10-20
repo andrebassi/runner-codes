@@ -20,7 +20,7 @@ rc image build --all
 
 1. **Pull sem Docker.** O host baixa a imagem com go-containerregistry, para a arquitetura do host.
 2. **Achatamento no host.** As camadas viram um único tar.
-3. **VM de build.** Uma VM Alpine 3.22.6 (minirootfs, com sha256 conferido) recebe o tar, com e2fsprogs e GNU tar instalados via `apk`. Dentro dela, como root:
+3. **VM de build.** Uma VM Alpine 3.22.6 (o tarball base oficial do Alpine, com sha256 conferido) recebe o tar, com e2fsprogs e GNU tar instalados via `apk`. Dentro dela, como root:
    - extrai o tar num tmpfs preservando dono e permissões (`--numeric-owner`);
    - copia o guest e o `start.sh` para `/opt/runner/`;
    - roda o warmup em chroot, com rede, só nesta etapa;
@@ -57,7 +57,7 @@ O warmup é uma linha de `sh` declarada no `languages.yaml`. Ele roda **na VM de
 | Linguagem | Warmup | Por quê |
 |-----------|--------|---------|
 | python | `python3 -m compileall` na stdlib | a imagem oficial não traz `.pyc`; compilar tira esse custo do primeiro import. A imagem passou de 66 para 85 MiB e o warmup levou ~1 s |
-| go | compila um programa com `GOCACHE=/opt/runner/gocache` | popula o cache de build; como o root é read-only, o `start.sh` copia o cache para `/tmp/gocache` no boot, antes de a VM entrar no pool |
+| go | compila um programa com `GOCACHE=/opt/runner/gocache` | popula o cache de build; como o root é read-only, o `start.sh` copia o cache para `/tmp/go-cache` no boot (o caminho que o executor força), antes de a VM entrar no pool |
 | c, cpp | `apk add build-base` | a imagem base é `alpine:3.22`, sem compilador |
 | perl | `apk add perl` | idem |
 | jq | `apk add jq` | idem |
@@ -65,6 +65,21 @@ O warmup é uma linha de `sh` declarada no `languages.yaml`. Ele roda **na VM de
 
 As demais linguagens não têm warmup.
 
+## Imagens fora do catálogo
+
+Máquinas aceitam uma imagem OCI qualquer (`rc machine create --image alpine:3.20`, ou `image = "..."` no
+[runner.code](/cli/runner-code)). O build é o mesmo, com o warmup vazio, e a imagem entra no cache como as outras. Um
+[pack](/cli/pack) extraído vira a imagem `pack:<chave>`.
+
+## Limpar o cache
+
+```bash
+rc image prune          # builds antigos, que nenhum nome aponta mais
+rc image prune --all    # também as imagens e packs que nenhuma máquina usa
+```
+
 ## Tempos medidos
 
-Na máquina medida (macOS 27.0.1, Apple Silicon), a imagem Python levou ~8–10 s para construir, dos quais 2,7 s de pull e achatamento.
+Na máquina medida (macOS 27.0.1, Apple Silicon), a imagem Python levou ~8–10 s para construir, dos quais 2,7 s de
+pull e achatamento. Nas imagens grandes o `mkfs.ext4` domina: 28 s dos 35 s do Go, porque o ext4 é escrito no host via
+virtiofs. A tabela de cada stack está no [Relatório de testes](/advanced/test-report).

@@ -9,7 +9,8 @@ description: 'Erros conhecidos, causa e correção'
 rc doctor
 ```
 
-Confere plataforma, libkrun, guest e imagens, com o motivo de cada falha.
+Confere plataforma, libkrun, GPU, CUDA, virtualização aninhada, guest, confinamento e imagens. Cada linha começa com
+`ok`, `info`, `warn` ou `FAIL`, e a falha traz o motivo.
 
 ## Couldn't find or load libkrunfw.5.dylib
 
@@ -41,11 +42,52 @@ Confere plataforma, libkrun, guest e imagens, com o motivo de cada falha.
 
 **Correção:** não passe comando composto como argumento. Grave num arquivo e execute o arquivo — é o que o `start.sh` e o warmup do build fazem.
 
-## VM de X não ficou pronta ... console: ...
+## VM for X did not become ready ... console: ...
 
 **Causa:** o guest não respondeu ao job `sh true` da espera de prontidão. A mensagem traz o fim do console do guest, que normalmente diz o motivo (guest dinâmico, `start.sh` falhando, imagem corrompida).
 
 **Correção:** leia o trecho de console da mensagem. Os casos mais comuns são os desta página: guest dinâmico ou imagem desatualizada.
+
+## machine X did not become ready / failed to start
+
+**Causa:** o processo `vmm` da máquina morreu no boot ou o guest não respondeu. A mensagem cita a última linha do
+`vmm.log` escrita **neste** start (o log é em append), por exemplo `nested virtualization is not supported on this
+host`.
+
+**Correção:** leia a linha citada. O log inteiro é o `vmm.log` do diretório que `rc machine data-dir --name X`
+imprime; o console sai em `rc machine logs --name X`.
+
+## INVALID_STATE: machine X is running; stop it first or use force
+
+**Causa:** `delete` (e outras operações de máquina parada) numa máquina ligada.
+
+**Correção:** `rc machine stop --name X` antes, ou `--force` para matar.
+
+## machine X is paused; resume it (rc machine resume) or stop it first
+
+**Causa:** `start` ou `exec` numa máquina pausada.
+
+**Correção:** `rc machine resume --name X`, ou `stop` para desligar.
+
+## resolve secret 'NOME': env_unset
+
+**Causa:** um `--secret-env` (ou `[secrets]` com `from_env`) aponta para uma variável que não existe no ambiente de
+quem deu o `start`.
+
+**Correção:** exporte a variável antes do `start`; o valor é lido a cada start e nunca fica gravado.
+
+## O programa na máquina não resolve um nome (`bad address`)
+
+**Causa:** a política de saída não permite o nome; o DNS do gateway responde NXDOMAIN de propósito.
+
+**Correção:** confira o `egress-denials.log` do diretório da máquina (`rc machine data-dir`) e libere com
+`rc machine update --name X --allow-host <nome>`, com a máquina ligada. Veja [Rede e volumes](/cli/network).
+
+## E007
+
+**Causa:** `--gpu` (ou `"gpu": true`) numa stack sem `gpu` no catálogo.
+
+**Correção:** use uma stack com GPU, como a `llama`. CUDA não existe: a GPU é Vulkan (Venus). Veja [GPU](/advanced/gpu).
 
 ## E006: unsupported language
 

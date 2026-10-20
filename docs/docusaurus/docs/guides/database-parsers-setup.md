@@ -5,9 +5,9 @@ description: 'Como trazer de volta os validadores de sintaxe SQL e NoSQL, que ho
 
 ## Estado atual
 
-Os validadores de sintaxe de banco — `mysql-parser`, `postgresql-parser`, `mariadb-parser`, `sqlite-parser`, `mongodb-parser` e `redis-parser` — **não estão no catálogo**. A API recusa essas linguagens com E006.
+Os validadores de sintaxe de banco (`mysql-parser`, `postgresql-parser`, `mariadb-parser`, `sqlite-parser`, `mongodb-parser` e `redis-parser`) **não estão no catálogo**. A API recusa essas linguagens com E006.
 
-Eles existiam na versão com Firecracker. O que sobrou:
+Eles vêm de uma versão anterior do projeto e não foram reconstruídos sobre a libkrun. O que existe no repositório:
 
 - o executor do guest (`internal/guest/executor.go`) ainda tem as entradas, que chamam `/usr/local/bin/node` com um script de validação (`/usr/local/bin/mysql-run`, `psql-run`, `mariadb-run`, `sqlite-run`, `mongodb-run`, `redis-run`), e, nos parsers SQL, `NODE_PATH=/opt/sql-parser/node_modules`;
 - os scripts e Dockerfiles de cada parser estão em `docker/<parser>/` na raiz do repositório; os SQL usam `node-sql-parser`.

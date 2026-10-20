@@ -19,7 +19,7 @@ import (
 )
 
 // ReadyTimeout é quanto o boot pode levar até o guest responder. O boot medido é
-// ~260 ms (p95 266 ms); 30 s é o mesmo teto de "sem progresso" e cobre host
+// ~260 ms (p95 266 ms); 30 s é o teto de "sem progresso" e cobre host
 // lento e cache de página frio (primeiro boot medido em 869 ms) com folga larga.
 const ReadyTimeout = 30 * time.Second
 
@@ -29,8 +29,8 @@ const maxBootsPerLanguage = 2
 
 // DefaultMaxConcurrentBoots é o teto de boots simultâneos da reposição somando todas as
 // linguagens. Sem ele o serve subia 15 × 2 = 30 VMs juntas, saturava a CPU e o job do
-// pedido levava 1,7–2,3 s em vez de ~40 ms (medido). 4 é o número
-// (pool_controller.rs:19).
+// pedido levava 1,7–2,3 s em vez de ~40 ms (medido). 4 deixa a reposição
+// andar sem disputar a CPU com o job do pedido.
 const DefaultMaxConcurrentBoots = 4
 
 // DefaultMaxGPUVMs é o teto de VMs com GPU vivas ao mesmo tempo. Todas dividem a mesma GPU

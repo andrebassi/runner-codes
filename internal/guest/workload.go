@@ -44,8 +44,12 @@ func (s *Server) startWorkload(job Job) Result {
 			return failed(res, "workload: already running")
 		}
 	}
+	u, err := lookupUser(job.User)
+	if err != nil {
+		return failed(res, "workload: "+err.Error())
+	}
 	cmd := exec.Command(job.Argv[0], job.Argv[1:]...)
-	cmd.Env = append(os.Environ(), job.Env...)
+	cmd.Env = environ(u, job.Env)
 	cmd.Dir = job.Cwd
 	if cmd.Dir == "" {
 		cmd.Dir = "/"
@@ -54,6 +58,7 @@ func (s *Server) startWorkload(job Job) Result {
 	cmd.Stdout, cmd.Stderr = out, out
 	// Grupo próprio: o stop_signal vai ao workload e aos filhos dele (um shell e o servidor).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	applyUser(cmd, u)
 	if err := cmd.Start(); err != nil {
 		return failed(res, "workload: "+err.Error())
 	}

@@ -156,21 +156,27 @@ data: {"status":"success","exitCode":0,"exception":null,"executionTime":1534,"ti
 
 ## Máquinas
 
-Ciclo de vida das [máquinas persistentes](/cli/machine), com os nomes de rota.
+Ciclo de vida das [máquinas persistentes](/cli/machine).
 
 | Método | Caminho | Corpo / query | Resposta |
 |--------|---------|---------------|----------|
-| POST | `/api/v1/machines` | `{"name","stack"\|"image","cpus","memory_mib","disk_gib","gpu","gpu_vram_mib","env","workdir","init","workload","stop_signal","stop_timeout","stop_on_exit"}` ou `{"name","runner_code":"<TOML>"}` (campos não vazios vencem o arquivo) | 201 + máquina (`state: stopped`) |
+| POST | `/api/v1/machines` | `{"name","stack"\|"image","cpus","memory_mib","disk_gib","gpu","gpu_vram_mib","env","workdir","init","workload","stop_signal","stop_timeout","stop_on_exit","net","ports":["8080:80"],"egress":{"allow_hosts",...},"network":"lab"}` ou `{"name","runner_code":"<TOML>"}` (campos não vazios vencem o arquivo) | 201 + máquina (`state: stopped`) |
 | GET | `/api/v1/machines` | — | lista com `state` e `pid` |
 | GET | `/api/v1/machines/:name` | — | a máquina |
 | DELETE | `/api/v1/machines/:name` | `?force=true` mata se ligada | 204 |
 | POST | `/api/v1/machines/:name/start` | — | 200 + máquina (`state: running`) |
 | POST | `/api/v1/machines/:name/stop` | `?timeout=N` em segundos (0–300; 0 mata na hora); sem ele, o `stop_timeout` da máquina (ou 10) | 204 |
 | POST | `/api/v1/machines/:name/exec` | `{"command":["argv",...],"env":["K=V"],"workdir","stdin","timeout"}` | `{"exitCode","stdout","stderr","timedOut","executionTime"}` |
-| POST | `/api/v1/machines/:name/exec/stream` | mesmo corpo | SSE: `stdout`, `stderr` e `exit` (`{"exitCode":N}`) |
+| POST | `/api/v1/machines/:name/exec/stream` | mesmo corpo | SSE, **um evento por linha, texto cru**: `event: stdout` / `data: line1`; linha que chega partida espera o resto, e o resto sem `\n` sai antes do `exit` (`{"exitCode","timedOut","executionTime"}`) |
 | PUT | `/api/v1/machines/:name/files?path=/abs[&mode=644]` | corpo cru = conteúdo | `{"path","bytes"}` |
 | GET | `/api/v1/machines/:name/files?path=/abs` | — | conteúdo cru (`application/octet-stream`) |
+| PUT/GET | `/api/v1/machines/:name/files/*path` | idem, com o caminho na URL (`files/%2Ftmp%2Fa.txt` ou `files/tmp/a.txt`) | idem |
 | GET | `/api/v1/machines/:name/logs?tail=N&source=all\|workload` | — | console em texto; `workload` filtra a saída do workload, sem a marca |
+| PUT | `/api/v1/machines/:name/egress` | `{"allow_hosts","allow_host_patterns","allow_cidrs","deny_cidrs","block_private","allow_private"}` (a política inteira) | 200 + máquina; com ela ligada vale na próxima conexão. `INVALID_STATE` se ligada sem placa de rede |
+| POST | `/api/v1/machines/:name/pause` | — | 204; congela a máquina ligada (`state: paused`), e exec é recusado até o resume |
+| POST | `/api/v1/machines/:name/resume` | — | 204; máquina já rodando não é erro |
+| POST | `/api/v1/machines/:name/sync` | — | 204; devolve ao host as cópias dos volumes staged (`INVALID_STATE` se parada) |
+| POST | `/api/v1/machines/:name/branch` | `{"name":"filha"}` | 201 + filha (`state: stopped`), cópia copy-on-write do disco; a mãe ligada congela só durante o clone |
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'
@@ -182,11 +188,29 @@ curl -s -X PUT --data-binary @app.py 'localhost:8080/api/v1/machines/dev/files?p
 
 O `command` é um argv **sem shell implícito**. Para usar shell, mande `["sh","-c","..."]`.
 
+Formas alternativas aceitas no create:
+
+| Campo alternativo | Equivale a |
+|---|---|
+| `"network": true` / `false` | `net` (string continua sendo o nome da rede) |
+| `"memoryMb"` | `memory_mib` |
+| `"cmd"` | `workload` |
+| `"allowedHosts"`, `"allowedCidrs"` | `egress.allow_hosts`, `egress.allow_cidrs`, e ligam a rede |
+| `"nestedVirt"` (ou `"nested"`) | `--nested`; recusado com 400 a menos que o servidor suba com `rc serve --allow-nested-virt` |
+
+Campo desconhecido é **recusado** com 400 (`CONFIG_ERROR`, a mensagem nomeia o campo), nas rotas de create, exec,
+egress e branch. Ignorar calado deixava um `allowedHost` com erro de digitação criar a máquina sem a restrição de saída.
+
+O stream de **job** (`/api/v1/execute/stream`) não mudou: lá o `data` segue como string JSON, porque o pedaço
+pode carregar bytes sem quebra de linha.
+
 Erros das rotas de máquina:
 
 ```json
-{"error":{"code":"INVALID_STATE","message":"INVALID_STATE: machine dev is not running; start it first"}}
+{"error":{"code":"INVALID_STATE","message":"INVALID_STATE: machine dev is not running; start it first"},"code":"INVALID_STATE"}
 ```
+
+O `code` aparece também no topo do corpo, para o cliente que o procura ali.
 
 | Código | HTTP |
 |--------|------|

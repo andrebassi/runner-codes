@@ -35,8 +35,13 @@ func execArgv(job Job, sink Sink) Result {
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(job.Timeout)*time.Second)
 		defer cancel()
 	}
+	u, err := lookupUser(job.User)
+	if err != nil {
+		return failed(res, "exec: "+err.Error())
+	}
 	cmd := exec.CommandContext(ctx, job.Argv[0], job.Argv[1:]...)
-	cmd.Env = append(os.Environ(), job.Env...)
+	cmd.Env = environ(u, job.Env)
+	applyUser(cmd, u)
 	cmd.Dir = job.Cwd
 	if cmd.Dir == "" {
 		cmd.Dir = "/"
@@ -51,7 +56,7 @@ func execArgv(job Job, sink Sink) Result {
 		cmd.Stdin = strings.NewReader(s)
 	}
 	start := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	res.ExecutionTime = time.Since(start).Milliseconds()
 	res.Stdout = stdout.String()
 	var ee *exec.ExitError

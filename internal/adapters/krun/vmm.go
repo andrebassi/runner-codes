@@ -39,7 +39,30 @@ func RunVMM(api API, s Spec, watchdog io.Reader) error {
 			exitFunc(ExitParentGone)
 		}()
 	}
-	ctx, err := Configure(api, s)
+	netFD := -1
+	if s.Net != nil {
+		fd, env, gw, err := startNetwork(s.Net, s.VsockSocket)
+		if err != nil {
+			return err
+		}
+		// O gateway roda nas goroutines deste processo enquanto a libkrun ocupa a thread
+		// do krun_start_enter; se a VM nem subir, ele é fechado aqui.
+		defer gw.Close()
+		netFD, s.Env = fd, append(append([]string{}, s.Env...), env...)
+	}
+	if len(s.Sockets) > 0 {
+		// Pontes de socket (docker.sock): escutam no host enquanto este processo viver.
+		sb, err := startSockets(s.Sockets, s.VsockSocket)
+		if err != nil {
+			return err
+		}
+		defer sb.Close()
+	}
+	scr, err := startDisplay(s.Display)
+	if err != nil {
+		return err
+	}
+	ctx, err := configureFull(api, s, netFD, scr)
 	if err != nil {
 		return err
 	}
@@ -62,7 +85,7 @@ var applySandbox = ApplySandbox
 func sandbox(s Spec) error {
 	if !SandboxEnabled(s) {
 		switch {
-		case !SandboxSupported || s.RootDisk == "" || s.Network:
+		case !SandboxSupported || s.RootDisk == "" || s.Network || s.Net != nil:
 		case s.GPU:
 			fmt.Fprintln(os.Stderr, "warning: GPU VM runs without Landlock/seccomp (the virglrenderer needs /dev/dri and execve)")
 		default:

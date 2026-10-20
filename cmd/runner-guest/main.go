@@ -9,6 +9,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	"runner.code/internal/guest"
 )
@@ -17,6 +18,10 @@ import (
 func main() {
 	port := flag.Uint("port", guest.DefaultPort, "porta vsock")
 	flag.Parse()
+	// Rede antes de atender: o init e o workload da máquina já podem precisar dela.
+	if err := guest.ConfigureNetwork(os.Getenv); err != nil {
+		log.Printf("network: %v", err)
+	}
 	cfg := guest.DefaultServerConfig()
 	cfg.Port = uint32(*port)
 	log.Fatal(guest.NewServer(cfg).Run())

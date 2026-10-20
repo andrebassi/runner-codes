@@ -17,8 +17,7 @@ import (
 )
 
 // Launcher cria processos vmm. Cada Start é um spawn novo do próprio binário,
-// nunca fork: fork de processo multi-thread é morto pelo HVF ~2 s depois do boot
-//.
+// nunca fork: fork de processo multi-thread é morto pelo HVF ~2 s depois do boot.
 type Launcher struct {
 	// Exe é o binário que tem o subcomando `vmm` (normalmente os.Executable()).
 	Exe string
@@ -31,6 +30,10 @@ type Launcher struct {
 	WorkDir string
 	// Stderr recebe o stderr do processo vmm (erros da libkrun). Nil descarta.
 	Stderr io.Writer
+	// tied guarda o lado de escrita dos pipes de vigia das VMs presas a este processo
+	// (TiedToCaller): ninguém escreve neles; existir aberto é o sinal de vida.
+	tiedMu sync.Mutex
+	tied   []*os.File
 }
 
 // Process é uma VM viva. Kill é idempotente.
@@ -114,7 +117,27 @@ func (l *Launcher) StartDetached(s Spec, specPath, logPath string) (int, error) 
 	cmd.Env = append(os.Environ(), libPathEnv+"="+l.LibDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout, cmd.Stderr = log, log
-	if err := cmd.Start(); err != nil {
+	var watchRead *os.File
+	if s.TiedToCaller {
+		// O lado de escrita fica aberto neste processo até ele sair (o rc morre, o kernel
+		// fecha, o vmm lê EOF no fd 3 e se mata). Sessão própria continua: o Ctrl-C do
+		// terminal é tratado pelo rc, que apaga a máquina com calma.
+		r, w, err := os.Pipe()
+		if err != nil {
+			return 0, fmt.Errorf("create watch pipe: %w", err)
+		}
+		l.tiedMu.Lock()
+		l.tied = append(l.tied, w)
+		l.tiedMu.Unlock()
+		watchRead = r
+		cmd.Args = append(cmd.Args, "--watch-fd", "3")
+		cmd.ExtraFiles = []*os.File{r}
+	}
+	err = cmd.Start()
+	if watchRead != nil {
+		watchRead.Close()
+	}
+	if err != nil {
 		return 0, fmt.Errorf("launch vmm: %w", err)
 	}
 	pid := cmd.Process.Pid

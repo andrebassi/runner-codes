@@ -149,12 +149,12 @@ func TestStartErrors(t *testing.T) {
 	}
 	file := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(file, nil, 0o600)
-	bad := *l
+	bad := l.clone()
 	bad.WorkDir = filepath.Join(file, "sub")
 	if _, err := bad.Start(jobSpec()); err == nil {
 		t.Fatal("workdir under a file should fail")
 	}
-	noExe := *l
+	noExe := l.clone()
 	noExe.Exe = filepath.Join(t.TempDir(), "does-not-exist")
 	if _, err := noExe.Start(jobSpec()); err == nil {
 		t.Fatal("missing binary should fail")
@@ -189,6 +189,35 @@ func TestExitCodeOf(t *testing.T) {
 	}
 }
 
+// TestStartDetachedTied: a VM presa ao chamador (o run em primeiro plano) morre quando o
+// processo que a ligou some — aqui, fechando o lado de escrita do pipe, que é o que o kernel
+// faz quando o rc leva um SIGKILL. Sem o pipe ela seguiria viva (a sessão é própria).
+func TestStartDetachedTied(t *testing.T) {
+	l := newTestLauncher(t, nil)
+	dir := t.TempDir()
+	s := specExec("/sleep")
+	s.TiedToCaller = true
+	pid, err := l.StartDetached(s, filepath.Join(dir, "spec.json"), filepath.Join(dir, "vmm.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if syscall.Kill(pid, 0) != nil {
+		t.Fatal("the tied VM must be running while the caller lives")
+	}
+	if len(l.tied) != 1 {
+		t.Fatalf("the caller must hold one watch pipe, got %d", len(l.tied))
+	}
+	l.tied[0].Close()
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+	}
+	syscall.Kill(pid, syscall.SIGKILL)
+	t.Fatal("the tied VM must die when its caller goes away")
+}
+
 // TestStartDetached: a máquina sobe em sessão própria (sobrevive ao rc), com a spec no
 // caminho pedido (fica lá para o próximo start) e stdout/stderr no log da máquina.
 func TestStartDetached(t *testing.T) {
@@ -220,9 +249,15 @@ func TestStartDetached(t *testing.T) {
 	if _, err := l.StartDetached(specExec("/sid"), spec, filepath.Join(dir, "no", "vmm.log")); err == nil {
 		t.Fatal("unwritable log path must fail")
 	}
-	bad := *l
+	bad := l.clone()
 	bad.Exe = filepath.Join(dir, "missing-binary")
 	if _, err := bad.StartDetached(specExec("/sid"), spec, logPath); err == nil {
 		t.Fatal("missing binary must fail")
 	}
+}
+
+// clone copia a configuração de um Launcher sem o estado (o mutex e os pipes de vigia, que
+// não se copiam): cada teste de falha mexe num campo da cópia.
+func (l *Launcher) clone() *Launcher {
+	return &Launcher{Exe: l.Exe, LibDir: l.LibDir, LibPath: l.LibPath, WorkDir: l.WorkDir, Stderr: l.Stderr}
 }

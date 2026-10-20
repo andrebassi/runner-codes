@@ -30,6 +30,16 @@ type libAPI struct {
 	// setGPUOptions2 fica nil quando a libkrun foi compilada sem GPU=1 (a do nixpkgs no
 	// Linux): o símbolo nem existe, e só a VM que pedir GPU deve falhar.
 	setGPUOptions2 func(uint32, uint32, uint64) int32
+	addVirtiofs3   func(uint32, string, string, uint64, bool) int32
+	// addNetUnixstream recebe o caminho como ponteiro para poder passar NULL (o fd é que
+	// liga o device; a libkrun exige path NULL quando fd != -1).
+	addNetUnixstream func(uint32, *byte, int32, *byte, uint32, uint32) int32
+	addDisplay       func(uint32, uint32, uint32) int32
+	setDisplayBack   func(uint32, unsafe.Pointer, uintptr) int32
+	addInputDevice   func(uint32, unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) int32
+	// setNestedVirt e checkNestedVirt ficam nil numa libkrun anterior ao suporte a nested.
+	setNestedVirt   func(uint32, bool) int32
+	checkNestedVirt func() int32
 }
 
 // keepAlive segura os arrays argv/envp passados à libkrun: krun_start_enter não volta
@@ -66,10 +76,19 @@ func Load(path string) (api API, err error) {
 	reg(&l.startEnter, "krun_start_enter")
 	reg(&l.disableImplConsole, "krun_disable_implicit_console")
 	reg(&l.addVirtioConsoleDef, "krun_add_virtio_console_default")
+	reg(&l.addVirtiofs3, "krun_add_virtiofs3")
+	reg(&l.addNetUnixstream, "krun_add_net_unixstream")
+	reg(&l.addDisplay, "krun_add_display")
+	reg(&l.setDisplayBack, "krun_set_display_backend")
+	reg(&l.addInputDevice, "krun_add_input_device")
 	// Opcional: confere com Dlsym antes, porque o RegisterLibFunc entraria em pânico e o
 	// recover acima recusaria a biblioteca inteira.
 	if _, err := purego.Dlsym(h, "krun_set_gpu_options2"); err == nil {
 		reg(&l.setGPUOptions2, "krun_set_gpu_options2")
+	}
+	if _, err := purego.Dlsym(h, "krun_set_nested_virt"); err == nil {
+		reg(&l.setNestedVirt, "krun_set_nested_virt")
+		reg(&l.checkNestedVirt, "krun_check_nested_virt")
 	}
 	return l, nil
 }
@@ -85,6 +104,23 @@ func (l *libAPI) SetGPUOptions2(ctx uint32, virglFlags uint32, shmSize uint64) i
 
 // HasGPU diz se a libkrun carregada foi compilada com GPU (tem krun_set_gpu_options2).
 func (l *libAPI) HasGPU() bool { return l.setGPUOptions2 != nil }
+
+// CheckNestedVirt repassa a krun_check_nested_virt: 1 o host suporta, 0 não, < 0 erro.
+// Sem o símbolo devolve -ENOTSUP.
+func (l *libAPI) CheckNestedVirt() int32 {
+	if l.checkNestedVirt == nil {
+		return -int32(syscall.ENOTSUP)
+	}
+	return l.checkNestedVirt()
+}
+
+// SetNestedVirt repassa a krun_set_nested_virt; sem o símbolo devolve -ENOTSUP.
+func (l *libAPI) SetNestedVirt(ctx uint32, on bool) int32 {
+	if l.setNestedVirt == nil {
+		return -int32(syscall.ENOTSUP)
+	}
+	return l.setNestedVirt(ctx, on)
+}
 
 // cStringArray monta um `const char *const[]` terminado em NULL e o mantém vivo.
 func cStringArray(items []string) unsafe.Pointer {
@@ -115,6 +151,36 @@ func (l *libAPI) SetRoot(ctx uint32, path string) int32 { return l.setRoot(ctx, 
 // AddDisk2 repassa a krun_add_disk2.
 func (l *libAPI) AddDisk2(ctx uint32, blockID, path string, format uint32, readOnly bool) int32 {
 	return l.addDisk2(ctx, blockID, path, format, readOnly)
+}
+
+// AddNetUnixstream repassa a krun_add_net_unixstream com path NULL, o fd do socketpair e
+// features 0: sem offload de checksum/TSO, porque o gateway não trata o cabeçalho
+// virtio-net (cada frame é Ethernet cru).
+func (l *libAPI) AddNetUnixstream(ctx uint32, fd int32, mac []byte) int32 {
+	if len(mac) != 6 {
+		return -int32(syscall.EINVAL)
+	}
+	return l.addNetUnixstream(ctx, nil, fd, &mac[0], 0, 0)
+}
+
+// AddDisplay repassa a krun_add_display; devolve o id da tela (0..) ou -errno.
+func (l *libAPI) AddDisplay(ctx uint32, width, height uint32) int32 {
+	return l.addDisplay(ctx, width, height)
+}
+
+// SetDisplayBackend repassa a krun_set_display_backend com a vtable de callbacks.
+func (l *libAPI) SetDisplayBackend(ctx uint32, backend unsafe.Pointer, size uintptr) int32 {
+	return l.setDisplayBack(ctx, backend, size)
+}
+
+// AddInputDevice repassa a krun_add_input_device (config e provedor de eventos separados).
+func (l *libAPI) AddInputDevice(ctx uint32, config unsafe.Pointer, configSize uintptr, events unsafe.Pointer, eventsSize uintptr) int32 {
+	return l.addInputDevice(ctx, config, configSize, events, eventsSize)
+}
+
+// AddVirtiofs3 repassa a krun_add_virtiofs3 (diretório do host com tag, opcionalmente ro).
+func (l *libAPI) AddVirtiofs3(ctx uint32, tag, path string, shmSize uint64, readOnly bool) int32 {
+	return l.addVirtiofs3(ctx, tag, path, shmSize, readOnly)
 }
 
 // SetRootDiskRemount repassa a krun_set_root_disk_remount.

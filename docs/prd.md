@@ -20,9 +20,9 @@ ext4 montados com `debootstrap` e root, snapshots guardados no S3 e um handshake
 - `pkg/guest` não compila no macOS;
 - `pkg/host` tem 21,2% de cobertura com um teste falhando, e `internal/*` tem 0%.
 
-A libkrun é o VMM usado pelo outro runtime e pelo krunkit. Ela roda nativa no Mac (Hypervisor.framework) e no Linux
+A libkrun é o VMM usado pelo krunkit. Ela roda nativa no Mac (Hypervisor.framework) e no Linux
 (KVM), carrega o kernel a partir da libkrunfw e aceita um disco ext4 como root. O dono escolheu usá-la
-**direto**, sem o outro runtime, para manter o guest-runner e o protocolo vsock que já existem. Com isso, warmup,
+**direto**, sem camada intermediária, para manter o guest-runner e o protocolo vsock que já existem. Com isso, warmup,
 conversão de OCI e sandbox do VMM passam a ser responsabilidade deste projeto. O Windows fica fora, porque a
 libkrun upstream não tem backend WHP.
 

@@ -5,14 +5,30 @@ description: 'Testes ponta a ponta do rc no macOS, no Linux e no Windows: ambien
 
 # Relatório de testes por plataforma
 
-Testes executados em **19/10/2026** contra o código da migração Firecracker → libkrun (binário `rc`).
-Todo número desta página foi medido; o que não foi testado está dito como não testado.
+Última rodada completa: **20/10/2026**, binário `rc` sobre libkrun + libkrunfw. As medições de base (boot, memória,
+build de imagem, execução por stack) são de **19/10/2026**, no mesmo host. Todo número desta página foi medido; o que
+não foi testado está dito como não testado.
 
-## Resumo
+## Rodada de 20/10/2026 (macOS 27, Apple M1 Pro)
+
+| Gate | Resultado |
+|---|---|
+| `task test` | 20 pacotes, todos verdes (unidade com `-race`) |
+| `task test:cov` | **95,2%** total, domínio **100%**, guest **75%** (catraca em 75), SDK Python **100%** em linha e branch |
+| `task test:e2e` | **42 de 42** testes verdes, em duas rodadas seguidas |
+| `task runbook` | **116** conferências, **0** falhas |
+| `task guides` | **12** pastas, **215** conferências, **0** falhas |
+| `task test:targets` | darwin/arm64, linux/amd64 e linux/arm64 compilam; windows/amd64 recusado com o motivo |
+
+No Linux, Landlock + seccomp foram testados com o processo confinado de verdade no Ubuntu 26.04, numa VM sem KVM; uma
+microVM completa no Linux **não foi medida**. `--nested` só teve a **recusa** medida (este Mac é M1); o caminho que
+liga não foi medido.
+
+## Resumo por plataforma
 
 | Plataforma | Ambiente | microVM real | Resultado |
 |---|---|---|---|
-| **macOS** | MacBook M1 Pro, macOS 27.0.1, Hypervisor.framework | **sim** | suíte e2e (21 testes, 16 imagens) verde em duas rodadas seguidas (42 de 42) |
+| **macOS** | MacBook M1 Pro, macOS 27.0.1, Hypervisor.framework | **sim** | e2e 42/42 em duas rodadas seguidas; runbook e guias sem falha |
 | **Linux** | Ubuntu 26.04.1 LTS no VMPal, kernel 7.0.0-30, aarch64 | **não** (sem `/dev/kvm`) | confinamento Landlock + seccomp aplicado e provado no processo real; 30 testes verdes em duas rodadas |
 | **Windows** | Windows 11 Pro 24H2 (build 26100.9457) ARM64 no VMPal | **não** | fora do escopo: build recusado de propósito; hypervisor não sobe na VM (`EL2 not present`) |
 
@@ -28,7 +44,7 @@ VM aninhada sobe, seja KVM ou Hyper-V.
 |---|---|
 | hardware | MacBook Pro M1 Pro (arm64) |
 | sistema | macOS 27.0.1 |
-| VMM | libkrun 1.19.6 (`brew tap slp/krun`) |
+| VMM | libkrun 1.19.6 (derivação Nix do repo, `nix/`) |
 | kernel do guest | libkrunfw 5.6.2 → Linux 6.12.109 aarch64 |
 | binário | `bin/rc`, assinado ad-hoc com `com.apple.security.hypervisor` |
 | guest | `bin/rc-guest-linux-arm64`, estático, 2,6 MB |
@@ -103,7 +119,8 @@ Pull e achatamento do `python:3.12-alpine`: 2,7 s, 55 MB.
 
 ### Suíte e2e (`task test:e2e`, tag `e2e`)
 
-Rodada duas vezes seguidas (`-count=2`), verde nas duas. Cada teste trava um comportamento medido.
+42 testes, rodados duas vezes seguidas e verdes nas duas. Cada teste trava um comportamento medido. A tabela abaixo
+descreve os que fixam o contrato dos jobs e das máquinas; os demais estão na tabela seguinte.
 
 | Teste | O que prova |
 |---|---|
@@ -124,10 +141,36 @@ Rodada duas vezes seguidas (`-count=2`), verde nas duas. Cada teste trava um com
 | `TestRunnerCodeStopOnExit` | com `stop_on_exit`, o fim do workload desliga a máquina sozinha (~0,5 s) e o log mostra a saída e `exited with code 0` |
 | `TestRunnerCodeRefusals` | `net = true` recusado com o motivo e nada criado; sem stack nem image é erro |
 | `TestRunnerCodeImage` | `--image alpine:3.20` (imagem fora do catálogo): construída, liga e roda `cat /etc/alpine-release` |
+| `TestMachineNoNetwork` | máquina sem `--net` não tem `eth0` e não sai |
+| `TestMachineNetwork` | com `--net`: `eth0` `100.96.0.2/30`, DNS no gateway, `example.com` responde; metadata `169.254.169.254` recusada na hora mesmo com a rede aberta |
+| `TestMachineEgressPolicy` | `--allow-host example.com`: o nome passa, `iana.org` dá `bad address` em menos de 1 s e vai para o `egress-denials.log`; `machine update` libera e remove com a máquina ligada. **Prova de falha:** com o gateway ignorando a política, metadata e nome bloqueado passaram e o teste reprovou |
+| `TestMachinePortsAndVolumes` | `runner.code` com volume rw e ro, porta publicada e sem `--net`: o workload serve o arquivo do host pela porta, a escrita do guest aparece no host, o `:ro` recusa escrita **mesmo depois de `mount -o remount,rw` pelo root do guest**, o guest não disca para fora, e os volumes voltam a cada start. **Prova de falha:** com o `:ro` só na opção de montagem (sem o flag no device), o remount abriu o volume e o teste reprovou. Antes dessa checagem, esse defeito passava batido |
 | `TestMachineCopy` | `rc machine cp` de 5 MiB (vários pedaços) para a máquina e de volta: sha256 igual dentro e fora |
 | `TestMachineAPI` | rotas `/api/v1/machines`: 201/409/200/204/404, exec com rc 4, exec/stream com a 1ª linha ≥ 1 s antes da 2ª e `exit` no fim, PUT/GET de 2,6 MB idênticos, INVALID_STATE (409) com a máquina parada, stop em menos de 5 s. **Prova de falha:** com a VM destacada sem Wait (zumbi no `rc serve`), o stop levou 10 s e o teste reprovou |
 | `TestGPUVulkan` | `--gpu` na stack `llama`: `vulkaninfo` mostra `Virtio-GPU Venus (Apple M1 Pro)`; sem `--gpu` não existe `/dev/dri`; `--gpu` em stack sem GPU é recusado com E007. **Prova de falha:** com o `Configure` sem a chamada `krun_set_gpu_options2`, o teste reprovou (`no Venus device with --gpu`) |
 | `TestGPULlama` | `llama-bench` com o mesmo modelo na GPU (`-ngl 99 -dev Vulkan0`) e na CPU: o device usado é o Venus e o prompt sai ≥ 2× mais rápido (medido 893–1.365 t/s contra 193–264 t/s, 4 rodadas) |
+
+Testes que entraram com as stories 7.4 a 7.6 e com os guias:
+
+| Teste | O que prova |
+|---|---|
+| `TestMachineRun` | `machine run`: o comando roda numa máquina que some no fim, o rc é o do comando, `-i` repassa o stdin, sem nada para rodar é erro antes de criar |
+| `TestMachineRunDetached` | `-d` deixa a máquina ligada com o workload sob o nome pedido |
+| `TestMachineRunTTY` | `-it` sob pseudo-terminal real abre o shell com TTY; o `exit` dele vira o rc e a máquina some |
+| `TestMachineRunCallerKilled` | um `machine run` cujo CLI leva SIGKILL não deixa a VM viva sem dono (antes da correção, ficava) |
+| `TestMachineBranchAndPause` | pausada, a máquina recusa exec com o motivo; o branch leva o que a mãe acabou de gravar; mãe e filha seguem independentes; `resume` devolve a mãe |
+| `TestMachineEgressCIDROnly` | com só `allow_cidrs`, um nome resolvido não abre conexão (furo fechado em 19/10/2026); o CIDR liberado continua alcançável |
+| `TestMachinePing` | ICMP passa pelo gateway sob a mesma política do TCP; destino fora da allowlist não volta e fica no log de negações |
+| `TestNamedNetworkMachines` | duas máquinas da mesma rede se alcançam pelo IP e por `<máquina>.<rede>.internal`, sem `--net`; outra rede não alcança; máquina parada some do DNS |
+| `TestMachineCredential` | o guest só vê o placeholder e o serviço HTTPS recebe o valor real; placeholder na URL é recusado com 403; host fora da binding recebe o placeholder literal |
+| `TestSecretsAndSSHAgent` | `--secret-env`/`--secret-file` chegam ao exec e não ficam no registro; variável ausente falha o start; `--ssh-agent` lista a chave do host sem a chave privada entrar na VM |
+| `TestExposeAndMountSockets` | `--expose-socket` e `--mount-socket`, nas duas direções |
+| `TestDockerSocketAndDiskVolume` | `docker_socket` responde no diretório da máquina; volume de disco é ext4 de verdade, fora do overlay, e persiste |
+| `TestStagedVolume` | `:staged`: o host não muda até o sync; o sync espelha; o stop gracioso sincroniza; a filha de um branch não devolve nada |
+| `TestMachineS3Volume` | volume `s3://` contra um servidor S3 real: leitura, gravação byte a byte (8 MiB), `mv` e `rm`, `:ro`, remontagem após stop/start, credencial errada falha o start com o motivo |
+| `TestMachineDisplay` | o quadro do guest chega ao visualizador do host com as cores certas; tecla e clique por `POST /input` chegam ao evdev do guest |
+| `TestPack` | stack em stub + payload; máquina em arquivo único lida com a origem apagada; modo persistente; `create --from` e `pack inspect`; recusas |
+| `TestDevStdinLinks` | `/dev/stdin`, `/dev/stdout`, `/dev/stderr` e `/dev/fd` existem na VM de job e na máquina |
 
 ### `rc shell`
 
@@ -149,13 +192,13 @@ o nome do dispositivo; `test -t 0` e `stty` mostram que é terminal.
 (VMs do VMPal a 88% de CPU e `nix-daemon` a 79%); `TestServePool` levou 40 s contra 7–8 s normais. Isoladas e
 em duas rodadas seguintes, as mesmas suítes passaram inteiras.
 
-### Gates
+### Números do lote de 20/10/2026
 
-| Gate | Resultado |
+| Medida | Valor |
 |---|---|
-| `task test:cov` | 95,6% total, domínio 100%, guest 67,4% (catraca 67%). `COVERAGE_FLOOR=101` e `GUEST_FLOOR=68` reprovam |
-| `task test:targets` | darwin/arm64, linux/amd64 e linux/arm64 compilam; windows/amd64 recusado com o motivo |
-| `go test -race ./internal/...` | verde |
+| pack | imagem python 134 MiB → payload de 31 MiB; máquina com pacote instalado, arquivo único: 46 MiB |
+| volume S3 | 8 MiB gravados no guest chegam ao bucket com o mesmo md5 (servidor S3 local) |
+| defeito de segurança achado | `allow_cidrs` sozinho deixava sair para qualquer nome; corrigido e travado por `TestMachineEgressCIDROnly` |
 
 ## Linux (confinamento testado; microVM não)
 
@@ -239,8 +282,8 @@ GOOS=windows GOARCH=arm64|amd64 go build ./cmd/rc
 undefined: runnerCodesDoesNotSupportWindows_libkrunUpstreamHasNoWHPBackend
 ```
 
-A recusa é deliberada: a libkrun upstream só tem backend KVM e Hypervisor.framework. O suporte ao Windows
-Hypervisor Platform existe apenas no fork `libkrun`.
+A recusa é deliberada: a libkrun upstream só tem backend KVM e Hypervisor.framework, sem Windows Hypervisor
+Platform.
 
 ### Hypervisor dentro da VM
 
@@ -248,11 +291,11 @@ Hypervisor Platform existe apenas no fork `libkrun`.
 |---|---|
 | estado inicial | `HypervisorPresent=False`; `VirtualizationFirmwareEnabled`, `VMMonitorModeExtensions` e `SLAT` todos `False`; WSL não instalado |
 | `vmpal set --nested on` | Windows: `nested virtualization is for Linux VMs`; Ubuntu: `Nested virtualization needs a Mac with M3 or later` |
-| snapshot `antes-hypervisor-2026-10-19` | criado |
+| ponto de restauração do VMPal `antes-hypervisor-2026-10-19` | criado |
 | `Enable-WindowsOptionalFeature` HypervisorPlatform, VirtualMachinePlatform, Microsoft-Hyper-V-All | habilitados, `RestartNeeded=True` |
 | após reiniciar | `bcdedit hypervisorlaunchtype Auto`; `vmms` e `vmcompute` rodando; **`HypervisorPresent=False`** |
 | log de sistema | `Microsoft-Windows-Hyper-V-Hypervisor id=43: Hypervisor launch failed; EL2 not present.` |
-| revertido ao snapshot | os três recursos `Disabled`; `vmms` e `vmcompute` ausentes |
+| revertido ao ponto de restauração | os três recursos `Disabled`; `vmms` e `vmcompute` ausentes |
 
 Conclusão: sem EL2 a VM não roda hypervisor nenhum, e não há configuração do Windows que contorne isso. Mesmo com
 suporte do `rc`, essa VM não teria onde criar microVMs.
@@ -261,7 +304,8 @@ suporte do `rc`, essa VM não teria onde criar microVMs.
 
 | Lacuna | O que destrava |
 |---|---|
-| microVM sob Landlock + seccomp | Linux com KVM: Mac M3+ (VMPal com `--nested on`), Linux x86 físico ou EC2 metal |
+| microVM sob Landlock + seccomp | Linux com KVM: Mac M3+ (VMPal com `--nested on`) ou servidor Linux físico |
 | `linux/amd64` em execução | Linux x86 com KVM |
 | isolamento de socket Unix entre VMs | kernel com Landlock ABI ≥ 9 |
+| `--nested` ligando de verdade | Mac M3+ ou Linux com KVM aninhável |
 | Windows nativo | trocar a libkrun upstream pelo fork com WHP (decisão de arquitetura) e máquina Windows com virtualização |

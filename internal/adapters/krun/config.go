@@ -5,9 +5,13 @@
 package krun
 
 import (
+	"errors"
 	"fmt"
+	"unsafe"
 
+	"runner.code/internal/adapters/screen"
 	"runner.code/internal/ports"
+	"runner.code/internal/protocol"
 )
 
 // diskFormatRaw é KRUN_DISK_FORMAT_RAW em libkrun.h: o ext4 é imagem crua, sem qcow2.
@@ -22,10 +26,10 @@ const logLevelError = 1
 
 // gpuVenusFlags são VIRGLRENDERER_VENUS (1<<6) | VIRGLRENDERER_NO_VIRGL (1<<7) em libkrun.h:
 // só Vulkan (Venus), sem o virgl de OpenGL, porque o MoltenVK do macOS só traduz Vulkan. É
-// a mesma combinação do krunkit e do `--gpu`.
+// a mesma combinação do krunkit.
 const gpuVenusFlags = 1<<6 | 1<<7
 
-// DefaultGPUVRAMMiB é a VRAM do guest quando a spec não diz: 4 GiB, o padrão. É
+// DefaultGPUVRAMMiB é a VRAM do guest quando a spec não diz: 4 GiB. É
 // uma janela de endereço do host, não RAM reservada; o host só aloca o que o guest usa.
 const DefaultGPUVRAMMiB = 4096
 
@@ -48,8 +52,25 @@ type API interface {
 	DisableImplicitConsole(ctx uint32) int32
 	AddVirtioConsoleDefault(ctx uint32, inFD, outFD, errFD int32) int32
 	SetGPUOptions2(ctx uint32, virglFlags uint32, shmSize uint64) int32
+	AddVirtiofs3(ctx uint32, tag, path string, shmSize uint64, readOnly bool) int32
+	// AddNetUnixstream liga uma virtio-net a um fd já conectado (socketpair) com o MAC dado.
+	AddNetUnixstream(ctx uint32, fd int32, mac []byte) int32
+	AddDisplay(ctx uint32, width, height uint32) int32
+	SetDisplayBackend(ctx uint32, backend unsafe.Pointer, size uintptr) int32
+	AddInputDevice(ctx uint32, config unsafe.Pointer, configSize uintptr, events unsafe.Pointer, eventsSize uintptr) int32
 	StartEnter(ctx uint32) int32
 }
+
+// NestedAPI é a parte opcional da libkrun que liga virtualização aninhada. Fica fora de API
+// para que uma libkrun (ou um fake) sem ela continue servindo às VMs que não a pedem.
+type NestedAPI interface {
+	CheckNestedVirt() int32
+	SetNestedVirt(ctx uint32, on bool) int32
+}
+
+// ErrNestedUnsupported é a recusa de uma VM com Nested num host que não aninha: dita antes
+// do boot, porque a libkrun só falharia ao criar a VM, com um erro que não diz o motivo.
+var ErrNestedUnsupported = errors.New("nested virtualization is not supported on this host (it needs nested KVM on Linux, or an M3 or newer Mac on macOS 15 or later)")
 
 // Spec é a descrição de VM definida na porta (ports.VMSpec); o alias mantém o nome curto aqui.
 type Spec = ports.VMSpec
@@ -61,7 +82,13 @@ type step struct {
 }
 
 // Configure aplica a spec num contexto novo e devolve o id dele. Não inicia a VM.
-func Configure(api API, s Spec) (uint32, error) {
+func Configure(api API, s Spec) (uint32, error) { return configure(api, s, -1) }
+
+// configure é o Configure com o fd do lado do guest do socketpair da rede (-1 sem rede).
+func configure(api API, s Spec, netFD int) (uint32, error) { return configureFull(api, s, netFD, nil) }
+
+// configureFull é o configure com a tela do display (nil sem display).
+func configureFull(api API, s Spec, netFD int, scr *screen.Screen) (uint32, error) {
 	if err := s.Validate(); err != nil {
 		return 0, err
 	}
@@ -92,9 +119,23 @@ func Configure(api API, s Spec) (uint32, error) {
 	}
 	add("krun_disable_implicit_vsock", func() int32 { return api.DisableImplicitVsock(ctx) })
 	add("krun_add_vsock", func() int32 { return api.AddVsock(ctx, tsi) })
+	if netFD >= 0 {
+		// Com o vsock sem TSI e uma virtio-net explícita, o guest só sai pelo gateway.
+		add("krun_add_net_unixstream", func() int32 { return api.AddNetUnixstream(ctx, int32(netFD), guestMAC) })
+	}
 	if s.VsockSocket != "" {
 		// listen=true: o host conecta e a libkrun repassa para o guest que escuta na porta.
 		add("krun_add_vsock_port2", func() int32 { return api.AddVsockPort2(ctx, s.VsockPort, s.VsockSocket, true) })
+		if s.SSHAgent != "" {
+			// listen=false: quem conecta é o guest, e a libkrun disca o socket do host.
+			add("krun_add_vsock_port2", func() int32 {
+				return api.AddVsockPort2(ctx, protocol.SSHAgentPort, s.SSHAgent, false)
+			})
+		}
+		for _, h := range s.HostSockets {
+			// O mesmo caminho do agente, para cada socket do host montado no guest.
+			add("krun_add_vsock_port2", func() int32 { return api.AddVsockPort2(ctx, h.Port, h.Host, false) })
+		}
 	}
 	if s.TTY {
 		// Sem o console implícito, o primeiro console explícito é o hvc0. Com os três fds
@@ -109,6 +150,38 @@ func Configure(api API, s Spec) (uint32, error) {
 			vram = DefaultGPUVRAMMiB
 		}
 		add("krun_set_gpu_options2", func() int32 { return api.SetGPUOptions2(ctx, gpuVenusFlags, uint64(vram)<<20) })
+	}
+	if s.Nested {
+		n, ok := api.(NestedAPI)
+		if !ok {
+			return 0, errors.New("this libkrun has no nested virtualization (krun_set_nested_virt)")
+		}
+		switch rc := n.CheckNestedVirt(); {
+		case rc == 0:
+			return 0, ErrNestedUnsupported
+		case rc < 0:
+			return 0, callErr("krun_check_nested_virt", rc)
+		}
+		add("krun_set_nested_virt", func() int32 { return n.SetNestedVirt(ctx, true) })
+	}
+	if s.Display != nil && scr != nil {
+		add("krun_add_display", func() int32 { return api.AddDisplay(ctx, s.Display.Width, s.Display.Height) })
+		be := newDisplayBackend(scr)
+		add("krun_set_display_backend", func() int32 { return api.SetDisplayBackend(ctx, unsafe.Pointer(be), displaySize) })
+		for i := range inputCfg {
+			cfg, evs := inputCfg[i], inputEvs[i]
+			if cfg == nil {
+				continue // sem newInputBackends (testes do display sozinho)
+			}
+			add("krun_add_input_device", func() int32 {
+				return api.AddInputDevice(ctx, unsafe.Pointer(cfg), unsafe.Sizeof(*cfg), unsafe.Pointer(evs), unsafe.Sizeof(*evs))
+			})
+		}
+	}
+	for _, m := range s.Mounts {
+		// shm 0 = sem janela DAX: a página passa pelo protocolo FUSE, sem mapear memória do
+		// host no guest (mais lento para arquivo grande, mas sem custo de RAM fixo por volume).
+		add("krun_add_virtiofs3", func() int32 { return api.AddVirtiofs3(ctx, m.Tag, m.HostPath, 0, m.ReadOnly) })
 	}
 	if s.Console != "" {
 		add("krun_set_console_output", func() int32 { return api.SetConsoleOutput(ctx, s.Console) })

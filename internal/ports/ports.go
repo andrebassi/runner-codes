@@ -14,10 +14,30 @@ import (
 	"runner.code/internal/protocol"
 )
 
+// VMSocket liga um socket Unix do host (Host, no diretório da máquina) a um socket Unix de
+// dentro do guest (Guest): quem conecta no host fala com quem escuta no guest, pelo vsock.
+type VMSocket struct {
+	Host  string `json:"host"`
+	Guest string `json:"guest"`
+	// Port é a porta vsock de um socket do host montado no guest (HostSockets); 0 nos
+	// sockets do guest expostos no host (Sockets), que vão pelo socket do vsock da máquina.
+	Port uint32 `json:"port,omitempty"`
+}
+
 // VMSpec descreve uma VM. Vai em JSON do serviço para o processo vmm.
 type VMSpec struct {
-	CPUs      uint8  `json:"cpus"`
-	MemoryMiB uint32 `json:"memory_mib"`
+	// TiedToCaller prende a VM de uma máquina ao processo que a ligou (pipe de vigia): se ele
+	// morrer, até por SIGKILL, a VM morre junto. É o `machine run` em primeiro plano — código
+	// não confiável não pode seguir rodando sem dono. Máquina persistente não usa. Só o
+	// launcher lê; não vai para o arquivo da spec.
+	TiedToCaller bool `json:"-"`
+	// Sockets são as pontes de socket Unix host → guest (o docker.sock).
+	Sockets []VMSocket `json:"sockets,omitempty"`
+	// HostSockets são os sockets Unix do host que o guest alcança (--mount-socket): a libkrun
+	// disca Host a cada conexão que o guest abre na porta vsock Port.
+	HostSockets []VMSocket `json:"host_sockets,omitempty"`
+	CPUs        uint8      `json:"cpus"`
+	MemoryMiB   uint32     `json:"memory_mib"`
 	// RootDisk é um ext4 montado read-only como /. Usado pelas VMs de job.
 	RootDisk string `json:"root_disk,omitempty"`
 	// RootDir é um diretório compartilhado por virtiofs como /. Só a VM de build usa,
@@ -28,8 +48,12 @@ type VMSpec struct {
 	DataDisk    string `json:"data_disk,omitempty"`
 	VsockSocket string `json:"vsock_socket,omitempty"`
 	VsockPort   uint32 `json:"vsock_port,omitempty"`
-	Network     bool   `json:"network,omitempty"`
-	Console     string `json:"console,omitempty"`
+	// SSHAgent é o SSH_AUTH_SOCK do host (de quem deu o start): a libkrun liga a porta vsock
+	// SSHAgentPort do guest a ele, e o guest repassa um socket Unix de dentro por ali. As
+	// chaves ficam no agente do host; o guest só pede assinaturas.
+	SSHAgent string `json:"ssh_agent,omitempty"`
+	Network  bool   `json:"network,omitempty"`
+	Console  string `json:"console,omitempty"`
 	// TTY liga o stdin/stdout/stderr do processo vmm a uma porta de console virtio no
 	// guest (/dev/hvc0), que o guest enxerga como terminal: Ctrl+C, job control e
 	// tamanho da janela funcionam. Só faz sentido com um terminal de verdade no host.
@@ -37,14 +61,61 @@ type VMSpec struct {
 	// GPU liga um virtio-gpu com Venus: o guest vê um device Vulkan servido pela GPU do
 	// host (MoltenVK no macOS). GPUVRAMMiB é a janela de memória do host que o guest usa
 	// como VRAM; 0 usa o padrão do adapter.
-	GPU        bool     `json:"gpu,omitempty"`
-	GPUVRAMMiB uint32   `json:"gpu_vram_mib,omitempty"`
-	Exec       string   `json:"exec"`
-	Args       []string `json:"args,omitempty"`
-	Env        []string `json:"env,omitempty"`
+	GPU        bool   `json:"gpu,omitempty"`
+	GPUVRAMMiB uint32 `json:"gpu_vram_mib,omitempty"`
+	// Nested expõe as extensões de virtualização do host ao guest (/dev/kvm lá dentro).
+	// Precisa de KVM aninhado no Linux ou de um Mac M3+ com macOS 15+.
+	Nested bool `json:"nested,omitempty"`
+	// Mounts são diretórios do host expostos por virtio-fs, cada um com a sua tag; o guest
+	// monta pela tag. Só as máquinas usam (o job efêmero não vê nada do host).
+	Mounts []VMMount `json:"mounts,omitempty"`
+	// Net liga uma virtio-net ao gateway em userspace do processo vmm (internal/adapters/
+	// netgw): NAT com a política de saída e as portas publicadas. Exclui Network (TSI, que
+	// só a VM de build usa, porque o TSI não aplica filtro nenhum).
+	Net *VMNet `json:"net,omitempty"`
+	// Display liga uma saída de vídeo ao virtio-gpu (exige GPU) e um visualizador no
+	// navegador servido pelo processo vmm.
+	Display *VMDisplay `json:"display,omitempty"`
+	Exec    string     `json:"exec"`
+	Args    []string   `json:"args,omitempty"`
+	Env     []string   `json:"env,omitempty"`
 	// UID e GID trocam o usuário do processo vmm antes do boot (Linux). Nil mantém o atual.
 	UID *uint32 `json:"uid,omitempty"`
 	GID *uint32 `json:"gid,omitempty"`
+}
+
+// VMNet é a rede de uma máquina: a declaração do domínio mais onde o gateway grava o log
+// de recusas e escuta a troca de política com a máquina ligada.
+type VMNet struct {
+	Network domain.Network `json:"network"`
+	// DenialsLog recebe uma linha por conexão ou nome negado.
+	DenialsLog string `json:"denials_log,omitempty"`
+	// ControlSocket aceita uma política nova (JSON de domain.Egress) com a máquina ligada.
+	ControlSocket string `json:"control_socket,omitempty"`
+	// FabricDir é o diretório da rede nomeada (sockets e nomes das máquinas ligadas nela);
+	// Machine é o nome desta máquina, publicado no DNS da rede.
+	FabricDir string `json:"fabric_dir,omitempty"`
+	Machine   string `json:"machine,omitempty"`
+	// CACert e CAKey são a CA de credenciais da máquina (arquivos no diretório dela): o
+	// gateway termina o TLS dos hosts das bindings com certificados assinados por ela.
+	CACert string `json:"ca_cert,omitempty"`
+	CAKey  string `json:"ca_key,omitempty"`
+}
+
+// VMDisplay é a tela de uma máquina: tamanho e onde o visualizador escuta (host:porta,
+// sempre no loopback por padrão).
+type VMDisplay struct {
+	Width  uint32 `json:"width"`
+	Height uint32 `json:"height"`
+	Listen string `json:"listen"`
+}
+
+// VMMount é um device virtio-fs: Tag identifica no guest, HostPath é o diretório exposto e
+// ReadOnly faz a libkrun recusar escrita no próprio device.
+type VMMount struct {
+	Tag      string `json:"tag"`
+	HostPath string `json:"host_path"`
+	ReadOnly bool   `json:"read_only,omitempty"`
 }
 
 // Validate recusa spec que a libkrun aceitaria mas que quebraria em silêncio dentro do guest.
@@ -72,6 +143,31 @@ func (s VMSpec) Validate() error {
 	}
 	if (s.VsockSocket == "") != (s.VsockPort == 0) {
 		return errors.New("spec: vsock_socket and vsock_port must be set together")
+	}
+	if s.Net != nil {
+		if s.Network {
+			return errors.New("spec: net (gateway) and network (TSI) are mutually exclusive")
+		}
+		if err := s.Net.Network.Validate(); err != nil {
+			return fmt.Errorf("spec: %w", err)
+		}
+	}
+	if s.Display != nil {
+		if !s.GPU {
+			// A saída de vídeo é do virtio-gpu: sem GPU a libkrun nem cria o device.
+			return errors.New("spec: display requires gpu")
+		}
+		if s.Display.Width == 0 || s.Display.Height == 0 || s.Display.Width > 7680 || s.Display.Height > 4320 || s.Display.Listen == "" {
+			return fmt.Errorf("spec: display %dx%d on %q is invalid (up to 7680x4320, listen required)", s.Display.Width, s.Display.Height, s.Display.Listen)
+		}
+	}
+	tags := map[string]bool{}
+	for _, m := range s.Mounts {
+		// Tag repetida faria o guest montar o diretório errado sem erro nenhum.
+		if m.Tag == "" || tags[m.Tag] || !strings.HasPrefix(m.HostPath, "/") {
+			return fmt.Errorf("spec: mount %+v needs a unique tag and an absolute host path", m)
+		}
+		tags[m.Tag] = true
 	}
 	// A libkrun leva o argv pela linha de comando do kernel: argumento com espaço
 	// chega partido no guest (medido no spike). Comando composto vai por arquivo.
@@ -121,6 +217,8 @@ type MachineStore interface {
 	// Create registra a máquina e dá a ela um disco clonado do modelo vazio.
 	Create(m domain.Machine, diskTemplate string) error
 	Load(name string) (domain.Machine, error)
+	// Save regrava o registro de uma máquina que já existe (ex.: política de rede nova).
+	Save(m domain.Machine) error
 	List() ([]domain.Machine, error)
 	Delete(name string) error
 	// Dir é o diretório da máquina; os arquivos dela moram ali.
@@ -140,6 +238,9 @@ type Processes interface {
 	Alive(pid int) bool
 	// Kill manda SIGKILL ao grupo do processo (o vmm e o que ele criou).
 	Kill(pid int)
+	// Pause congela o grupo do processo (as vCPUs param onde estão); Resume continua.
+	Pause(pid int) error
+	Resume(pid int) error
 }
 
 // ImageStore diz onde está o ext4 pronto de uma linguagem.

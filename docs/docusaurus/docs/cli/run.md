@@ -1,6 +1,6 @@
 ---
-title: 'run'
-description: 'Executar um código numa microVM nova pela linha de comando'
+title: 'run e shell'
+description: 'Executar um código ou abrir um shell numa microVM nova pela linha de comando'
 ---
 
 ## Uso
@@ -71,6 +71,25 @@ Pelo Taskfile:
 ```bash
 task run -- --stack python --code 'print(1)'
 ```
+
+## shell
+
+```bash
+rc shell --stack python [--gpu]
+task shell -- --stack python
+```
+
+Abre um shell interativo numa VM nova da stack, com a mesma imagem dos jobs: root read-only, sem rede e `/tmp`
+gravável. A VM some no `exit`.
+
+- **Num terminal**, o guest recebe um TTY de verdade (console virtio no lugar do console implícito) e o terminal do
+  host fica em modo raw durante a sessão: Ctrl+C interrompe só o comando no guest, e o tamanho da janela chega ao
+  guest (`stty size`).
+- **Com stdin por pipe**, o console é o normal, sem TTY: `echo 'python3 -V' | rc shell --stack python` funciona.
+- É `bash` se a imagem tiver; nas imagens Alpine, `sh`.
+
+Para um shell que guarda o que você instala, use uma máquina: `rc machine run -it --stack python` (some no fim) ou
+`rc machine shell` numa máquina ligada. Veja [machine](/cli/machine).
 
 ## Pré-requisito
 

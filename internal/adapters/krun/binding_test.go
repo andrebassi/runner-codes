@@ -65,6 +65,17 @@ func TestLoadRealLibrary(t *testing.T) {
 	} else if rc := api.SetGPUOptions2(ctx, gpuVenusFlags, 1<<30); rc != -int32(syscall.ENOTSUP) {
 		t.Fatalf("without GPU support the call must be ENOTSUP, got %d", rc)
 	}
+	// A libkrun 1.19 tem nested: a checagem responde 0 ou 1 (nunca erro) e o pedido é aceito
+	// mesmo num host que não aninha (a libkrun só confere no start).
+	if n := api.(NestedAPI); n.CheckNestedVirt() < 0 || n.SetNestedVirt(ctx, false) < 0 {
+		t.Fatalf("nested: check %d", n.CheckNestedVirt())
+	}
+	if rc := (&libAPI{}).CheckNestedVirt(); rc != -int32(syscall.ENOTSUP) {
+		t.Fatalf("without the symbol the check must be ENOTSUP, got %d", rc)
+	}
+	if rc := (&libAPI{}).SetNestedVirt(0, true); rc != -int32(syscall.ENOTSUP) {
+		t.Fatalf("without the symbol the call must be ENOTSUP, got %d", rc)
+	}
 	api.SetGID(ctx, uint32(os.Getgid()))
 	api.SetUID(ctx, uint32(os.Getuid()))
 	if rc := api.DisableImplicitConsole(ctx); rc < 0 {

@@ -55,6 +55,17 @@ func (s *memStore) Load(n string) (domain.Machine, error) {
 	return m, nil
 }
 
+// Save regrava o registro de uma máquina existente.
+func (s *memStore) Save(m domain.Machine) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.ms[m.Name]; !ok {
+		return domain.ErrMachineNotFound(m.Name)
+	}
+	s.ms[m.Name] = m
+	return nil
+}
+
 // List devolve as máquinas (ordem não importa nos testes que usam).
 func (s *memStore) List() ([]domain.Machine, error) {
 	s.mu.Lock()
@@ -90,13 +101,37 @@ func (s *memStore) SetPID(n string, pid int) error {
 
 // procs simula processos: vivo é quem está no mapa; Kill tira.
 type procs struct {
-	mu     sync.Mutex
-	alive  map[int]bool
-	killed []int
+	mu      sync.Mutex
+	alive   map[int]bool
+	killed  []int
+	paused  []int
+	resumed []int
 }
 
 // Alive confere o mapa.
 func (p *procs) Alive(pid int) bool { p.mu.Lock(); defer p.mu.Unlock(); return p.alive[pid] }
+
+// Pause anota; pid morto é erro, como o kill de verdade.
+func (p *procs) Pause(pid int) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.alive[pid] {
+		return errors.New("no such process")
+	}
+	p.paused = append(p.paused, pid)
+	return nil
+}
+
+// Resume anota.
+func (p *procs) Resume(pid int) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.alive[pid] {
+		return errors.New("no such process")
+	}
+	p.resumed = append(p.resumed, pid)
+	return nil
+}
 
 // Kill anota e mata.
 func (p *procs) Kill(pid int) {
@@ -112,6 +147,8 @@ type detached struct {
 	specs []ports.VMSpec
 	next  int
 	fail  error
+	// dieLog faz o vmm "morrer" logo ao nascer, deixando esta linha no log dele.
+	dieLog string
 }
 
 // StartDetached registra a spec e devolve um pid vivo.
@@ -122,6 +159,10 @@ func (d *detached) StartDetached(s ports.VMSpec, specPath, logPath string) (int,
 	d.next++
 	pid := 1000 + d.next
 	d.specs = append(d.specs, s)
+	if d.dieLog != "" {
+		os.WriteFile(logPath, []byte("boot\n"+d.dieLog+"\n"), 0o600)
+		return pid, nil
+	}
 	d.procs.mu.Lock()
 	d.procs.alive[pid] = true
 	d.procs.mu.Unlock()
@@ -142,6 +183,8 @@ func (d disks) DiskTemplate(_ context.Context, gib int) (string, error) {
 // fileGuest é um guest falso com sistema de arquivos em memória: exec ecoa o argv,
 // put/get guardam e devolvem bytes, shutdown "desliga" a VM.
 type fileGuest struct {
+	// hang faz o WaitReady esperar o contexto acabar.
+	hang        bool
 	mu          sync.Mutex
 	files       map[string][]byte
 	partial     map[string][]byte
@@ -163,6 +206,13 @@ func (g *fileGuest) Run(_ context.Context, _ string, j protocol.Job) (protocol.R
 		if g.execErr != nil {
 			return protocol.Result{}, g.execErr
 		}
+		// "exit7" sai com 7; "slow" espera o contexto (Ctrl+C); "late" estoura o timeout.
+		if len(j.Argv) > 0 && j.Argv[0] == "exit7" {
+			return protocol.Result{Status: "success", ExitCode: 7}, nil
+		}
+		if len(j.Argv) > 0 && j.Argv[0] == "late" {
+			return protocol.Result{Status: "success", Exception: "Timeout"}, nil
+		}
 		// O marcador do init é um arquivo de verdade no "disco" falso.
 		if len(j.Argv) == 3 && j.Argv[0] == "test" && j.Argv[1] == "-f" {
 			if _, found := g.files[j.Argv[2]]; found {
@@ -174,8 +224,18 @@ func (g *fileGuest) Run(_ context.Context, _ string, j protocol.Job) (protocol.R
 			g.files[initMarker] = nil
 			return ok, nil
 		}
+		if len(j.Argv) == 7 && j.Argv[3] == "mount" && j.Argv[4] == "/busy" {
+			return protocol.Result{Status: "success", ExitCode: 32, Stderr: "mount: resource busy"}, nil
+		}
 		if len(j.Argv) == 3 && j.Argv[0] == "mkdir" && j.Argv[2] == "/denied" {
 			return protocol.Result{Status: "success", ExitCode: 1, Stderr: "permission denied"}, nil
+		}
+		// Volume staged: o sync de /broken e o stage de /badstage falham, como um disco cheio.
+		if len(j.Argv) >= 6 && j.Argv[3] == "sync" && j.Argv[4] == "/workspace/.disk/broken" {
+			return protocol.Result{Status: "success", ExitCode: 1, Stderr: "sync broke"}, nil
+		}
+		if len(j.Argv) >= 8 && j.Argv[3] == "stage" && j.Argv[6] == "/badstage" {
+			return protocol.Result{Status: "success", ExitCode: 1, Stderr: "stage broke"}, nil
 		}
 		if len(j.Argv) == 3 && j.Argv[0] == "sh" && strings.HasPrefix(j.Argv[2], "fail") {
 			return protocol.Result{Status: "success", ExitCode: 2, Stderr: "init broke"}, nil
@@ -212,6 +272,14 @@ func (g *fileGuest) Run(_ context.Context, _ string, j protocol.Job) (protocol.R
 			return protocol.Result{Status: "failed", Error: g.workloadErr}, nil
 		}
 		return ok, nil
+	case protocol.OpMountS3:
+		// "denied" é o bucket que o S3 recusa (o guest responde com o motivo).
+		if j.S3.Bucket == "denied" {
+			return protocol.Result{Status: "failed", Error: "mount-s3: s3://denied: s3: 403 AccessDenied"}, nil
+		}
+		return ok, nil
+	case protocol.OpSetEnv, protocol.OpSSHAgent:
+		return ok, nil
 	case protocol.OpShutdown:
 		if g.shutdown != nil {
 			g.shutdown()
@@ -225,6 +293,11 @@ func (g *fileGuest) Run(_ context.Context, _ string, j protocol.Job) (protocol.R
 func (g *fileGuest) RunStream(ctx context.Context, s string, j protocol.Job, out func(string, string)) (protocol.Result, error) {
 	out(protocol.EventStdout, "part1 ")
 	out(protocol.EventStdout, "part2\n")
+	if len(j.Argv) > 0 && j.Argv[0] == "slow" {
+		out(protocol.EventStderr, "waiting\n")
+		<-ctx.Done()
+		return protocol.Result{}, ctx.Err()
+	}
 	return g.Run(ctx, s, j)
 }
 
@@ -245,8 +318,15 @@ func (g *fileGuest) Interactive(_ context.Context, _ string, j protocol.Job, in 
 	return 6, nil
 }
 
-// WaitReady responde conforme readyErr.
-func (g *fileGuest) WaitReady(context.Context, string) error { return g.readyErr }
+// WaitReady responde conforme readyErr; com hang, espera o contexto acabar, como um guest
+// que nunca responde.
+func (g *fileGuest) WaitReady(ctx context.Context, _ string) error {
+	if g.hang {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return g.readyErr
+}
 
 // machinesFixture monta o serviço com dublês; python tem imagem, llama tem GPU.
 func machinesFixture(t *testing.T) (*Machines, *memStore, *procs, *detached, *fileGuest) {
@@ -722,5 +802,130 @@ func TestMachineFromImage(t *testing.T) {
 	m.BuildImage = nil
 	if _, err := m.Create(ctx, domain.Machine{Name: "z", Image: "alpine"}); !errors.As(err, &ve) {
 		t.Fatalf("no builder: %v", err)
+	}
+}
+
+// TestMachineMounts: o create guarda o caminho real (sem link) e recusa o que não é
+// diretório; o start passa cada volume como virtio-fs com tag própria e monta no guest, a
+// cada start, antes do workdir; volume que sumiu ou montagem que falha viram erro claro.
+func TestMachineMounts(t *testing.T) {
+	m, _, _, d, g := machinesFixture(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	real, _ := filepath.EvalSymlinks(dir)
+	link := filepath.Join(t.TempDir(), "link")
+	os.Symlink(dir, link)
+	mc, err := m.Create(ctx, domain.Machine{Name: "v", Stack: "python", Workdir: "/www", Workload: []string{"x"},
+		Mounts: []domain.Mount{{Host: link, Guest: "/www"}, {Host: dir, Guest: "/models", ReadOnly: true}}})
+	if err != nil || mc.Mounts[0].Host != real {
+		t.Fatalf("create: %+v %v", mc.Mounts, err)
+	}
+	if _, err := m.Start(ctx, "v"); err != nil {
+		t.Fatal(err)
+	}
+	sp := d.specs[len(d.specs)-1].Mounts
+	if len(sp) != 2 || sp[0] != (ports.VMMount{Tag: "vol0", HostPath: real}) || !sp[1].ReadOnly || sp[1].Tag != "vol1" {
+		t.Fatalf("spec mounts: %+v", sp)
+	}
+	var order []string
+	for _, j := range jobsOf(g, protocol.OpExec) {
+		order = append(order, j.TraceID)
+		if j.TraceID == "mount-vol1" && (j.Argv[4] != "/models" || j.Argv[5] != "vol1" || j.Argv[6] != "ro") {
+			t.Fatalf("mount job: %v", j.Argv)
+		}
+	}
+	if got := strings.Join(order, ","); !strings.Contains(got, "mount-vol0,mount-vol1,workdir") {
+		t.Fatalf("mounts must come before the workdir: %s", got)
+	}
+
+	var ve domain.ValidationError
+	file := filepath.Join(dir, "f")
+	os.WriteFile(file, nil, 0o600)
+	for _, host := range []string{file, filepath.Join(dir, "missing")} {
+		if _, err := m.Create(ctx, domain.Machine{Name: "bad", Stack: "python", Mounts: []domain.Mount{{Host: host, Guest: "/x"}}}); !errors.As(err, &ve) {
+			t.Fatalf("%s must be refused: %v", host, err)
+		}
+	}
+	gone := t.TempDir()
+	m.Create(ctx, domain.Machine{Name: "gone", Stack: "python", Mounts: []domain.Mount{{Host: gone, Guest: "/x"}}})
+	os.RemoveAll(gone)
+	if _, err := m.Start(ctx, "gone"); !errors.As(err, &ve) || !strings.Contains(err.Error(), "not available") {
+		t.Fatalf("vanished host dir: %v", err)
+	}
+	m.Create(ctx, domain.Machine{Name: "busy", Stack: "python", Mounts: []domain.Mount{{Host: dir, Guest: "/busy"}}})
+	if _, err := m.Start(ctx, "busy"); err == nil || !strings.Contains(err.Error(), "resource busy") {
+		t.Fatalf("mount failure: %v", err)
+	}
+	g.execErr = errors.New("guest gone")
+	m.Create(ctx, domain.Machine{Name: "lost", Stack: "python", Mounts: []domain.Mount{{Host: dir, Guest: "/y"}}})
+	if _, err := m.Start(ctx, "lost"); err == nil || !strings.Contains(err.Error(), "mount /y") {
+		t.Fatalf("guest error on mount: %v", err)
+	}
+}
+
+// TestMachineNetwork: máquina com rede leva a virtio-net na spec (log e socket de controle
+// no diretório dela); sem rede, nenhuma placa; o update grava com a máquina parada, entrega
+// ao gateway com ela ligada, e recusa o que não tem como aplicar.
+func TestMachineNetwork(t *testing.T) {
+	m, st, _, d, _ := machinesFixture(t)
+	ctx := context.Background()
+	m.Create(ctx, domain.Machine{Name: "off", Stack: "python"})
+	m.Start(ctx, "off")
+	if d.specs[len(d.specs)-1].Net != nil {
+		t.Fatal("no network by default")
+	}
+	net := domain.Network{Enabled: true, Ports: []domain.PortMap{{Host: 8080, Guest: 80}}}
+	m.Create(ctx, domain.Machine{Name: "on", Stack: "python", Network: net})
+	os.WriteFile(filepath.Join(st.Dir("on"), machineEgressSocket), nil, 0o600)
+	m.Start(ctx, "on")
+	sp := d.specs[len(d.specs)-1].Net
+	if sp == nil || sp.Network.Ports[0].Host != 8080 || sp.ControlSocket != filepath.Join(st.Dir("on"), machineEgressSocket) ||
+		sp.DenialsLog != filepath.Join(st.Dir("on"), machineDenials) {
+		t.Fatalf("spec net: %+v", sp)
+	}
+	if _, err := os.Stat(sp.ControlSocket); !os.IsNotExist(err) {
+		t.Fatal("a stale control socket must be removed before start")
+	}
+
+	var sent []string
+	m.UpdateEgress = func(sock string, e domain.Egress) error {
+		sent = append(sent, sock+" "+strings.Join(e.AllowHosts, ","))
+		if len(e.AllowHosts) > 0 && e.AllowHosts[0] == "down.example" {
+			return errors.New("machine network is not reachable")
+		}
+		return nil
+	}
+	add := func(h string) func(*domain.Egress) {
+		return func(e *domain.Egress) { e.AllowHosts = append(e.AllowHosts, h) }
+	}
+	if _, err := m.Update("on", add("example.com")); err != nil || len(sent) != 1 || !strings.HasSuffix(sent[0], "egress.sock example.com") {
+		t.Fatalf("live update: %v %v", err, sent)
+	}
+	if saved, _ := st.Load("on"); saved.Network.Egress.AllowHosts[0] != "example.com" {
+		t.Fatal("live update must also persist")
+	}
+	if _, err := m.Update("on", func(e *domain.Egress) { e.AllowHosts = []string{"down.example"} }); err == nil {
+		t.Fatal("gateway error must surface")
+	}
+	if saved, _ := st.Load("on"); saved.Network.Egress.AllowHosts[0] != "example.com" {
+		t.Fatal("a failed live update must not persist")
+	}
+	if _, err := m.Update("off", add("x.com")); errCode(err) != domain.CodeInvalidState {
+		t.Fatalf("running without NIC: %v", err)
+	}
+	m.Stop(ctx, "off", 0)
+	if mc, err := m.Update("off", add("x.com")); err != nil || mc.Network.Egress.AllowHosts[0] != "x.com" || len(sent) != 2 {
+		t.Fatalf("stopped machine: just save: %v %+v", err, mc.Network)
+	}
+	var ve domain.ValidationError
+	if _, err := m.Update("off", func(e *domain.Egress) { e.AllowCIDRs = []string{"bad"} }); !errors.As(err, &ve) {
+		t.Fatalf("invalid change: %v", err)
+	}
+	if _, err := m.Update("nope", add("x")); errCode(err) != domain.CodeNotFound {
+		t.Fatalf("missing: %v", err)
+	}
+	m.UpdateEgress = nil
+	if _, err := m.Update("on", add("y.com")); errCode(err) != domain.CodeInvalidState {
+		t.Fatalf("no live update support: %v", err)
 	}
 }

@@ -107,7 +107,7 @@ languages:
   # - Fedora e não Alpine: o Mesa padrão aloca blobs alinhados a 4 KiB e o hv_vm_map do macOS
   #   exige 16 KiB, então o vkCreateInstance falha (medido no Alpine edge: "Error adding memory
   #   map" e ERROR_OUT_OF_HOST_MEMORY). O Mesa com o patch de 16 KiB só existe pronto no COPR
-  #   slp/mesa-libkrun-vulkan (do autor da libkrun), para Fedora; 
+  #   slp/mesa-libkrun-vulkan (do autor da libkrun), para Fedora.
   # - llama.cpp compilado aqui: o pacote do Fedora não tem backend Vulkan (só CPU e HIP).
   #   Tag e tarball fixos, conferidos por sha256. Estático e só os dois binários: o
   #   `cmake --install` tenta instalar os testes, que não foram compilados, e falha (medido).

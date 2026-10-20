@@ -1,205 +1,313 @@
-/**
- * Runner Codes Documentation Theme
- * Colors: Primary #3B82F6 (Blue)
+/*
+ * Tema da documentação, copiado da landing (runner.codes): fundo quase preto, azul como cor de destaque,
+ * fonte de sistema, mono no código, grade fina no fundo, cartões de borda fina e barra translúcida com blur.
+ * Os tokens --rc-* são os mesmos nomes da landing (sem o prefixo lá); o Infima recebe a paleta por
+ * --ifm-color-primary* nos dois modos, para que link, menu ativo e botão saiam na cor certa sem regra extra.
  */
 
+/* Modo claro: os valores do @media (prefers-color-scheme: light) da landing. */
 :root {
-  --ifm-color-primary: #3B82F6;
-  --ifm-color-primary-dark: #2563EB;
-  --ifm-color-primary-darker: #1D4ED8;
-  --ifm-color-primary-darkest: #1E40AF;
-  --ifm-color-primary-light: #60A5FA;
-  --ifm-color-primary-lighter: #93C5FD;
-  --ifm-color-primary-lightest: #BFDBFE;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(59, 130, 246, 0.1);
-  --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif;
-  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, Consolas, monospace;
+  --rc-bg: #fbfbf9;
+  --rc-bg-2: #f3f3ef;
+  --rc-panel: rgba(0, 0, 0, 0.025);
+  --rc-panel-2: rgba(0, 0, 0, 0.05);
+  --rc-fg: #16171a;
+  --rc-muted: #5d616a;
+  --rc-faint: #8a8e96;
+  --rc-line: rgba(0, 0, 0, 0.09);
+  --rc-line-2: rgba(0, 0, 0, 0.16);
+  --rc-accent: #1e3a8a;
+  --rc-accent-2: #1d4ed8;
+  --rc-btn: #1e3a8a;
+  --rc-ok: #2b8a3e;
+  --rc-term: #0d0e12;
+  --rc-glow: rgba(30, 58, 138, 0.12);
+
+  /* Escala do primário derivada de #1e3a8a: o Infima usa os tons escuros no hover e os claros em fundo. */
+  --ifm-color-primary: #1e3a8a;
+  --ifm-color-primary-dark: #1b347c;
+  --ifm-color-primary-darker: #1a3175;
+  --ifm-color-primary-darkest: #152861;
+  --ifm-color-primary-light: #213f98;
+  --ifm-color-primary-lighter: #22429f;
+  --ifm-color-primary-lightest: #2a4fb6;
+
+  --ifm-background-color: var(--rc-bg);
+  --ifm-background-surface-color: var(--rc-bg-2);
+  --ifm-font-color-base: var(--rc-fg);
+  --ifm-heading-color: var(--rc-fg);
+  --ifm-color-content-secondary: var(--rc-muted);
+  --ifm-toc-border-color: var(--rc-line);
+  --ifm-hr-background-color: var(--rc-line);
+  --ifm-table-border-color: var(--rc-line);
+
+  /* Fonte de sistema no texto, mono no código: a mesma pilha da landing. */
+  --ifm-font-family-base: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --ifm-heading-font-weight: 700;
+  --ifm-code-font-size: 90%;
+  --ifm-code-border-radius: 6px;
+  --ifm-global-radius: 10px;
+  --ifm-navbar-height: 62px;
+  --ifm-navbar-shadow: none;
+  --ifm-navbar-background-color: transparent;
+  --ifm-footer-background-color: transparent;
+  --ifm-menu-color-background-active: var(--rc-panel-2);
+  --ifm-menu-color-background-hover: var(--rc-panel-2);
+  --docusaurus-highlighted-code-line-bg: rgba(30, 58, 138, 0.1);
 }
 
+/* Modo escuro (o padrão do site): os valores do :root da landing. */
 [data-theme='dark'] {
-  --ifm-color-primary: #60A5FA;
-  --ifm-color-primary-dark: #3B82F6;
-  --ifm-color-primary-darker: #2563EB;
-  --ifm-color-primary-darkest: #1D4ED8;
-  --ifm-color-primary-light: #93C5FD;
-  --ifm-color-primary-lighter: #BFDBFE;
-  --ifm-color-primary-lightest: #DBEAFE;
-  --ifm-background-color: #0f172a;
-  --ifm-background-surface-color: #1e293b;
-  --ifm-navbar-background-color: #0f172a;
-  --ifm-footer-background-color: #0f172a;
-  --ifm-card-background-color: #1e293b;
-  --ifm-toc-border-color: #334155;
-  --ifm-color-emphasis-100: #1e293b;
-  --ifm-color-emphasis-200: #334155;
-  --ifm-color-emphasis-300: #475569;
-  --ifm-menu-color-background-active: #1e293b;
-  --docusaurus-highlighted-code-line-bg: rgba(96, 165, 250, 0.2);
+  --rc-bg: #0b0c10;
+  --rc-bg-2: #11131a;
+  --rc-panel: rgba(255, 255, 255, 0.035);
+  --rc-panel-2: rgba(255, 255, 255, 0.06);
+  --rc-fg: #ececf1;
+  --rc-muted: #9a9fab;
+  --rc-faint: #6b7080;
+  --rc-line: rgba(255, 255, 255, 0.09);
+  --rc-line-2: rgba(255, 255, 255, 0.16);
+  --rc-accent: #7aa2ff;
+  --rc-accent-2: #a5c0ff;
+  --rc-btn: #1d4ed8;
+  --rc-ok: #69db7c;
+  --rc-term: #07080b;
+  --rc-glow: rgba(59, 110, 240, 0.18);
+
+  /* Escala derivada de #7aa2ff: no escuro o destaque sobe um tom para ler sobre o fundo preto. */
+  --ifm-color-primary: #7aa2ff;
+  --ifm-color-primary-dark: #5d8eff;
+  --ifm-color-primary-darker: #4f84ff;
+  --ifm-color-primary-darkest: #2466ff;
+  --ifm-color-primary-light: #97b6ff;
+  --ifm-color-primary-lighter: #a5c0ff;
+  --ifm-color-primary-lightest: #cfdcff;
+
+  --ifm-color-emphasis-100: #14161d;
+  --ifm-color-emphasis-200: #1b1e27;
+  --docusaurus-highlighted-code-line-bg: rgba(122, 162, 255, 0.14);
 }
 
-/* Force dark background on body and main */
-[data-theme='dark'] body {
-  background-color: #0f172a;
+body {
+  background: var(--rc-bg);
+  color: var(--rc-fg);
+  -webkit-font-smoothing: antialiased;
 }
 
-[data-theme='dark'] .main-wrapper {
-  background-color: #0f172a;
+/* Grade fina no fundo, que some de cima para baixo (máscara radial), como na landing. Fica fixa atrás de tudo;
+   por isso o .main-wrapper e a barra lateral são transparentes. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(var(--rc-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rc-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+  opacity: 0.55;
 }
 
-[data-theme='dark'] article {
-  background-color: #0f172a;
+.main-wrapper,
+.theme-doc-sidebar-container,
+.menu {
+  background: transparent;
 }
 
-/* Sidebar dark styling */
-[data-theme='dark'] .theme-doc-sidebar-container {
-  background-color: #0f172a;
-  border-right: 1px solid #1e293b;
-}
-
-[data-theme='dark'] .menu {
-  background-color: #0f172a;
-}
-
-/* TOC dark styling */
-[data-theme='dark'] .table-of-contents {
-  border-left: 1px solid #334155;
-}
-
-/* Card styling for migrated components */
-.card-group {
-  display: grid;
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.card-group.cols-2 {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-}
-
-.card-group.cols-3 {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-.card-group .card {
-  border: 1px solid var(--ifm-color-emphasis-300);
-  border-radius: 8px;
-  padding: 1rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.card-group .card:hover {
-  border-color: var(--ifm-color-primary);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-}
-
-.card-group .card a {
-  text-decoration: none;
-  color: inherit;
-}
-
-.card-group .card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.1rem;
-  color: var(--ifm-color-primary);
-}
-
-.card-group .card p {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--ifm-color-emphasis-700);
-}
-
-/* Details/Accordion styling */
-details {
-  border: 1px solid var(--ifm-color-emphasis-300);
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--ifm-heading-color);
-}
-
-details[open] summary {
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
-  padding-bottom: 0.5rem;
-}
-
-/* Better code blocks */
-.prism-code {
-  border-radius: 8px;
-}
-
-/* Navbar improvements */
+/* ===== Barra =====
+   O blur vai num pseudo-elemento, não na própria .navbar: backdrop-filter na .navbar cria um bloco de
+   contenção para os filhos position:fixed, e o menu lateral do celular (que mora dentro dela) ficava
+   cortado na altura da barra. */
 .navbar {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--rc-line);
+  background: transparent;
 }
 
-[data-theme='dark'] .navbar {
-  background-color: #0f172a;
-  border-bottom: 1px solid #1e293b;
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--rc-bg) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
-/* Footer */
-.footer {
-  background-color: #0f172a !important;
-  border-top: 1px solid #1e293b;
+.navbar__logo {
+  height: 24px;
+  margin-right: 1.25rem;
 }
 
-[data-theme='dark'] .footer {
-  background-color: #0f172a !important;
+.navbar__link {
+  color: var(--rc-muted);
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 6px 11px;
+  border-radius: 8px;
+  transition: color 0.15s, background 0.15s;
 }
 
-/* Code blocks */
-[data-theme='dark'] pre {
-  background-color: #1e293b !important;
+.navbar__link:hover,
+.navbar__link--active {
+  color: var(--rc-fg);
+  background: var(--rc-panel-2);
 }
 
-[data-theme='dark'] code {
-  background-color: #1e293b;
-  border: 1px solid #334155;
+.navbar-sidebar {
+  background: var(--rc-bg);
 }
 
-/* Sidebar */
-.menu__link--active {
-  border-left: 3px solid var(--ifm-color-primary);
-  padding-left: calc(var(--ifm-menu-link-padding-horizontal) - 3px);
+.dropdown__menu {
+  background: var(--rc-bg-2);
+  border: 1px solid var(--rc-line);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
-/* Tables */
+/* ===== Conteúdo das docs ===== */
+.markdown h1,
+.markdown h2 {
+  letter-spacing: -0.03em;
+}
+
+.markdown h1 {
+  font-size: clamp(2rem, 3.4vw, 2.6rem);
+}
+
+.markdown a {
+  text-underline-offset: 3px;
+}
+
+/* Código em linha: fundo de painel e borda fina, sem o cinza chapado do Infima. */
+code {
+  background: var(--rc-panel-2);
+  border: 1px solid var(--rc-line);
+  vertical-align: baseline;
+}
+
+/* Bloco de código: borda fina e cantos de cartão. No escuro, o fundo do terminal da landing. */
+.theme-code-block {
+  border: 1px solid var(--rc-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+[data-theme='dark'] .theme-code-block,
+[data-theme='dark'] .theme-code-block pre,
+[data-theme='dark'] .theme-code-block [class*='codeBlockTitle'] {
+  background-color: var(--rc-term) !important;
+}
+
+.theme-code-block code {
+  border: 0;
+  background: transparent;
+}
+
+/* Tabelas: cabeçalho de painel e linhas de borda fina. */
 table {
   display: table;
   width: 100%;
+  border-collapse: collapse;
 }
 
 th {
-  background-color: var(--ifm-color-emphasis-100);
+  background: var(--rc-panel-2);
+  font-weight: 600;
 }
 
-[data-theme='dark'] th {
-  background-color: var(--ifm-color-emphasis-200);
+tr,
+tr:nth-child(2n) {
+  background: transparent;
 }
 
-/* Admonitions */
-.admonition {
+/* Admonições e <details> com a mesma linguagem de cartão. */
+.alert,
+.theme-admonition {
+  border-radius: 12px;
+}
+
+details {
+  border: 1px solid var(--rc-line);
+  border-radius: 12px;
+  background: var(--rc-panel);
+}
+
+/* Barra lateral: linha fina à direita, item ativo em painel e texto de destaque. */
+.theme-doc-sidebar-container {
+  border-right: 1px solid var(--rc-line) !important;
+}
+
+.menu__link {
+  color: var(--rc-muted);
+  font-size: 14.5px;
   border-radius: 8px;
 }
 
-/* Hero section for landing page */
-.hero {
-  background: linear-gradient(135deg, var(--ifm-color-primary) 0%, var(--ifm-color-primary-dark) 100%);
+.menu__link:hover {
+  color: var(--rc-fg);
 }
 
-.hero__title {
-  font-size: 3rem;
+.menu__link--active:not(.menu__link--sublist) {
+  color: var(--rc-accent);
+  font-weight: 600;
 }
 
-.hero__subtitle {
-  font-size: 1.5rem;
-  opacity: 0.9;
+.menu__list-item-collapsible:hover {
+  background: var(--rc-panel-2);
+}
+
+.table-of-contents__link {
+  color: var(--rc-muted);
+}
+
+.table-of-contents__link--active,
+.table-of-contents__link:hover {
+  color: var(--rc-accent);
+}
+
+/* Paginação (anterior/próxima) como cartão. */
+.pagination-nav__link {
+  border: 1px solid var(--rc-line);
+  background: var(--rc-panel);
+  border-radius: 12px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--rc-line-2);
+  background: var(--rc-panel-2);
+}
+
+/* ===== Rodapé enxuto: uma linha de links e o crédito, sem o bloco escuro do Infima. ===== */
+.footer,
+.footer--dark {
+  --ifm-footer-background-color: transparent;
+  --ifm-footer-color: var(--rc-muted);
+  --ifm-footer-link-color: var(--rc-muted);
+  --ifm-footer-link-hover-color: var(--rc-fg);
+  --ifm-footer-title-color: var(--rc-fg);
+  background: transparent;
+  border-top: 1px solid var(--rc-line);
+  padding: 1.5rem 0;
+  font-size: 14px;
+}
+
+.footer__links {
+  margin-bottom: 0.5rem;
+}
+
+.footer__link-separator {
+  color: var(--rc-faint);
+}
+
+.footer__copyright a {
+  color: var(--rc-fg);
+}
+
+/* Botões do Infima (usados na home) no formato da landing: primário azul escuro com texto branco nos dois modos. */
+.button {
+  border-radius: 10px;
+  font-weight: 600;
 }

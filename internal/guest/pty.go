@@ -40,13 +40,23 @@ func ptySession(conn net.Conn, job Job) {
 	if len(argv) == 0 {
 		argv = defaultShell
 	}
+	u, err := lookupUser(job.User)
+	if err != nil {
+		send(protocol.Event{Type: protocol.EventOutput, Bytes: []byte(err.Error() + "\r\n")})
+		send(protocol.Event{Type: protocol.EventExit, Code: 127})
+		return
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Env = append(os.Environ(), job.Env...)
+	cmd.Env = environ(u, job.Env)
+	applyUser(cmd, u)
 	cmd.Dir = job.Cwd
 	if cmd.Dir == "" {
 		cmd.Dir = "/"
 		if home := os.Getenv("HOME"); home != "" {
 			cmd.Dir = home
+		}
+		if u != nil {
+			cmd.Dir = u.home // o shell de outro usuário abre no HOME dele
 		}
 	}
 	size := &pty.Winsize{Rows: job.Rows, Cols: job.Cols}

@@ -107,15 +107,16 @@ stop_on_exit = true
 	}
 }
 
-// TestRunnerCodeRefusals: chave do runner.code ainda não suportada sai com o motivo e não
-// cria nada; sem stack nem image é erro.
+// TestRunnerCodeRefusals: chave do runner.code ainda não suportada ([secrets], Fase B) sai
+// com o motivo e não cria nada; sem stack nem image é erro.
 func TestRunnerCodeRefusals(t *testing.T) {
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "runner.code")
-	os.WriteFile(bad, []byte("stack = \"python\"\nnet = true\n"), 0o600)
+	// [health] segue sem suporte ([secrets] passou a valer com a story 7.7).
+	os.WriteFile(bad, []byte("stack = \"python\"\n[health]\nexec = [\"true\"]\n"), 0o600)
 	name := uniqueName("rcbad")
-	if _, errOut, rc := rcMachine(t, "create", "-f", bad, "--name", name); rc == 0 || !strings.Contains(errOut, `"net" is not supported yet`) {
-		t.Fatalf("net must be refused: rc=%d %s", rc, errOut)
+	if _, errOut, rc := rcMachine(t, "create", "-f", bad, "--name", name); rc == 0 || !strings.Contains(errOut, `"health" is not supported yet`) {
+		t.Fatalf("health must be refused: rc=%d %s", rc, errOut)
 	}
 	if _, _, rc := rcMachine(t, "status", "--name", name); rc == 0 {
 		t.Fatal("a refused file must not create the machine")

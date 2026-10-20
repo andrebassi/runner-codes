@@ -64,6 +64,20 @@ func (s *Store) Create(m domain.Machine, diskTemplate string) error {
 	return nil
 }
 
+// Save regrava o registro por cima, de forma atômica (arquivo temporário + rename): um
+// crash no meio deixa o registro velho, nunca um JSON pela metade que sumiria do List.
+func (s *Store) Save(m domain.Machine) error {
+	if _, err := s.Load(m.Name); err != nil {
+		return err
+	}
+	raw, _ := json.MarshalIndent(m, "", "  ")
+	tmp := filepath.Join(s.Dir(m.Name), recordFile+".tmp")
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(s.Dir(m.Name), recordFile))
+}
+
 // Load lê o registro; ausente é NOT_FOUND.
 func (s *Store) Load(name string) (domain.Machine, error) {
 	var m domain.Machine
@@ -146,6 +160,23 @@ func (Processes) Alive(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// Pause manda SIGSTOP ao grupo do vmm: as vCPUs, o gateway de rede e o visualizador param
+// juntos, e a memória da VM fica como está até o Resume.
+func (Processes) Pause(pid int) error {
+	if pid <= 0 {
+		return syscall.ESRCH
+	}
+	return syscall.Kill(-pid, syscall.SIGSTOP)
+}
+
+// Resume manda SIGCONT ao grupo do vmm.
+func (Processes) Resume(pid int) error {
+	if pid <= 0 {
+		return syscall.ESRCH
+	}
+	return syscall.Kill(-pid, syscall.SIGCONT)
 }
 
 // Kill manda SIGKILL ao grupo do vmm (ele lidera a própria sessão, então o grupo é o pid).

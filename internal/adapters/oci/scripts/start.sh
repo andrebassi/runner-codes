@@ -2,6 +2,13 @@
 # Primeiro processo do job dentro da VM (krun_set_exec). O root é ext4 read-only:
 # toda escrita vai para um tmpfs, que some com a VM.
 mount -t tmpfs -o size=256m,mode=1777 tmpfs /tmp
+# /dev/stdin, /dev/stdout, /dev/stderr e /dev/fd: quem cria é o init de uma distro, e aqui
+# ninguém cria. Sem eles, `grep -f /dev/stdin` falha com "No such file or directory" (medido
+# no teste de contenção: a busca por um valor vazado dava 0 por estar cega).
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd 2>/dev/null
+for l in 0:stdin 1:stdout 2:stderr; do
+  [ -e "/dev/${l#*:}" ] || ln -s "/proc/self/fd/${l%%:*}" "/dev/${l#*:}" 2>/dev/null
+done
 # Ambiente da config OCI (PATH, JAVA_HOME...), uma variável por linha. `export "$l"`
 # não interpreta o valor, então nada da imagem vira comando aqui.
 if [ -f /opt/runner/env ]; then

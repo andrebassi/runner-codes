@@ -1,12 +1,11 @@
 ---
 title: 'Referência para agentes'
-description: 'O que o rc faz hoje, como usar cada comando, o que ele tem e não tem, e o plano de evolução'
+description: 'O que o rc faz hoje, como usar cada comando, o que ainda não existe e o plano de evolução'
 ---
 
 Referência curta e completa para quem opera o `rc`, gente ou agente de IA: o que existe, como chamar e o que cada
-coisa garante. Segue o formato do "Agent Reference", com uma diferença: aqui cada linha diz o que **existe
-hoje**. O que ainda não existe fica na seção [Comparação com o outro runtime](#comparação-com-o-outro runtime) e no
-[plano](#plano-de-evolução).
+coisa garante. Cada linha diz o que **existe hoje**. O que ainda não existe fica na seção
+[O que ainda não existe](#o-que-ainda-não-existe) e no [plano](#plano-de-evolução).
 
 O `rc` executa código não confiável (gerado por LLM) numa **microVM nova por job**, com kernel próprio, sem rede, com
 root read-only, e destrói a VM no fim. O VMM é a libkrun e o kernel vem da libkrunfw. O boot leva cerca de 260 ms.
@@ -49,7 +48,7 @@ Sem Homebrew nem Docker: tudo pelo Nix. `nix develop` dá Go, task, coreutils e 
 # máquina persistente: o que você grava fica entre comandos e entre stop/start
 ./bin/rc machine create --name dev --stack python
 ./bin/rc machine start  --name dev
-./bin/rc machine exec   --name dev -- sh -c 'mkdir -p /workspace/out && echo pronto > /etc/motd'   # sem rede: --net é a Fase C
+./bin/rc machine exec   --name dev -- sh -c 'mkdir -p /workspace/out && echo pronto > /etc/motd'   # sem rede: crie com --net ou --allow-host
 ./bin/rc machine cp ./app.py dev:/workspace/app.py
 ./bin/rc machine exec   --name dev -- python3 /workspace/app.py
 ./bin/rc machine stop   --name dev
@@ -206,52 +205,35 @@ data: {"status":"success","exitCode":0,"exception":null,"executionTime":2034,"ti
 - **GPU**: VM com GPU sobe a frio, fora do pool, no máximo 2 ao mesmo tempo, e divide a GPU do host (isolamento por
   processo, não por VM).
 
-## Comparação com o outro runtime
+## O que ainda não existe
 
-O outro runtime () usa a mesma base: libkrun + libkrunfw, imagens OCI, sem daemon. A diferença de propósito é
-que o `rc` executa **jobs descartáveis** de código não confiável, gerencia **máquinas** de uso geral.
+O `rc` usa libkrun + libkrunfw, imagens OCI e nenhum daemon. Ele executa **jobs descartáveis** de código não confiável
+e também gerencia **máquinas** persistentes; o que segue ainda não existe, ou existe em parte:
 
 | Recurso | No `rc` hoje | Observação |
-|-------------------|--------------|------------|
-| `machine run` efêmero | **sim**: `rc run` | por stack do catálogo, não por imagem arbitrária |
-| `-it` shell interativo | **sim**: `rc shell` | TTY real, Ctrl+C, tamanho da janela |
-| `exec --stream` / SSE | **sim**: `rc run` e `/api/v1/execute/stream` | evento final `result` |
-| `--gpu`, `--gpu-vram` | **sim**: `--gpu`; VRAM pelo catálogo | Venus/Vulkan; testado no macOS |
-| rede desligada por padrão | **sim** | e não há como ligar num job (por desenho) |
-| HTTP API (`serve`) | **sim** | rotas de job, não de máquina; com pool pré-bootado não tem |
-| imagens OCI sem Docker | **sim** | pull no host, ext4 gerado numa VM de build |
-| máquinas persistentes (`create`/`start`/`exec`/`stop`/`ls`/`delete`) | **sim**: `rc machine` | raiz gravável (overlay) e `/workspace` persistem; `/tmp` é tmpfs |
-| `machine cp`, `/workspace` persistente | **sim** | pedaços de 1 MiB, atômico, até 4 GiB; ~84 MB/s de subida e ~88 MB/s de descida |
-| `machine logs`, `status` | **sim** | `logs` lê o console, legível com a máquina parada |
-| `machine stats`, `update`, `monitor` | **não** | Fase D |
-| `machine shell` (TTY na máquina) | **sim**: `rc machine shell` | PTY no guest; Ctrl+C, resize e rc do `exit` |
+|---------|--------------|------------|
+| `machine stats`, `machine monitor` | **não** | Fase D |
 | exec interativo por WebSocket na API | **não** | o terminal hoje é só pela CLI |
-| erros com código estável | **sim** nas máquinas | `NOT_FOUND`, `CONFLICT`, `INVALID_STATE`, `CONFIG_ERROR` |
-| `--secret-env` / `--secret-file` | **não** | Fase B |
-| `--ssh-agent` | **não** | Fase B |
-| `--net`, `--allow-host`, `--allow-cidr`, `--block-private` | **não** | Fase C: o TSI não filtra destino, precisa de virtio-net com filtro nosso |
-| runner.code (TOML) | **sim**: [`runner.code`](/cli/runner-code) | stack ou imagem, recursos, env, workdir, init (uma vez por disco), workload com `stop_signal`/`stop_timeout`/`stop_on_exit`, perfil `[dev]`; chave de rede, montagem ou segredo é recusada com o motivo |
-| `--image` de registro (imagem arbitrária) | **sim**, nas máquinas | `rc machine create --image redis:7-alpine`; sem warmup |
-| `--image ./img.tar`, `--image -` | **não** | Fase D |
 | `--error-format json` | parcial | a API já devolve códigos E00x estáveis |
-| `pack` (`.`) | **não** | fora do plano por ora |
-| `checkpoint` Mac → Linux | **não** | a libkrun upstream não tem snapshot |
+| checkpoint de RAM e CPU (Mac → Linux) | **não** | a libkrun upstream não tem snapshot; o `branch` copia o disco |
 | `--cuda` | **não** | exige host Linux com NVIDIA |
-| Windows (WHP) | **não** | a libkrun upstream não tem WHP; o outro runtime usa um fork |
-| — | **sim, só no `rc`** | Landlock + seccomp por VM no Linux; pool pré-bootado; catálogo com warmup gravado na imagem; gate de cobertura de 90% |
+| Windows (WHP) | **não** | a libkrun upstream não tem WHP |
+
+O evento final do stream de job é `result`; no stream de máquina é `exit`. A HTTP API traz pool pré-bootado, e no
+Linux cada VM de job roda sob Landlock + seccomp.
 
 ## Plano de evolução
 
 Cada fase fecha como as anteriores: story AIOX, e2e duas vezes seguidas, defeito plantado de propósito para provar que
-o teste pega, e gate de 90%. A **Fase A está feita** (stories 7.1 e 7.2), e da Fase D o `runner.code` com imagem
-arbitrária (story 7.3); o resto ainda não.
+o teste pega, e gate de 90%. **Feitas:** a Fase A (stories 7.1 e 7.2), o `runner.code` com imagem arbitrária
+(story 7.3, da Fase D) e a Fase C, rede com filtro e volumes (story 7.4). Falta a Fase B e o resto da D.
 
 | Fase | O que entra | Decisão de desenho | Risco conhecido |
 |------|-------------|--------------------|-----------------|
 | **A — máquinas** ✅ | `rc machine create/start/stop/delete/ls/status/exec/shell/logs/cp`; rotas `/api/v1/machines/...` | estado em `<cache>/machines/<nome>/`; disco ext4 gravável por máquina; overlayfs no guest (imagem por baixo, disco por cima) para o que for instalado persistir; `/workspace` no disco; o `vmm` roda destacado, com registro de PID e teste de vida | hoje o `vmm` morre com o pai de propósito, e os jobs efêmeros precisam continuar assim |
 | **B — segredos e SSH** | `--secret-env`, `--secret-file`, `--ssh-agent` | segredo resolvido na hora do start, nunca gravado no registro; recusado pela API (seria leitura arbitrária do host); SSH por uma porta vsock ligada ao `SSH_AUTH_SOCK`, sem a chave entrar na VM | root no guest lê o env do processo; é defesa em camadas, não sigilo absoluto |
-| **C — rede com filtro** | `--net`, `--allow-host`, `--allow-cidr`, `--block-private`, `-p` | virtio-net com pilha de rede em userspace no host (ex.: gvproxy) e o filtro feito por nós; o TSI segue só para a VM de build | é a parte mais cara e mais sensível; medir antes de prometer |
-| **D — conveniências** | ~~runner.code~~ ✅ `runner.code` (7.3), `--image ./img.tar` e `-`, `machine stats`, `--error-format json` | o go-containerregistry já lê `docker save`/OCI layout | — |
+| **C — rede com filtro** ✅ (7.4) | `--net`, `--allow-host`, `--allow-cidr`, `--block-private`, `-p`, `machine update`, volumes | virtio-net com pilha de rede em userspace no host (ex.: gvproxy) e o filtro feito por nós; o TSI segue só para a VM de build | é a parte mais cara e mais sensível; medir antes de prometer |
+| **D — conveniências** | ✅ `runner.code` (7.3), `--image ./img.tar` e `-`, `machine stats`, `--error-format json` | o go-containerregistry já lê `docker save`/OCI layout | — |
 
 Ordem sugerida: A → B → D → C, com C por último porque abrir rede é o que mais mexe na garantia central do projeto.
 

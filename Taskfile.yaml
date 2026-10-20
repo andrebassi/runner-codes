@@ -55,6 +55,27 @@ tasks:
     desc: Coverage gate (fails below 90% total / 100% domain)
     cmds:
       - ./scripts/coverage-gate.sh
+      - ./scripts/sdk-python-cov.sh
+
+  guides:
+    desc: Guide folders (examples/guides), each proven in a real VM; DIRS="pack install" runs some
+    cmds:
+      - ./scripts/guides.sh {{.DIRS}}
+
+  docs:deploy:
+    desc: Build docs.runner.codes (4 locales, broken links fail) and upload to Cloudflare Pages
+    cmds:
+      - ./scripts/docs-deploy.sh deploy
+
+  site:demos:
+    desc: Real VM runs behind the runner.codes site demos; SCENES="network pack" runs some
+    cmds:
+      - ./scripts/site-demos.sh {{.SCENES}}
+
+  sdk:py:cov:
+    desc: Python SDK coverage gate (line and branch, each >= 90%)
+    cmds:
+      - ./scripts/sdk-python-cov.sh
 
   test:targets:
     desc: Multi-target gate (darwin/arm64, linux/amd64, linux/arm64 build; windows refused)

@@ -89,6 +89,15 @@ func ApplySandbox(p SandboxPolicy) error {
 		// conecta em socket Unix nenhum, e assim não alcança o socket de outra VM.
 		rules = append(rules, landlock.RWDirs(p.SocketDir))
 	}
+	if len(p.UnixConnect) > 0 {
+		// Connect só nos sockets pedidos (agente SSH, --mount-socket): o socket de outra VM
+		// continua fora de alcance.
+		rules = append(rules, landlock.ROFiles(p.UnixConnect...).WithResolveUnix().IgnoreIfMissing())
+	}
+	if len(p.ListenDirs) > 0 {
+		// Diretório escolhido por quem deu --expose-socket HOST: criar e apagar o socket lá.
+		rules = append(rules, landlock.RWDirs(p.ListenDirs...).IgnoreIfMissing())
+	}
 	// V10 = arquivos + TCP/UDP + escopo de sinais e sockets abstratos + socket Unix por
 	// caminho. BestEffort cai para a maior ABI que o kernel tiver, sem falhar.
 	// Nenhuma regra de rede: toda conexão e bind TCP/UDP fica negada.

@@ -1,0 +1,22 @@
+{
+  "link.item.label.runner.codes": {
+    "message": "runner.codes",
+    "description": "The label of footer link with label=runner.codes linking to https://runner.codes"
+  },
+  "link.item.label.Docs": {
+    "message": "Docs",
+    "description": "The label of footer link with label=Docs linking to /introduction"
+  },
+  "link.item.label.API": {
+    "message": "API",
+    "description": "The label of footer link with label=API linking to /api-reference/overview"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/andrebassi/runner-codes"
+  },
+  "copyright": {
+    "message": "© 2026 runner.codes · <a href=\"https://andrebassi.com.br\" target=\"_blank\" rel=\"noopener noreferrer\">André Bassi</a>",
+    "description": "The footer copyright"
+  }
+}

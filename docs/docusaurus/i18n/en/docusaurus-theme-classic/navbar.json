@@ -1,0 +1,22 @@
+{
+  "logo.alt": {
+    "message": "runner.codes",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Docs": {
+    "message": "Docs",
+    "description": "Navbar item with label Docs"
+  },
+  "item.label.API": {
+    "message": "API",
+    "description": "Navbar item with label API"
+  },
+  "item.label.Exemplos": {
+    "message": "Examples",
+    "description": "Navbar item with label Exemplos"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}

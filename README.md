@@ -50,7 +50,7 @@ Detalhes em [docs/architecture.md](docs/architecture.md); requisitos em [docs/pr
 
 Para testar à mão, passo a passo: [docs/runbook.md](docs/runbook.md) (`task runbook` executa e confere a mesma sequência).
 
-Referência para agentes (cada comando, flag, rota e erro, a comparação com o outro runtime e o plano de evolução):
+Referência para agentes (cada comando, flag, rota e erro, o que ainda não existe e o plano de evolução):
 [docs/docusaurus/docs/agents.md](docs/docusaurus/docs/agents.md). GPU de ponta a ponta:
 [docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md).
 

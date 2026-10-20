@@ -115,7 +115,7 @@ func wire() (*deps, error) {
 	l := &krun.Launcher{Exe: exe, LibPath: lib, LibDir: libDir, WorkDir: filepath.Join(cache, "run"), Stderr: os.Stderr}
 	b := &oci.Builder{
 		CacheDir: cache, Arch: runtime.GOARCH, GuestBinary: guestBinary(), Launcher: l,
-		Fetch: oci.RemoteFetcher, Source: oci.AlpineSources[runtime.GOARCH], Log: os.Stderr,
+		Fetch: oci.Fetch, Source: oci.AlpineSources[runtime.GOARCH], Log: os.Stderr,
 	}
 	return &deps{catalog: cat, launcher: l, builder: b}, nil
 }
@@ -133,7 +133,19 @@ func (d *deps) newExecutor(poolSize int) (*app.Executor, *app.Pool) {
 // main registra os subcomandos.
 func main() {
 	root := &cobra.Command{Use: "rc", Short: "Run untrusted code in libkrun microVMs", Version: Version, SilenceUsage: true}
-	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd())
+	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd(), packCmd())
+	// Executável com payload (um artefato de `rc pack create`): os subcomandos dele viram os
+	// da máquina empacotada. O vmm é o próprio stub chamado pelo launcher, e passa direto.
+	if exe, err := os.Executable(); err == nil && (len(os.Args) < 2 || os.Args[1] != "vmm") {
+		args, isPack, err := packMode(exe, os.Args[1:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if isPack {
+			root.SetArgs(args)
+		}
+	}
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -203,7 +215,7 @@ func imageCmd() *cobra.Command {
 	build.Flags().StringSliceVar(&langs, "stack", nil, "stacks to build (repeatable)")
 	build.Flags().BoolVar(&all, "all", false, "every stack in the catalog")
 	img := &cobra.Command{Use: "image", Short: "Stack images"}
-	img.AddCommand(build)
+	img.AddCommand(build, imagePruneCmd("prune"))
 	return img
 }
 
@@ -368,6 +380,7 @@ func libPathEnv() string {
 func serveCmd() *cobra.Command {
 	var listen string
 	var poolSize int
+	var allowNested bool
 	c := &cobra.Command{
 		Use: "serve", Short: "HTTP API with a pool of pre-booted VMs",
 		RunE: func(*cobra.Command, []string) error {
@@ -384,7 +397,7 @@ func serveCmd() *cobra.Command {
 			}
 			pool.Start(built)
 			defer pool.Close()
-			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: d.newMachines(), Languages: func() []httpapi.LanguageInfo {
+			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: d.newMachines(), AllowNested: allowNested, Languages: func() []httpapi.LanguageInfo {
 				return languageInfo(d)
 			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -404,6 +417,7 @@ func serveCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&listen, "listen", env("RUNNER_LISTEN", "127.0.0.1:8080"), "listen address (loopback by default: the API has no authentication)")
 	c.Flags().IntVar(&poolSize, "pool-size", 2, "ready VMs per stack")
+	c.Flags().BoolVar(&allowNested, "allow-nested-virt", false, "accept nestedVirt in machine create bodies (off: a client could otherwise hand guests the host's virtualization)")
 	return c
 }
 
@@ -461,6 +475,21 @@ func doctorCmd() *cobra.Command {
 				fmt.Println("ok    gpu: libkrun built with virtio-gpu (Venus); use --gpu on a stack with gpu")
 			} else if err == nil {
 				fmt.Println("info  gpu: this libkrun has no virtio-gpu; --gpu is unavailable")
+			}
+			// CUDA é a pergunta que um preflight responde sem ligar VM: aqui a resposta
+			// é sempre não, e dita, para ninguém ler um teste de Vulkan como sim.
+			fmt.Println("info  cuda: not supported (no CUDA remoting; --gpu is Vulkan)")
+			// Nested depende do hardware (M3+ no Mac, KVM aninhado no Linux): o doctor responde
+			// antes de alguém descobrir no start de uma máquina --nested.
+			if n, ok := api.(krun.NestedAPI); ok {
+				switch rc := n.CheckNestedVirt(); {
+				case rc == 1:
+					fmt.Println("ok    nested: supported (--nested)")
+				case rc == 0:
+					fmt.Println("info  nested: not supported on this host; --nested is refused")
+				default:
+					fmt.Printf("info  nested: check failed (%d); --nested is refused\n", rc)
+				}
 			}
 			_, err = os.Stat(d.builder.GuestBinary)
 			check("guest", err)

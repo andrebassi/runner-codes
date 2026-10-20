@@ -9,7 +9,8 @@ o passo correspondente no `scripts/runbook.sh`, na mesma entrega.**
 
 | Última execução | Host | Resultado |
 |-----------------|------|-----------|
-| 19/10/2026 | macOS 27, Apple M1 Pro | `task runbook`: 0 falhas em 36 conferências (com o `runner.code`, passo 8b). Prova de falha: com o init rodando a cada start, o 8b reprovou (`init não roda de novo`) |
+| 20/10/2026 | macOS 27, Apple M1 Pro | `task runbook`: 0 falhas em 116 conferências (até o 8u: usuário, segredos, pontes de socket, ping, staged, recusas) |
+| 19/10/2026 | macOS 27, Apple M1 Pro | `task runbook`: 0 falhas em 50 conferências (com volumes e rede, passos 8c e 8d). Prova de falha: com o DNS do gateway sem filtro, o 8d reprovou em 2 conferências |
 
 Pré-requisitos: `task krun:install`, `task build` e as imagens (`./bin/rc image build --all`; o passo 9 precisa da
 `llama`).
@@ -44,7 +45,7 @@ Esperado: `early` aparece logo (~0,3 s, o boot) e `late` 1,5 s depois, enquanto 
 ```
 
 Esperado:
-- `created teste (stack=python cpus=2 memory=2048MiB disk=10GiB gpu=false)`;
+- `created teste (stack=python cpus=4 memory=8192MiB disk=10GiB gpu=false)`;
 - `started teste (pid N) in ~200ms`;
 - `teste` com `running` no `ls`.
 
@@ -138,7 +139,7 @@ Esperado: as últimas linhas do console (o guest registra cada operação). Func
 
 ## 8b. Máquina declarada num `runner.code`
 
-O [`runner.code`](docusaurus/docs/cli/runner-code.md) é o runner.code do `rc`: stack ou imagem, recursos, env, init e
+O [`runner.code`](docusaurus/docs/cli/runner-code.md) é a máquina declarada num arquivo: stack ou imagem, recursos, env, init e
 workload num TOML versionável.
 
 ```bash
@@ -177,11 +178,343 @@ Esperado:
 Chave que o `runner.code` ainda não implementa é recusada, nunca ignorada:
 
 ```bash
-printf 'stack = "python"\nnet = true\n' > /tmp/rc-demo/bad.code
+printf 'stack = "python"\n[health]\nexec = ["true"]\n' > /tmp/rc-demo/bad.code
 ./bin/rc machine create --name x -f /tmp/rc-demo/bad.code
 ```
 
-Esperado: `key "net" is not supported yet: networking (planned: phase C)`, e nada criado.
+Esperado: `key "health" is not supported yet: health checks`, e nada criado.
+
+## 8c. Volumes: diretório do host dentro da máquina
+
+```bash
+mkdir -p /tmp/rc-vol/ro && echo "do host" > /tmp/rc-vol/hello.txt
+./bin/rc machine create --name vol --stack python -v /tmp/rc-vol:/data -v /tmp/rc-vol/ro:/ro:ro -w /data
+./bin/rc machine start  --name vol
+./bin/rc machine exec   --name vol -- sh -c 'cat hello.txt; echo do-guest > from-guest.txt; echo y > /ro/y; echo ro=$?'
+cat /tmp/rc-vol/from-guest.txt
+./bin/rc machine stop   --name vol
+./bin/rc machine delete --name vol
+```
+
+Esperado:
+- `do host`: o guest lê o diretório do host;
+- `Read-only file system` e `ro=1`: o `:ro` é imposto pela libkrun no device, e o root do guest não o desfaz;
+- no host, `cat` mostra `do-guest`: a escrita do guest aparece no host na hora.
+
+## 8d. Rede: saída, política e porta
+
+Máquina nasce **sem rede**. `--net` liga a saída; `--allow-host` liga e restringe; `-p` publica uma porta no
+`127.0.0.1` do host.
+
+```bash
+./bin/rc machine create --name net --stack python --allow-host example.com -p 18080:8000
+./bin/rc machine start  --name net
+./bin/rc machine exec   --name net -- sh -c 'wget -qO /dev/null http://example.com; echo ok=$?'
+./bin/rc machine exec   --name net -- sh -c 'wget -qO /dev/null http://iana.org'
+./bin/rc machine exec   --name net -- sh -c 'wget -qO- -T 3 http://169.254.169.254; echo meta=$?'
+./bin/rc machine update --name net --allow-host iana.org
+./bin/rc machine exec   --name net -- sh -c 'wget -qO /dev/null http://iana.org; echo ok=$?'
+./bin/rc machine exec   --name net -- sh -c 'cd /tmp && echo do-guest > i.html && (python3 -m http.server 8000 >/dev/null 2>&1 &)'
+curl -s http://127.0.0.1:18080/i.html
+cat ~/Library/Caches/runner-codes/machines/net/egress-denials.log
+./bin/rc machine stop   --name net
+./bin/rc machine delete --name net
+```
+
+Esperado:
+- `ok=0` para `example.com`;
+- `wget: bad address 'iana.org'` **na hora**: o DNS do gateway responde NXDOMAIN, sem esperar timeout;
+- `meta=1`: a metadata de nuvem (`169.254.169.254`) é recusada mesmo com a rede aberta;
+- depois do `update`, `iana.org` passa **sem reiniciar** a máquina;
+- `curl` no host recebe `do-guest` pela porta publicada;
+- o log de recusas tem `deny dns iana.org: name not in the allow list`.
+
+## 8e. Máquina efêmera: `machine run`
+
+```bash
+./bin/rc machine run --stack python -- python3 -c 'print("ola"); raise SystemExit(3)'; echo "rc=$?"
+echo dados | ./bin/rc machine run -i --stack python -- sh -c 'read x; echo leu:$x'
+./bin/rc machine run --net --image alpine -- uname -a
+./bin/rc machine run -it --image alpine -- /bin/sh        # terminal; `exit` sai e apaga a máquina
+./bin/rc machine ls
+```
+
+Esperado:
+- `ola` e `rc=3`: o rc é o do comando;
+- `leu:dados`: o `-i` repassa o stdin (sem `-i` o stdin não é lido);
+- o `uname -a` do kernel da libkrunfw numa imagem fora do catálogo (construída no primeiro uso);
+- o `ls` sem nenhuma `run-…`: a máquina efêmera some no fim, inclusive no Ctrl+C.
+
+## 8f. Porta publicada alcança servidor que só escuta em localhost
+
+```bash
+./bin/rc machine run -d --name web --stack python -p 18080:9000 -- python3 -m http.server 9000 --bind 127.0.0.1
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/
+./bin/rc machine delete --name web -f
+```
+
+Esperado: `200`. A porta publicada entra pelo guest (op `dial` no vsock) e disca o `127.0.0.1` de lá, então o
+servidor que escuta só em localhost, como o vite ou o openclaw, responde.
+
+## 8g. Tela no navegador: display, teclado e mouse
+
+```bash
+./bin/rc machine run -d --name desktop -s examples/desktop/runner.code
+open http://localhost:6080
+./bin/rc machine stop --name desktop
+```
+
+Esperado:
+- o desktop Weston aparece na página, com o painel e o relógio do guest;
+- o clique no ícone do painel abre o terminal;
+- o que se digita na página chega ao terminal, inclusive maiúsculas, símbolos e Ctrl.
+
+O `task runbook` confere o mesmo caminho sem precisar de olho humano:
+- uma máquina alpine com `--display 1024x768`;
+- o `modetest` acende a tela;
+- o quadro de 1024x768 chega ao visualizador;
+- um `KEY_A` mandado por `POST /input` aparece no `evtest` do guest.
+
+## 8h. Exemplos
+
+```bash
+./bin/rc machine run -s examples/python-app/runner.code -- python3 --version
+./bin/rc machine run -s examples/node-app/runner.code -- node -e 'console.log("ola", 1+1)'
+./bin/rc machine run -d --name doom -s examples/doom-web/runner.code && open http://localhost:8080
+```
+
+Esperado:
+- `Python 3.12.x`;
+- `ola 2`;
+- o DOOM no navegador.
+
+Os outros exemplos e o que cada um mede estão em [`examples/README.md`](../examples/README.md). O
+`docker-in-vm` tem uma conferência própria, `examples/docker-in-vm/check.sh`.
+
+## 8i. Branch e pausa
+
+```bash
+./bin/rc machine create --name mom --stack python && ./bin/rc machine start --name mom
+./bin/rc machine exec   --name mom -- sh -c 'echo antes > /root/marca'
+./bin/rc machine pause  --name mom && ./bin/rc machine status --name mom
+./bin/rc machine branch --from mom --name kid
+./bin/rc machine resume --name mom
+./bin/rc machine start  --name kid && ./bin/rc machine exec --name kid -- cat /root/marca
+./bin/rc machine delete --name kid -f && ./bin/rc machine delete --name mom -f
+```
+
+Esperado:
+- `status` mostra `paused`, e um `exec` nesse estado é recusado com o motivo;
+- a filha mostra `antes`: o branch leva o que a mãe gravou, mesmo com ela pausada (o `rc` a retoma por um instante
+  para o `sync`);
+- depois disso, mãe e filha são independentes.
+
+## 8j. Rede nomeada
+
+```bash
+./bin/rc machine run -d --name db --stack python --network lab -- python3 -m http.server 8080
+./bin/rc machine create --name app --stack python --network lab && ./bin/rc machine start --name app
+./bin/rc machine exec --name app -- wget -qO- -T 3 http://100.98.0.10:8080/
+./bin/rc machine exec --name app -- wget -qO- -T 3 http://db.lab.internal:8080/
+./bin/rc machine delete --name db -f
+./bin/rc machine exec --name app -- nslookup db.lab.internal
+./bin/rc machine delete --name app -f
+```
+
+Esperado:
+- as duas máquinas recebem IPs seguidos da rede (`db` é `100.98.0.10`, `app` é `100.98.0.11`) e se alcançam pelo IP
+  e pelo nome `<máquina>.<rede>.internal`, sem `--net`: tráfego dentro da rede não é saída;
+- máquina de outra rede não alcança essas, nem resolve os nomes delas;
+- `db` apagada some do DNS da rede: o `nslookup` não devolve mais o IP dela.
+
+## 8k. Volume S3
+
+Um S3 local, servindo uma pasta (o MinIO saiu do nixpkgs em 11/10/2026):
+
+```bash
+mkdir -p /tmp/s3/bkt/data && echo 'ola do bucket' > /tmp/s3/bkt/data/hello.txt
+nix shell nixpkgs#rclone -c rclone serve s3 /tmp/s3 --addr 127.0.0.1:19000 --auth-key chave,segredo123 &
+./bin/rc machine create --name s3 --stack python --net --allow-cidr 127.0.0.1/32 \
+  -e AWS_ACCESS_KEY_ID=chave -e AWS_SECRET_ACCESS_KEY=segredo123 -e AWS_ENDPOINT_URL=http://100.96.0.1:19000 \
+  -v s3://bkt/data:/data
+./bin/rc machine start --name s3
+./bin/rc machine exec --name s3 -- sh -c 'cat /data/hello.txt; echo do-guest > /data/novo.txt'
+cat /tmp/s3/bkt/data/novo.txt
+./bin/rc machine delete --name s3 -f
+```
+
+Esperado:
+- o `start` monta o bucket (com chave errada, ele falha com `s3: 403` e o motivo);
+- o guest lê `ola do bucket`, e o `novo.txt` aparece na pasta do servidor com `do-guest`.
+
+## 8l. Credencial que a máquina usa sem ler
+
+```bash
+./bin/rc machine create --name cred --stack python --credential tok=RB_TOKEN@postman-echo.com
+RB_TOKEN=valor-do-runbook ./bin/rc machine start --name cred
+./bin/rc machine exec --name cred -- python3 -c '
+import json, os, urllib.request
+tok = os.environ["RB_TOKEN"]
+print("guest:", tok)
+r = urllib.request.Request("https://postman-echo.com/headers", headers={"Authorization": "Bearer " + tok, "User-Agent": "runbook/1"})
+print("server:", json.load(urllib.request.urlopen(r, timeout=20))["headers"]["authorization"])'
+./bin/rc machine delete --name cred -f
+```
+
+Esperado:
+- `guest: RC_PLACEHOLDER_TOK_...`: o guest só tem o placeholder;
+- `server: Bearer valor-do-runbook`: o servidor recebeu o valor real, que veio do ambiente do `start`.
+
+O User-Agent é próprio porque o Cloudflare do postman-echo recusa o `Python-urllib` (403, error code 1010).
+
+## 8m. Pack: a máquina num arquivo
+
+```bash
+./bin/rc machine create --name pk --stack python && ./bin/rc machine start --name pk
+./bin/rc machine exec --name pk -- sh -c 'echo marca-do-runbook > /root/marca'
+./bin/rc machine stop --name pk
+./bin/rc pack create --from-vm pk --output /tmp/one --single-file
+./bin/rc machine delete --name pk
+/tmp/one run -- cat /root/marca
+/tmp/one
+```
+
+Esperado:
+- `marca-do-runbook`: o artefato levou o disco da máquina, mesmo com a origem apagada (um pack que perdesse o disco
+  ainda ligaria e sairia 0; por isso se confere um valor);
+- `/tmp/one` sozinho mostra `usage: one run ...`.
+
+## 8n. Usuário, volume de disco e `docker.sock`
+
+```bash
+./bin/rc machine create --name usr --stack python --user nobody
+./bin/rc machine start --name usr
+./bin/rc machine exec --name usr -- id -un
+./bin/rc machine exec --name usr --user root -- id -un
+./bin/rc machine create --name dk --stack python --docker-socket -v /var/lib/dados -- python3 -c '
+import os, socket
+s = socket.socket(socket.AF_UNIX); s.bind("/var/run/docker.sock"); s.listen()
+while True:
+    c, _ = s.accept(); c.sendall(b"do-guest:" + c.recv(64)); c.close()'
+./bin/rc machine start --name dk
+./bin/rc machine exec --name dk -- stat -f -c %T /var/lib/dados
+python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b"ping"); print(s.recv(64).decode())' "$(./bin/rc machine data-dir --name dk)/docker.sock"
+```
+
+Esperado:
+- `nobody`, e `root` com `--user root` (o `--user` do exec vence o da máquina);
+- `ext2/ext3`: o volume de disco é ext4 de verdade, fora do overlay (o que o overlay2 do Docker precisa);
+- `do-guest:ping`: o host fala com o servidor do guest pelo `docker.sock` do diretório da máquina.
+
+## 8o. Segredos e agente SSH
+
+```bash
+ssh-keygen -q -t ed25519 -N "" -f /tmp/rb-id && ssh-agent -D -a /tmp/rb-agent.sock & sleep 1
+SSH_AUTH_SOCK=/tmp/rb-agent.sock ssh-add -q /tmp/rb-id
+echo do-arquivo > /tmp/rb-sec.txt
+./bin/rc machine create --name sec --image alpine --net --init 'apk add -q --no-cache openssh-client' \
+  --secret-env API=RB_SECRET --secret-file ARQ=/tmp/rb-sec.txt --ssh-agent
+RB_SECRET=valor-secreto SSH_AUTH_SOCK=/tmp/rb-agent.sock ./bin/rc machine start --name sec
+./bin/rc machine exec --name sec -- sh -c 'echo $API $ARQ; ssh-add -l'
+grep -rl valor-secreto --exclude='*.ext4' "$(./bin/rc machine data-dir --name sec)"
+```
+
+Esperado:
+- `valor-secreto do-arquivo`: os dois segredos no ambiente de todo comando;
+- `ssh-add -l` lista a chave de `/tmp/rb-id` (a privada fica no agente do host);
+- o `grep` não acha nada: o valor não fica no registro da máquina.
+
+O agente e a chave são descartáveis, deste passo: nada toca no agente de quem roda.
+
+## 8p. Pontes de socket nas duas direções
+
+```bash
+python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.bind("/tmp/rb-h.sock"); s.listen()
+while True:
+    c,_=s.accept(); c.sendall(b"do-host:"+c.recv(64)); c.close()' &
+./bin/rc machine create --name skt --stack python --expose-socket /run/app.sock --mount-socket /tmp/rb-h.sock:/run/h/h.sock -- python3 -c '
+import socket
+s = socket.socket(socket.AF_UNIX); s.bind("/run/app.sock"); s.listen()
+while True:
+    c, _ = s.accept(); c.sendall(b"do-guest:" + c.recv(64)); c.close()'
+./bin/rc machine start --name skt
+python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b"ping"); print(s.recv(64).decode())' "$(./bin/rc machine data-dir --name skt)/app.sock"
+./bin/rc machine exec --name skt -- python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect("/run/h/h.sock"); s.sendall(b"pong"); print(s.recv(64).decode())'
+```
+
+Esperado: `do-guest:ping` (o host alcança o socket que o workload escuta) e `do-host:pong` (o guest alcança o
+socket do host, num diretório que a imagem não tinha).
+
+## 8q. Ping e faixa de portas
+
+```bash
+./bin/rc machine create --name png --stack python --net -p 18301-18303:18301-18303 -- python3 -m http.server 18302
+./bin/rc machine start --name png
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18302/
+./bin/rc machine exec --name png -- ping -c1 -W3 1.1.1.1
+./bin/rc machine create --name pngd --stack python --allow-cidr 198.51.100.0/24
+./bin/rc machine start --name pngd
+./bin/rc machine exec --name pngd -- ping -c1 -W2 1.1.1.1
+grep 'deny icmp' "$(./bin/rc machine data-dir --name pngd)/egress-denials.log"
+```
+
+Esperado:
+- `200`: a faixa publica uma porta por número (até 64), e a do meio responde;
+- o ping a `1.1.1.1` volta com a rede aberta, e só se o host recebeu a resposta (não há resposta inventada);
+- fora da allowlist o ping não volta, e a negação `deny icmp 1.1.1.1` vai para o log.
+
+## 8r. Volume staged e sync
+
+```bash
+mkdir -p /tmp/rb-repo && echo original > /tmp/rb-repo/a.txt && echo x > /tmp/rb-repo/old.txt
+./bin/rc machine create --name stg --stack python -v /tmp/rb-repo:/work:staged
+./bin/rc machine start --name stg
+./bin/rc machine exec --name stg -- sh -c 'stat -f -c %T /work; echo mudou > /work/a.txt; rm /work/old.txt; printf "#!/bin/sh\n" > /work/run.sh; chmod 755 /work/run.sh'
+cat /tmp/rb-repo/a.txt
+./bin/rc machine sync --name stg
+cat /tmp/rb-repo/a.txt; ls /tmp/rb-repo; ls -l /tmp/rb-repo/run.sh
+```
+
+Esperado:
+- `ext2/ext3`: a cópia está no disco da máquina, sem ida e volta de virtio-fs;
+- antes do sync o host continua `original`;
+- depois: `mudou`, sem `old.txt` (o sync espelha: o que sumiu da cópia some do host) e `run.sh` com `-rwxr-xr-x`.
+
+O stop gracioso e o fim do `machine run` também sincronizam; `--timeout 0` não. A filha de um branch não devolve nada
+ao host.
+
+## 8s. Recusas que dizem o motivo
+
+```bash
+./bin/rc doctor | grep -E 'cuda|nested'
+./bin/rc machine create --name x --image alpine --cuda
+time ./bin/rc machine run --nested --image alpine -- ls -l /dev/kvm
+```
+
+Esperado:
+- `info  cuda: not supported (no CUDA remoting; --gpu is Vulkan)` e a linha do nested deste host;
+- `--cuda is not supported: rc has no CUDA remoting ...`, sem criar máquina;
+- num host que não aninha (M1/M2), `failed to start: Error: nested virtualization is not supported on this host ...`
+  em menos de 1 s (antes: 30 s e `did not become ready`); num host que aninha, `/dev/kvm` dentro da VM.
+
+## 8t. Diretório da máquina e limpeza do cache
+
+```bash
+ls "$(./bin/rc machine data-dir --name usr)"
+./bin/rc image prune
+./bin/rc pack prune
+```
+
+Esperado: `machine.json` no diretório da máquina; os dois prunes saem 0 (sem `--all`, o `image prune` só apaga
+o ext4 para o qual nenhum nome aponta mais, o build anterior de uma imagem, e o `pack prune` guarda os 5 usados mais recentemente).
+
+## 8u. Os guias
+
+```bash
+task guides DIRS=gpu-cuda      # uma pasta; sem DIRS, todas (cada uma liga as suas VMs)
+```
+
+Esperado: `falhas: 0` em cada pasta. O que cada pasta prova está em `examples/guides/README.md`.
 
 ## 9. GPU
 
@@ -217,14 +550,46 @@ Esperado:
 - `{"exitCode":0,"stdout":"42\n","stderr":"",...}`;
 - a lista com `"name":"teste"` e `"state":"running"`.
 
+Os corpos alternativos e o stream por linha, no mesmo servidor:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8080/api/v1/machines -H 'content-type: application/json' -d '{"name":"t2","image":"alpine","allowedHost":["a.com"]}'
+curl -s -X POST localhost:8080/api/v1/machines -H 'content-type: application/json' -d '{"name":"t3","image":"alpine","allowedHosts":["api.example.com"],"memoryMb":512}'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8080/api/v1/machines -H 'content-type: application/json' -d '{"name":"t4","image":"alpine","nestedVirt":true}'
+curl -sN -X POST localhost:8080/api/v1/machines/teste/exec/stream -H 'content-type: application/json' -d '{"command":["sh","-c","echo a; echo b"]}'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8080/api/v1/machines/teste/sync
+```
+
+Esperado:
+- `400`: campo desconhecido (`allowedHost`, com erro de digitação) é recusado, e não ignorado com a saída aberta;
+- `"allow_hosts":["api.example.com"]`, `"enabled":true` e `"memory_mib":512`: os nomes alternativos valem;
+- `400` no `nestedVirt` (só passa com `rc serve --allow-nested-virt`);
+- `event: stdout` / `data: a`, depois `data: b`: uma linha por evento, texto cru, e o `event: exit` no fim;
+- `204` no `sync` (máquina sem volume staged: nada a fazer).
+
 `Ctrl+C` encerra o serve. A máquina continua ligada, porque é destacada.
+
+## 10b. SDKs Go e Python
+
+Com o `serve` ainda no ar:
+
+```bash
+go run ./examples/sdk-go http://127.0.0.1:8080
+PYTHONPATH=sdk/python python3 examples/sdk-python/main.py http://127.0.0.1:8080
+```
+
+Esperado, nos dois:
+- `job: 42` (job efêmero);
+- `machine: sdk-... running` e `exec: ola do sdk go` (ou `python`): máquina criada, arquivo gravado e executado;
+- `error: NOT_FOUND`: a recusa da API chega como erro tipado, com o código estável;
+- nenhuma máquina `sdk-*` sobra em `./bin/rc machine ls`.
 
 ## 11. Limpar
 
 ```bash
 ./bin/rc machine stop --name teste
 ./bin/rc machine delete --name teste
-rm -rf /tmp/rc-up.bin /tmp/rc-down.bin /tmp/rc-demo
+rm -rf /tmp/rc-up.bin /tmp/rc-down.bin /tmp/rc-demo /tmp/rc-vol
 ```
 
 Esperado: `stopped teste` e `deleted teste`. `./bin/rc machine ls` volta vazio.
