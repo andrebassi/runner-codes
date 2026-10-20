@@ -66,6 +66,13 @@ type Job struct {
 	// S3 é do OpMountS3: o bucket montado em Path; as credenciais vão em Env (as AWS_* da
 	// máquina), nunca no host.
 	S3 *S3Mount `json:"s3,omitempty"`
+	// Root, TTY, UID, GID e Groups são do OpProc (processo de container de um pod): o programa
+	// roda em chroot no Root, com o usuário numérico da spec OCI e só o Env dela.
+	Root   string   `json:"root,omitempty"`
+	TTY    bool     `json:"tty,omitempty"`
+	UID    uint32   `json:"uid,omitempty"`
+	GID    uint32   `json:"gid,omitempty"`
+	Groups []uint32 `json:"groups,omitempty"`
 }
 
 // S3Mount é um volume s3://BUCKET[/PREFIX] montado por FUSE dentro do guest.
@@ -101,6 +108,9 @@ const (
 	// OpSSHAgent abre no guest o socket Unix Path, que repassa cada conexão à porta vsock Port
 	// do host (CID 2) — o agente SSH de quem deu o start.
 	OpSSHAgent = "ssh-agent"
+	// OpProc roda um processo de container (Kubernetes): chroot no Root, stdin/stdout/stderr
+	// ou um TTY pela conexão, sinais vindos do host. A conexão vive até o processo sair.
+	OpProc = "proc"
 )
 
 // SSHAgentPort é a porta vsock do encaminhamento do agente SSH (a 5000 é a do guest).
@@ -121,6 +131,10 @@ const (
 	EventResize = "resize"
 	EventOutput = "output"
 	EventExit   = "exit"
+	// EventEOF fecha o stdin do processo (CloseIO do containerd); EventSignal manda o sinal
+	// Code ao processo (Kill). Os dois só no OpProc.
+	EventEOF    = "eof"
+	EventSignal = "signal"
 )
 
 // Variáveis de ambiente com que o host configura a rede do guest (krun_set_exec): o guest

@@ -72,7 +72,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Avançado',
-      items: ['advanced/performance', 'advanced/gpu', 'advanced/security', 'advanced/test-report', 'advanced/troubleshooting'],
+      items: ['advanced/performance', 'advanced/gpu', 'advanced/kubernetes', 'advanced/security', 'advanced/test-report', 'advanced/troubleshooting'],
     },
     {
       type: 'category',

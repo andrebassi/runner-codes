@@ -37,6 +37,12 @@ func configureLinkOS(cfg NetConfig) error {
 	if err := netlink.LinkSetUp(link); err != nil {
 		return fmt.Errorf("up: %w", err)
 	}
+	if cfg.GatewayOnLink() {
+		gw := &net.IPNet{IP: cfg.Gateway.AsSlice(), Mask: net.CIDRMask(cfg.Gateway.BitLen(), cfg.Gateway.BitLen())}
+		if err := netlink.RouteReplace(&netlink.Route{LinkIndex: link.Attrs().Index, Dst: gw, Scope: netlink.SCOPE_LINK}); err != nil {
+			return fmt.Errorf("gateway link route: %w", err)
+		}
+	}
 	route := &netlink.Route{LinkIndex: link.Attrs().Index, Gw: cfg.Gateway.AsSlice()}
 	if err := netlink.RouteReplace(route); err != nil {
 		return fmt.Errorf("default route: %w", err)

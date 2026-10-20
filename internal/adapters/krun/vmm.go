@@ -50,6 +50,14 @@ func RunVMM(api API, s Spec, watchdog io.Reader) error {
 		defer gw.Close()
 		netFD, s.Env = fd, append(append([]string{}, s.Env...), env...)
 	}
+	if s.PodNetns != "" {
+		fd, env, mac, closer, err := startPodNet(s.PodNetns)
+		if err != nil {
+			return err
+		}
+		defer closer.Close()
+		netFD, s.NetMAC, s.Env = fd, mac, append(append([]string{}, s.Env...), env...)
+	}
 	if len(s.Sockets) > 0 {
 		// Pontes de socket (docker.sock): escutam no host enquanto este processo viver.
 		sb, err := startSockets(s.Sockets, s.VsockSocket)
@@ -85,7 +93,7 @@ var applySandbox = ApplySandbox
 func sandbox(s Spec) error {
 	if !SandboxEnabled(s) {
 		switch {
-		case !SandboxSupported || s.RootDisk == "" || s.Network || s.Net != nil:
+		case !SandboxSupported || s.RootDisk == "" || s.Network || s.Net != nil || s.PodNetns != "":
 		case s.GPU:
 			fmt.Fprintln(os.Stderr, "warning: GPU VM runs without Landlock/seccomp (the virglrenderer needs /dev/dri and execve)")
 		default:

@@ -17,6 +17,14 @@ type NetConfig struct {
 	DNS     []netip.Addr
 }
 
+// GatewayOnLink diz se o gateway fica fora do prefixo do endereço, e então precisa de uma rota de link
+// própria antes da rota padrão. É o caso do Calico: a eth0 do pod ganha um /32 e o gateway 169.254.1.1,
+// respondido por proxy ARP no host; sem a rota de link o kernel recusa a padrão com "network
+// unreachable" e o pod fica sem saída (medido no microk8s 1.35, 20/10/2026).
+func (c NetConfig) GatewayOnLink() bool {
+	return c.Gateway.IsValid() && !c.Addr.Contains(c.Gateway)
+}
+
 // NetConfigFromEnv lê a configuração das variáveis RUNNER_NET_*. Sem RUNNER_NET_ADDR a
 // máquina não tem rede (ok=false), o que é o padrão.
 func NetConfigFromEnv(get func(string) string) (cfg NetConfig, ok bool, err error) {

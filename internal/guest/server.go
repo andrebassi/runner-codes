@@ -95,6 +95,12 @@ func (s *Server) Run() error {
 	}
 }
 
+// ServeConn atende uma conexão já aberta como se tivesse chegado pelo vsock: é como o shim do
+// Kubernetes testa o OpProc ponta a ponta sem VM (net.Pipe até o guest de verdade).
+func (s *Server) ServeConn(conn net.Conn) { s.handleConnection(conn) }
+
+// handleConnection lê um job (4 bytes de tamanho + JSON) e despacha pela operação; a conexão fecha
+// quando a operação termina.
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
@@ -146,6 +152,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 		return
 	case protocol.OpPTY:
 		ptySession(conn, job)
+		return
+	case protocol.OpProc:
+		procSession(conn, job)
 		return
 	case protocol.OpWorkload:
 		writeResult(conn, s.startWorkload(job))

@@ -72,6 +72,26 @@ tasks:
     cmds:
       - ./scripts/scan-secrets.sh
 
+  k8s:kvm-probe:
+    desc: Does a DigitalOcean droplet expose /dev/kvm? (creates and deletes one; cents)
+    cmds:
+      - ./scripts/do-kvm-probe.sh {{.CLI_ARGS}}
+
+  k8s:defects:
+    desc: Plant defects in the Kubernetes runtime code and check the tests catch them (exit = missed)
+    cmds:
+      - ./scripts/k8s-defects.py
+
+  k8s:e2e:
+    desc: "Kubernetes runtime end to end on the test node (task k8s:e2e -- k3s|microk8s)"
+    cmds:
+      - ./scripts/k8s-e2e.sh {{.CLI_ARGS}}
+
+  k8s:node:
+    desc: "Linux test node with KVM on DigitalOcean (task k8s:node -- create|provision|sync|ssh|status|destroy)"
+    cmds:
+      - ./scripts/k8s-node.sh {{.CLI_ARGS}}
+
   playground:check:
     desc: Public playground on Fly - the front token reaches only the visitors app
     cmds:

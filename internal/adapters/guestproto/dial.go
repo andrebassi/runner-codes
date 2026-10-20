@@ -44,6 +44,23 @@ func dial(ctx context.Context, socket string, job protocol.Job, what string) (ne
 	return vsockConn{conn}, nil
 }
 
+// OpenProc abre um processo de container (OpProc) e devolve a conexão: dali em diante ela leva frames
+// Event nos dois sentidos (stdin, sinais e resize para o guest; stdout, stderr e exit de volta), sem
+// Result no começo. Quem chama fecha a conexão; fechar antes do exit mata o processo no guest.
+func OpenProc(ctx context.Context, socket string, job protocol.Job) (net.Conn, error) {
+	d := net.Dialer{Timeout: dialTimeout}
+	conn, err := d.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return nil, fmt.Errorf("connect to guest: %w", err)
+	}
+	job.Op = protocol.OpProc
+	if err := protocol.WriteFrame(conn, job); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
 // vsockConn é a conexão pelo vsock da libkrun, sem meio-fechamento: o shutdown de escrita no
 // socket do host derruba a conexão inteira do lado do guest, e a resposta se perde (medido:
 // cliente que manda e faz SHUT_WR recebia vazio; sem o SHUT_WR, a resposta inteira). Quem

@@ -558,6 +558,34 @@ Esperado:
 - dentro de la máquina del visitante, abrir conexión a la red privada de Fly (`_api.internal`) falla, y DNS e internet
   funcionan (`scripts/fly-firewall-probe.sh` mide el mismo firewall en una máquina desechable).
 
+## 8x. Runtime de Kubernetes (k3s y microk8s)
+
+Cada pod con `runtimeClassName: rc` se vuelve una microVM de libkrun con kernel propio: containerd llama a
+`containerd-shim-rc-v2`, el contenedor pause arranca la VM y los contenedores de la app corren dentro de ella. La VM
+toma la IP que el CNI le dio al pod (un TAP en el netns del pod con `tc mirred`). Necesita un nodo Linux con
+`/dev/kvm`; los de prueba son droplets de DigitalOcean (`task k8s:kvm-probe` lo mide).
+
+```bash
+K8S_NODE=k3s task k8s:node -- create && K8S_NODE=k3s task k8s:node -- provision   # igual con K8S_NODE=microk8s
+# en el nodo: curl -sfL https://get.k3s.io | sh -   o   snap install microk8s --classic
+task k8s:e2e -- k3s        # lleva el árbol, compila, corre deploy/k3s/install.sh y deploy/k8s/e2e.sh k3s
+task k8s:e2e -- microk8s   # lo mismo con deploy/microk8s/install.sh
+task k8s:defects           # planta 20 defectos en el código del runtime y comprueba que los tests los atrapan
+```
+
+Esperado (19 comprobaciones de `deploy/k8s/e2e.sh`, `falhas: 0` en los dos):
+- `rc-hello` queda Ready y su log muestra `RC_K8S_OK`, el kernel de la VM (6.12.91, no el del nodo) y la IP del pod en `eth0`;
+- `kubectl exec` sin TTY, con TTY y con stdin; el código de salida del exec (7) y del contenedor (3) vuelven bien;
+- DNS del clúster, pod rc ↔ pod runc en los dos sentidos y un Service ClusterIP hasta el pod rc;
+- dos contenedores en un pod: la misma VM (mismo `boot_id`) y el mismo emptyDir;
+- el resumen de estadísticas del kubelet responde (el uso de la VM va al primer contenedor);
+- tras el delete, no queda ningún directorio en `/var/lib/rc-shim/pods` ni ningún proceso `rc vmm`.
+
+Límites declarados: port-forward, hostNetwork, hostIPC y la propagación de montajes no cruzan la VM; los volúmenes se
+copian al share del pod al crear el contenedor (lo que el kubelet cambie después, como el token de serviceaccount, no
+llega); los límites de CPU/memoria valen para la VM entera (anotaciones `runner.codes/cpus` y
+`runner.codes/memory-mib` del pod); el vmm del pod corre sin Landlock/seccomp.
+
 ## 9. GPU
 
 Solo si la imagen `llama` está construida (`rc doctor` muestra `ok image llama`).

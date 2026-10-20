@@ -556,6 +556,33 @@ curl -s https://claude-in-chrome.runner.codes/ | grep -c FingerprintJS.load
 - 在访客机器内,连接 Fly 私有网络(`_api.internal`)失败,DNS 和互联网正常(`scripts/fly-firewall-probe.sh`
   在一台一次性机器上测同一套防火墙)。
 
+## 8x. Kubernetes 运行时（k3s 和 microk8s）
+
+每个设置了 `runtimeClassName: rc` 的 pod 都会成为一台拥有独立内核的 libkrun microVM：containerd 调用
+`containerd-shim-rc-v2`，pause 容器启动 VM，应用容器在其中运行。VM 使用 CNI 分配给 pod 的 IP（在 pod 的
+netns 中用 `tc mirred` 连接一个 TAP）。需要带 `/dev/kvm` 的 Linux 节点；测试节点是 DigitalOcean 的 droplet
+（`task k8s:kvm-probe` 会测量）。
+
+```bash
+K8S_NODE=k3s task k8s:node -- create && K8S_NODE=k3s task k8s:node -- provision   # microk8s 同样用 K8S_NODE=microk8s
+# 在节点上：curl -sfL https://get.k3s.io | sh -   或   snap install microk8s --classic
+task k8s:e2e -- k3s        # 同步代码、编译、运行 deploy/k3s/install.sh 和 deploy/k8s/e2e.sh k3s
+task k8s:e2e -- microk8s   # 同上，使用 deploy/microk8s/install.sh
+task k8s:defects           # 在运行时代码中故意植入 20 个缺陷，确认测试都能发现
+```
+
+预期（`deploy/k8s/e2e.sh` 的 19 项检查，两者都是 `falhas: 0`）：
+- `rc-hello` 进入 Ready，日志显示 `RC_K8S_OK`、VM 的内核（6.12.91，而不是节点的）以及 `eth0` 上的 pod IP；
+- `kubectl exec` 无 TTY、有 TTY 和带 stdin 都可用；exec 的退出码（7）和容器的退出码（3）都正确返回；
+- 集群 DNS、rc pod ↔ runc pod 双向互通，以及通往 rc pod 的 ClusterIP Service；
+- 同一 pod 中的两个容器：同一台 VM（相同的 `boot_id`）和同一个 emptyDir；
+- kubelet 的统计摘要正常响应（VM 的用量计入第一个容器）；
+- 删除后，`/var/lib/rc-shim/pods` 中没有残留目录，也没有残留的 `rc vmm` 进程。
+
+已声明的限制：port-forward、hostNetwork、hostIPC 和挂载传播无法穿过 VM；卷在创建容器时被复制到 pod 的共享目录
+（之后 kubelet 的更改，例如 serviceaccount token，不会同步进来）；CPU/内存限制作用于整台 VM（pod 注解
+`runner.codes/cpus` 和 `runner.codes/memory-mib`）；pod 的 vmm 在没有 Landlock/seccomp 的情况下运行。
+
 ## 9. GPU
 
 仅当 `llama` 镜像已构建时执行(`rc doctor` 显示 `ok image llama`)。

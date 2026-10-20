@@ -26,6 +26,8 @@ macOS 27.0.1, Apple Silicon, 19/10/2026. Testes por plataforma (macOS de ponta a
 | job pela API com pool pré-bootado | **26–43 ms** de requisição HTTP |
 | VM parada no pool | 44 MB de footprint |
 | `image build --stack python` | 8–10 s |
+| Linux (droplet DigitalOcean, 4 vCPU, KVM aninhado): job Python pela CLI, boot frio | ~1,4 s no total |
+| Kubernetes (mesmo droplet): pod `runtimeClassName: rc` até `Running` | ~2 s |
 
 ## Como funciona
 
@@ -115,6 +117,19 @@ Qwen2.5 0.5B.
 
 Medido no M1 Pro: prompt 893–1.365 t/s na GPU contra 193–264 na CPU. CUDA não é suportado (exige host Linux com NVIDIA), e
 GPU no Linux não foi testada. Detalhes em [GPU](docs/docusaurus/docs/advanced/gpu.md).
+
+### Kubernetes (k3s e microk8s)
+
+Com o runtime `rc` no containerd, cada pod com `runtimeClassName: rc` vira uma microVM com kernel próprio e o IP que o
+CNI deu ao pod: `kubectl exec`, logs, Service e DNS do cluster funcionam como num pod comum.
+
+```bash
+sudo deploy/k3s/install.sh            # ou deploy/microk8s/install.sh (nó Linux com /dev/kvm)
+kubectl apply -f deploy/k8s/example-pod.yaml && kubectl logs rc-hello   # kernel: Linux 6.12.91
+```
+
+Provado com `deploy/k8s/e2e.sh` (19 checagens) no k3s 1.36 e no microk8s 1.35. Limites (port-forward, hostNetwork,
+volumes copiados na criação) em [Kubernetes](docs/docusaurus/docs/advanced/kubernetes.md).
 
 ### Shell dentro da VM
 

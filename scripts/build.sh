@@ -17,6 +17,9 @@ if file "bin/rc-guest-linux-${arch}" | grep -q 'dynamically linked'; then
   echo "guest binary is dynamically linked; it will not run in the VM" >&2
   exit 1
 fi
+# O runtime de Kubernetes (containerd-shim-rc-v2) só existe para nó Linux: sai sempre linux/<arch>.
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -ldflags "-s -w -X main.Version=${version}" \
+  -o "bin/containerd-shim-rc-v2-linux-${arch}" ./cmd/containerd-shim-rc-v2
 if [ "$(uname -s)" = "Darwin" ]; then
   codesign --force --sign - --entitlements build/hv.entitlements bin/rc
 fi

@@ -15,6 +15,16 @@ import (
 // envOf devolve um get sobre um mapa.
 func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
+// TestGatewayOnLink: gateway dentro do prefixo (gateway em userspace, flannel) não precisa de rota de
+// link; o do Calico (/32 com 169.254.1.1) precisa; sem gateway, não.
+func TestGatewayOnLink(t *testing.T) {
+	in := NetConfig{Addr: netip.MustParsePrefix("10.42.0.7/24"), Gateway: netip.MustParseAddr("10.42.0.1")}
+	calico := NetConfig{Addr: netip.MustParsePrefix("10.1.1.66/32"), Gateway: netip.MustParseAddr("169.254.1.1")}
+	if in.GatewayOnLink() || !calico.GatewayOnLink() || (NetConfig{Addr: in.Addr}).GatewayOnLink() {
+		t.Fatal("GatewayOnLink")
+	}
+}
+
 // TestNetConfigFromEnv: sem endereço não há rede; com tudo certo, endereço, gateway e DNS
 // (com espaço e vazio ignorados); cada campo inválido é erro com o nome da variável.
 func TestNetConfigFromEnv(t *testing.T) {

@@ -121,7 +121,13 @@ func configureFull(api API, s Spec, netFD int, scr *screen.Screen) (uint32, erro
 	add("krun_add_vsock", func() int32 { return api.AddVsock(ctx, tsi) })
 	if netFD >= 0 {
 		// Com o vsock sem TSI e uma virtio-net explícita, o guest só sai pelo gateway.
-		add("krun_add_net_unixstream", func() int32 { return api.AddNetUnixstream(ctx, int32(netFD), guestMAC) })
+		mac := guestMAC
+		if len(s.NetMAC) == 6 {
+			// Pod do Kubernetes: o guest fica com o MAC da eth0 do pod, que é o que o resto da rede
+			// do cluster (bridge, ARP do gateway) já conhece.
+			mac = s.NetMAC
+		}
+		add("krun_add_net_unixstream", func() int32 { return api.AddNetUnixstream(ctx, int32(netFD), mac) })
 	}
 	if s.VsockSocket != "" {
 		// listen=true: o host conecta e a libkrun repassa para o guest que escuta na porta.

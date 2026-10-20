@@ -69,3 +69,4 @@ __pycache__/
 
 # Tags das imagens do playground (scripts/playground-image.sh)
 .playground/
+.k8s/

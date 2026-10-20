@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // helperEnv liga o modo "vmm falso": o próprio binário de teste faz o papel do
@@ -46,7 +48,8 @@ func fakeVMM() {
 		os.Exit(0)
 	case "/sid":
 		// Prova do Setsid: o processo lidera a própria sessão (sid == pid).
-		sid, _ := syscall.Getsid(0)
+		// unix.Getsid: o syscall da stdlib só tem Getsid no BSD/macOS, e no Linux o teste nem compilava.
+		sid, _ := unix.Getsid(0)
 		fmt.Fprintf(os.Stdout, "sid-is-pid=%v lib=%s\n", sid == os.Getpid(), os.Getenv(libPathEnv))
 		os.Exit(0)
 	default:

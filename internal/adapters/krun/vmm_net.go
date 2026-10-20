@@ -12,6 +12,7 @@ import (
 
 	"runner.code/internal/adapters/guestproto"
 	"runner.code/internal/adapters/netgw"
+	"runner.code/internal/adapters/podnet"
 	"runner.code/internal/credca"
 	"runner.code/internal/domain"
 	"runner.code/internal/ports"
@@ -85,6 +86,41 @@ func startNetwork(n *ports.VMNet, vsockSocket string) (int, []string, io.Closer,
 		protocol.EnvNetDNS + "=" + gwIP,
 	}
 	return fds[1], env, gw, nil
+}
+
+// attachPod é podnet.Attach; os testes trocam porque criar TAP exige root e um netns.
+var attachPod = podnet.Attach
+
+// startPodNet liga a virtio-net à rede do pod: TAP no netns dele, socketpair com a libkrun e a bomba
+// de quadros neste processo (vive e morre com a VM). Devolve o fd do lado do guest, o env que monta a
+// eth0 com o IP do pod, o MAC da eth0 e o que fechar se a VM não subir.
+func startPodNet(nsPath string) (int, []string, []byte, io.Closer, error) {
+	tap, info, err := attachPod(nsPath)
+	if err != nil {
+		return -1, nil, nil, nil, err
+	}
+	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		tap.Close()
+		return -1, nil, nil, nil, fmt.Errorf("pod network socketpair: %w", err)
+	}
+	f := os.NewFile(uintptr(fds[0]), "podnet")
+	go podnet.Pump(tap, f)
+	return fds[1], info.Env(), info.MAC, multiCloser{tap, f}, nil
+}
+
+// multiCloser fecha vários descritores de uma vez (o TAP e o lado do socket deste processo).
+type multiCloser []io.Closer
+
+// Close fecha todos e devolve o primeiro erro.
+func (m multiCloser) Close() error {
+	var first error
+	for _, c := range m {
+		if err := c.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
 }
 
 // httpsPort é a porta interceptada para credenciais: HTTP em claro e outras portas seguem sem

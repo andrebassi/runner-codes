@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/ebitengine/purego"
 	seccomp "github.com/elastic/go-seccomp-bpf"
 	"github.com/landlock-lsm/go-landlock/landlock"
+	ll "github.com/landlock-lsm/go-landlock/landlock/syscall"
+	"golang.org/x/sys/unix"
 )
 
 // SandboxSupported diz se este SO tem confinamento real (Landlock + seccomp).
@@ -73,6 +76,39 @@ func loadedLibDirs() []string {
 	return dedupe(dirs)
 }
 
+// restrictThread aplica o ruleset só na thread atual: prctl(PR_SET_NO_NEW_PRIVS) e
+// landlock_restrict_self sem TSYNC, que valem para quem chama e para as threads criadas depois por ela.
+// Caminho que não existe é pulado, como o IgnoreIfMissing do caminho TSYNC.
+func restrictThread(attr ll.RulesetAttr, rules []threadRule) error {
+	fd, err := ll.LandlockCreateRuleset(&attr, 0)
+	if err != nil {
+		return fmt.Errorf("landlock_create_ruleset: %w", err)
+	}
+	defer syscall.Close(fd)
+	for _, r := range rules {
+		pfd, err := syscall.Open(r.Path, unix.O_PATH|syscall.O_CLOEXEC, 0)
+		if err != nil {
+			continue
+		}
+		var st syscall.Stat_t
+		isDir := syscall.Fstat(pfd, &st) == nil && st.Mode&syscall.S_IFMT == syscall.S_IFDIR
+		if access := ruleAccess(r, isDir); access != 0 {
+			err = ll.LandlockAddPathBeneathRule(fd, &ll.PathBeneathAttr{AllowedAccess: access, ParentFd: pfd}, 0)
+		}
+		syscall.Close(pfd)
+		if err != nil {
+			return fmt.Errorf("landlock_add_rule %s: %w", r.Path, err)
+		}
+	}
+	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+		return fmt.Errorf("prctl(PR_SET_NO_NEW_PRIVS): %w", err)
+	}
+	if err := ll.LandlockRestrictSelf(fd, 0); err != nil {
+		return fmt.Errorf("landlock_restrict_self: %w", err)
+	}
+	return nil
+}
+
 // ApplySandbox confina o processo atual: Landlock (arquivos, rede, sinais e sockets
 // Unix por caminho) e depois seccomp (denylist). O Landlock liga no_new_privs ele mesmo;
 // a denylist não contém as syscalls do Landlock, então a ordem não as bloqueia.
@@ -98,10 +134,20 @@ func ApplySandbox(p SandboxPolicy) error {
 		// Diretório escolhido por quem deu --expose-socket HOST: criar e apagar o socket lá.
 		rules = append(rules, landlock.RWDirs(p.ListenDirs...).IgnoreIfMissing())
 	}
-	// V10 = arquivos + TCP/UDP + escopo de sinais e sockets abstratos + socket Unix por
-	// caminho. BestEffort cai para a maior ABI que o kernel tiver, sem falhar.
-	// Nenhuma regra de rede: toda conexão e bind TCP/UDP fica negada.
-	if err := landlock.V10.BestEffort().Restrict(rules...); err != nil {
+	if abi := LandlockABI(); abi > 0 && abi < TSyncLandlockABI {
+		// Kernel sem TSYNC: o caminho do go-landlock para todas as threads não funciona com o purego
+		// (ver TSyncLandlockABI). O Landlock vai na thread desta goroutine, que fica presa a ela até o
+		// krun_start_enter; as threads que a libkrun cria dali (vCPUs, virtio) herdam o domínio. As
+		// outras threads do runtime Go ficam só com o seccomp (TSYNC, abaixo).
+		runtime.LockOSThread()
+		attr, trules := legacyRuleset(p, abi)
+		if err := restrictThread(attr, trules); err != nil {
+			return fmt.Errorf("landlock (thread, ABI %d): %w", abi, err)
+		}
+	} else if err := landlock.V10.BestEffort().Restrict(rules...); err != nil {
+		// V10 = arquivos + TCP/UDP + escopo de sinais e sockets abstratos + socket Unix por
+		// caminho. BestEffort cai para a maior ABI que o kernel tiver, sem falhar.
+		// Nenhuma regra de rede: toda conexão e bind TCP/UDP fica negada.
 		return fmt.Errorf("landlock: %w", err)
 	}
 	filter := seccomp.Filter{

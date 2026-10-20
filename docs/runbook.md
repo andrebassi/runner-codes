@@ -558,6 +558,34 @@ Esperado:
 - dentro da máquina do visitante, abrir conexão para a rede privada do Fly (`_api.internal`) falha, e DNS e internet
   funcionam (`scripts/fly-firewall-probe.sh` mede o mesmo firewall numa máquina descartável).
 
+## 8x. Runtime de Kubernetes (k3s e microk8s)
+
+Cada pod com `runtimeClassName: rc` vira uma microVM da libkrun, com kernel próprio: o containerd chama o
+`containerd-shim-rc-v2`, o container pause liga a VM e os containers da app rodam dentro dela. A VM assume o IP que o
+CNI deu ao pod (TAP no netns do pod com `tc mirred`). Precisa de nó Linux com `/dev/kvm`; os de teste são droplets da
+DigitalOcean (`task k8s:kvm-probe` mede).
+
+```bash
+K8S_NODE=k3s task k8s:node -- create && K8S_NODE=k3s task k8s:node -- provision   # idem com K8S_NODE=microk8s
+# no nó: curl -sfL https://get.k3s.io | sh -   ou   snap install microk8s --classic
+task k8s:e2e -- k3s        # leva a árvore, compila, roda deploy/k3s/install.sh e deploy/k8s/e2e.sh k3s
+task k8s:e2e -- microk8s   # o mesmo com deploy/microk8s/install.sh
+task k8s:defects           # planta 20 defeitos no código do runtime e confere que os testes pegam
+```
+
+Esperado (19 checagens do `deploy/k8s/e2e.sh`, `falhas: 0` nos dois):
+- `rc-hello` fica Ready e o log mostra `RC_K8S_OK`, o kernel da VM (6.12.91, não o do nó) e o IP do pod na `eth0`;
+- `kubectl exec` sem TTY, com TTY e com stdin; o código de saída do exec (7) e do container (3) voltam certos;
+- DNS do cluster, pod rc ↔ pod runc nos dois sentidos e Service ClusterIP até o pod rc;
+- dois containers no mesmo pod: mesma VM (mesmo `boot_id`) e mesmo emptyDir;
+- o resumo de estatísticas do kubelet responde (o uso da VM vai para o primeiro container);
+- depois do delete, nenhum diretório em `/var/lib/rc-shim/pods` e nenhum processo `rc vmm` sobra.
+
+Limites declarados: port-forward, hostNetwork, hostIPC e propagação de montagem não atravessam a VM; os volumes são
+copiados para o share do pod na criação do container (o que o kubelet trocar depois, como token de serviceaccount,
+não chega); limites de CPU/memória valem para a VM inteira (anotações `runner.codes/cpus` e `runner.codes/memory-mib`
+do pod); o vmm do pod roda sem Landlock/seccomp.
+
 ## 9. GPU
 
 Só se a imagem `llama` estiver construída (o `rc doctor` mostra `ok image llama`).

@@ -40,7 +40,9 @@ const sandboxDisabledEnv = "RUNNER_SANDBOX"
 func SandboxEnabled(s Spec) bool {
 	// Com rede, o gateway do próprio processo abre sockets e escuta portas, o que o
 	// seccomp de VM de job recusa: a máquina com rede roda sem o confinamento.
-	return s.RootDisk != "" && !s.Network && s.Net == nil && !s.GPU && os.Getenv(sandboxDisabledEnv) != "off"
+	// VM de pod (PodNetns) também fica de fora por ora: o vmm dela lê o netns e o share do pod, e a
+	// política de job não prevê nenhum dos dois (dívida declarada no docs/runbook.md, 8x).
+	return s.RootDisk != "" && !s.Network && s.Net == nil && s.PodNetns == "" && !s.GPU && os.Getenv(sandboxDisabledEnv) != "off"
 }
 
 // PolicyFor monta a política de uma VM de job. libDirs são os diretórios das

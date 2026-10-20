@@ -74,6 +74,13 @@ type VMSpec struct {
 	// netgw): NAT com a política de saída e as portas publicadas. Exclui Network (TSI, que
 	// só a VM de build usa, porque o TSI não aplica filtro nenhum).
 	Net *VMNet `json:"net,omitempty"`
+	// PodNetns é o netns de um pod do Kubernetes (o caminho que o CNI criou, ex.
+	// /var/run/netns/cni-...): o processo vmm liga a virtio-net a um TAP ali dentro e o guest
+	// assume o IP e o MAC da eth0 do pod (internal/adapters/podnet). Exclui Net e Network.
+	PodNetns string `json:"pod_netns,omitempty"`
+	// NetMAC é o MAC da virtio-net quando não é o do gateway (o da eth0 do pod). Só o processo
+	// vmm preenche, depois de ler o netns; não vai para o arquivo da spec.
+	NetMAC []byte `json:"-"`
 	// Display liga uma saída de vídeo ao virtio-gpu (exige GPU) e um visualizador no
 	// navegador servido pelo processo vmm.
 	Display *VMDisplay `json:"display,omitempty"`
@@ -144,6 +151,10 @@ func (s VMSpec) Validate() error {
 	}
 	if (s.VsockSocket == "") != (s.VsockPort == 0) {
 		return errors.New("spec: vsock_socket and vsock_port must be set together")
+	}
+	if s.PodNetns != "" && (s.Net != nil || s.Network || !strings.HasPrefix(s.PodNetns, "/")) {
+		// Duas virtio-net (ou TSI junto) dariam ao guest uma saída fora da rede do pod.
+		return errors.New("spec: pod_netns needs an absolute path and excludes net and network")
 	}
 	if s.Net != nil {
 		if s.Network {

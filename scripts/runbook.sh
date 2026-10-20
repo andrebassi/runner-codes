@@ -445,6 +445,21 @@ else
   echo "   skip  sessão real (RC_RUNBOOK_PLAYGROUND=1 cria uma Fly Machine)"
 fi
 
+step "8x. Runtime de Kubernetes (k3s e microk8s)"
+# Sem nó (custo zero): o shim sai como binário Linux, os instaladores passam no bash -n e a RuntimeClass aponta
+# para o handler rc. Com RC_RUNBOOK_K8S=1, roda o e2e nos nós de teste (task k8s:node -- create/provision para
+# K8S_NODE=k3s e microk8s, cada um com a distribuição instalada): pod numa microVM, exec, rede, Service, limpeza.
+arch=$(go env GOARCH)
+expect "shim containerd-shim-rc-v2 compilado para Linux" sh -c "file bin/containerd-shim-rc-v2-linux-$arch | grep -q 'ELF'"
+expect "instaladores k3s, microk8s e comum sem erro de sintaxe" sh -c "bash -n deploy/install-node.sh && bash -n deploy/k3s/install.sh && bash -n deploy/microk8s/install.sh && bash -n deploy/k8s/e2e.sh"
+expect "RuntimeClass rc com handler rc" grep -q '^handler: rc$' deploy/k8s/runtimeclass.yaml
+if [ "${RC_RUNBOOK_K8S:-0}" = 1 ]; then
+  expect "e2e no k3s (0 falhas)" ./scripts/k8s-e2e.sh k3s
+  expect "e2e no microk8s (0 falhas)" ./scripts/k8s-e2e.sh microk8s
+else
+  echo "   skip  e2e nos clusters (RC_RUNBOOK_K8S=1 usa os droplets de teste)"
+fi
+
 step "9. GPU (pula se a imagem llama não estiver construída)"
 if $rc doctor 2>&1 | grep -q "ok    image llama"; then
   out=$($rc run --stack llama --gpu --code 'vulkaninfo --summary | grep deviceName' 2>&1)

@@ -40,7 +40,9 @@
           krun = pkgs.runCommand "krun-${libkrun.version}" { } ''
             mkdir -p $out/lib
             for d in ${libkrun}/lib ${libkrun}/lib64 ${libkrunfw}/lib ${libkrunfw}/lib64; do
-              [ -d "$d" ] && ln -s "$d"/libkrun* $out/lib/
+              # -f: na libkrun do nixpkgs, lib/ e lib64/ trazem os mesmos arquivos (medido em 20/10/2026 no
+              # primeiro build em Linux), e o segundo ln falhava com "File exists".
+              [ -d "$d" ] && ln -sf "$d"/libkrun* $out/lib/
             done
             true
           '';

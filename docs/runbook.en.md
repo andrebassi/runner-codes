@@ -558,6 +558,34 @@ Expected:
 - inside the visitor machine, opening a connection to the Fly private network (`_api.internal`) fails, while DNS and
   the internet work (`scripts/fly-firewall-probe.sh` measures the same firewall on a throwaway machine).
 
+## 8x. Kubernetes runtime (k3s and microk8s)
+
+Every pod with `runtimeClassName: rc` becomes a libkrun microVM with its own kernel: containerd calls
+`containerd-shim-rc-v2`, the pause container boots the VM and the app containers run inside it. The VM takes the IP
+the CNI gave the pod (a TAP in the pod netns with `tc mirred`). It needs a Linux node with `/dev/kvm`; the test nodes
+are DigitalOcean droplets (`task k8s:kvm-probe` measures it).
+
+```bash
+K8S_NODE=k3s task k8s:node -- create && K8S_NODE=k3s task k8s:node -- provision   # same with K8S_NODE=microk8s
+# on the node: curl -sfL https://get.k3s.io | sh -   or   snap install microk8s --classic
+task k8s:e2e -- k3s        # ships the tree, builds, runs deploy/k3s/install.sh and deploy/k8s/e2e.sh k3s
+task k8s:e2e -- microk8s   # the same with deploy/microk8s/install.sh
+task k8s:defects           # plants 20 defects in the runtime code and checks the tests catch them
+```
+
+Expected (19 checks in `deploy/k8s/e2e.sh`, `falhas: 0` on both):
+- `rc-hello` gets Ready and its log shows `RC_K8S_OK`, the VM kernel (6.12.91, not the node's) and the pod IP on `eth0`;
+- `kubectl exec` without a TTY, with a TTY and with stdin; the exec exit code (7) and the container one (3) come back right;
+- cluster DNS, rc pod ↔ runc pod both ways and a ClusterIP Service to the rc pod;
+- two containers in one pod: same VM (same `boot_id`) and the same emptyDir;
+- the kubelet stats summary answers (the VM usage goes to the first container);
+- after the delete, no directory in `/var/lib/rc-shim/pods` and no `rc vmm` process is left.
+
+Declared limits: port-forward, hostNetwork, hostIPC and mount propagation do not cross the VM; volumes are copied
+into the pod share when the container is created (what the kubelet changes later, such as a serviceaccount token,
+does not arrive); CPU/memory limits apply to the whole VM (pod annotations `runner.codes/cpus` and
+`runner.codes/memory-mib`); the pod vmm runs without Landlock/seccomp.
+
 ## 9. GPU
 
 Only if the `llama` image is built (`rc doctor` shows `ok image llama`).
