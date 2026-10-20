@@ -16,9 +16,43 @@ rc machine start  --name agent
 rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 ```
 
-![Claude Code rodando numa MicroVM do rc, no navegador](/img/claude-web-terminal.jpg)
+<figure class="rc-vterm">
+<div class="rc-tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>terminal web · runner.codes</span></div>
+<div class="rc-tabs" aria-hidden="true"><span class="on">claude</span><span>shell</span><span>eventos</span><span class="port">8000</span></div>
+<pre role="img" aria-label="Sessão real do Claude Code no terminal web: escreveu um servidor Python na porta 8000, testou e explicou o que fez."><span style="color:#d77757"> ▐▛███▛█</span>   <span style="font-weight:600">Claude Code</span> <span style="color:#999999">v2.1.304</span>
+<span style="color:#d77757">▝▜██████▀</span>  <span style="color:#999999">Opus 5.5 · Claude Max</span>
+<span style="color:#d77757"> ▝▝   ▝▝ </span>  <span style="color:#999999">/tmp/demo</span>
 
-*Sessão real (20/10/2026): o `/init` escreveu o `CLAUDE.md` na pasta do Mac montada em `/workspace`.*
+
+<span style="color:#999999">❯ </span><span style="color:#ffffff">Write a tiny Python web server that answers &quot;hello from the playground&quot; on port 8000, start it in</span>
+  <span style="color:#ffffff">the background and check it with curl.</span>
+
+  <span style="color:#999999">Ran </span><span style="color:#999999;font-weight:600">2</span><span style="color:#999999"> shell commands</span>
+
+<span style="color:#ffffff">●</span> curl isn&#x27;t installed here, so I&#x27;ll check the server with Python&#x27;s HTTP client instead.
+
+  <span style="color:#999999">Ran </span><span style="color:#999999;font-weight:600">1</span><span style="color:#999999"> shell command</span>
+
+<span style="color:#ffffff">●</span> The server is running in the background on port 8000 and answers <span style="color:#b1b9f9">hello from the playground</span>. I
+  couldn&#x27;t check it with curl because curl isn&#x27;t installed in this environment. Instead I fetched
+  the page with Python&#x27;s built-in HTTP client and got <span style="color:#b1b9f9">200 text/plain</span> with that text.
+
+  - <span style="font-weight:600">Code:</span> <span style="color:#b1b9f9">/tmp/demo/server.py</span> uses only Python&#x27;s standard library and answers any GET request.
+  - <span style="font-weight:600">Log:</span> <span style="color:#b1b9f9">/tmp/demo/server.log</span> records each request.
+
+  To check it with curl yourself, install it first (for example <span style="color:#b1b9f9">! apt-get install -y curl</span>), then run
+  <span style="color:#b1b9f9">curl localhost:8000</span>. To stop the server, run <span style="color:#b1b9f9">pkill -f server.py</span>, or <span style="color:#b1b9f9">kill</span> its process ID if <span style="color:#b1b9f9">pkill</span>
+  isn&#x27;t available either (<span style="color:#b1b9f9">pgrep</span> wasn&#x27;t).
+
+<span style="color:#999999">✻</span> <span style="color:#999999">Churned for 15s · done 4:18 PM</span>
+
+<span style="color:#888888">────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+❯ install curl and check it
+<span style="color:#888888">────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+  <span style="color:#ff6b80">⏵⏵ bypass permissions on</span><span style="color:#999999"> (shift+tab to cycle)</span>
+</pre>
+<div class="rc-cap">Sessão real (20/10/2026): o Claude Code escreveu e subiu um servidor na porta 8000, e a porta virou uma aba.</div>
+</figure>
 
 | O quê | Como |
 |-------|------|
@@ -39,7 +73,12 @@ O mesmo terminal, publicado: em [claude-in-chrome.runner.codes](https://claude-i
 visitante ganha uma máquina própria com o Claude Code aberto sem confirmação de permissão. Você faz o `/login` com a
 sua conta, e o login fica só na sua máquina.
 
-![O playground no navegador: o Claude Code aberto e a porta 3000 numa aba própria](/img/claude-in-chrome-playground.jpg)
+<figure class="rc-vterm">
+<div class="rc-tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>claude-in-chrome.runner.codes</span></div>
+<div class="rc-tabs" aria-hidden="true"><span>claude</span><span>shell</span><span class="on">eventos</span><span class="port">8000</span></div>
+<div class="rc-ev"><div><time>13:09:54</time>claude: sessão iniciada</div><div><time>13:12:07</time>shell: sessão iniciada</div><div><time>13:12:12</time>porta 8000 aberta na máquina</div></div>
+<div class="rc-cap">Eventos reais de uma máquina do playground: o servidor da porta 8000 abre em <code>https://8000-&lt;id&gt;.runner.codes/</code>.</div>
+</figure>
 
 | O quê | Como |
 |-------|------|

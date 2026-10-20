@@ -16,9 +16,43 @@ rc machine start  --name agent
 rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 ```
 
-![在浏览器中运行于 rc MicroVM 内的 Claude Code](/img/claude-web-terminal.jpg)
+<figure class="rc-vterm">
+<div class="rc-tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Web 终端 · runner.codes</span></div>
+<div class="rc-tabs" aria-hidden="true"><span class="on">claude</span><span>shell</span><span>eventos</span><span class="port">8000</span></div>
+<pre role="img" aria-label="Web 终端中的真实 Claude Code 会话:它编写了 8000 端口的 Python 服务器,测试并说明了所做的事。"><span style="color:#d77757"> ▐▛███▛█</span>   <span style="font-weight:600">Claude Code</span> <span style="color:#999999">v2.1.304</span>
+<span style="color:#d77757">▝▜██████▀</span>  <span style="color:#999999">Opus 5.5 · Claude Max</span>
+<span style="color:#d77757"> ▝▝   ▝▝ </span>  <span style="color:#999999">/tmp/demo</span>
 
-*真实会话（2026-10-20）：`/init` 把 `CLAUDE.md` 写进了挂载在 `/workspace` 的 Mac 目录。*
+
+<span style="color:#999999">❯ </span><span style="color:#ffffff">Write a tiny Python web server that answers &quot;hello from the playground&quot; on port 8000, start it in</span>
+  <span style="color:#ffffff">the background and check it with curl.</span>
+
+  <span style="color:#999999">Ran </span><span style="color:#999999;font-weight:600">2</span><span style="color:#999999"> shell commands</span>
+
+<span style="color:#ffffff">●</span> curl isn&#x27;t installed here, so I&#x27;ll check the server with Python&#x27;s HTTP client instead.
+
+  <span style="color:#999999">Ran </span><span style="color:#999999;font-weight:600">1</span><span style="color:#999999"> shell command</span>
+
+<span style="color:#ffffff">●</span> The server is running in the background on port 8000 and answers <span style="color:#b1b9f9">hello from the playground</span>. I
+  couldn&#x27;t check it with curl because curl isn&#x27;t installed in this environment. Instead I fetched
+  the page with Python&#x27;s built-in HTTP client and got <span style="color:#b1b9f9">200 text/plain</span> with that text.
+
+  - <span style="font-weight:600">Code:</span> <span style="color:#b1b9f9">/tmp/demo/server.py</span> uses only Python&#x27;s standard library and answers any GET request.
+  - <span style="font-weight:600">Log:</span> <span style="color:#b1b9f9">/tmp/demo/server.log</span> records each request.
+
+  To check it with curl yourself, install it first (for example <span style="color:#b1b9f9">! apt-get install -y curl</span>), then run
+  <span style="color:#b1b9f9">curl localhost:8000</span>. To stop the server, run <span style="color:#b1b9f9">pkill -f server.py</span>, or <span style="color:#b1b9f9">kill</span> its process ID if <span style="color:#b1b9f9">pkill</span>
+  isn&#x27;t available either (<span style="color:#b1b9f9">pgrep</span> wasn&#x27;t).
+
+<span style="color:#999999">✻</span> <span style="color:#999999">Churned for 15s · done 4:18 PM</span>
+
+<span style="color:#888888">────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+❯ install curl and check it
+<span style="color:#888888">────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+  <span style="color:#ff6b80">⏵⏵ bypass permissions on</span><span style="color:#999999"> (shift+tab to cycle)</span>
+</pre>
+<div class="rc-cap">真实会话(2026-10-20):Claude Code 编写并启动了 8000 端口的服务器,该端口成为一个标签页。</div>
+</figure>
 
 | 项目 | 方式 |
 |------|------|
@@ -38,7 +72,12 @@ rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 同一个终端,公开发布:在 [claude-in-chrome.runner.codes](https://claude-in-chrome.runner.codes/) 每位访客都有一台自己的
 机器,Claude Code 已打开且不需要确认权限。你用自己的账号执行 `/login`,登录信息只留在你的机器上。
 
-![浏览器中的 playground:已打开的 Claude Code 和单独标签页中的 3000 端口](/img/claude-in-chrome-playground.jpg)
+<figure class="rc-vterm">
+<div class="rc-tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>claude-in-chrome.runner.codes</span></div>
+<div class="rc-tabs" aria-hidden="true"><span>claude</span><span>shell</span><span class="on">eventos</span><span class="port">8000</span></div>
+<div class="rc-ev"><div><time>13:09:54</time>claude: 会话已开始</div><div><time>13:12:07</time>shell: 会话已开始</div><div><time>13:12:12</time>机器上的 8000 端口已打开</div></div>
+<div class="rc-cap">playground 机器的真实事件:8000 端口的服务器在 <code>https://8000-&lt;id&gt;.runner.codes/</code> 打开。</div>
+</figure>
 
 | 内容 | 方式 |
 |------|------|

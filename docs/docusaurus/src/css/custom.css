@@ -311,3 +311,24 @@ details {
   border-radius: 10px;
   font-weight: 600;
 }
+
+/* Terminal em HTML nos casos de uso: a tela real do Claude Code (100 colunas, gerada pelo scripts/term_snapshot.py do
+   repositório da landing) sai como texto, nítida e sem corte; a fonte acompanha a largura para as 100 colunas
+   caberem, e no celular o quadro rola de lado com fonte mínima de 9 px. Fundo escuro nos dois temas. */
+.rc-vterm { container-type: inline-size; margin: 1.2rem 0 1.6rem; border-radius: 12px; overflow: hidden;
+  background: #0d1017; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 12px 32px rgba(0,0,0,.25); }
+.rc-vterm .rc-tbar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: rgba(255,255,255,.04);
+  border-bottom: 1px solid rgba(255,255,255,.07); font: 12px ui-monospace, Menlo, monospace; color: #8a90a2; }
+.rc-vterm .rc-tbar i { width: 11px; height: 11px; border-radius: 50%; }
+.rc-vterm .rc-tabs { display: flex; gap: 2px; padding: 6px 10px 0; font: 12px ui-monospace, Menlo, monospace; color: #8a90a2;
+  border-bottom: 1px solid rgba(255,255,255,.07); }
+.rc-vterm .rc-tabs span { padding: 5px 11px; border-radius: 7px 7px 0 0; }
+.rc-vterm .rc-tabs .on { color: #e6e8ef; background: rgba(255,255,255,.06); box-shadow: inset 0 2px 0 #f59e0b; }
+.rc-vterm .rc-tabs .port::before { content: "● "; color: #4ade80; }
+.rc-vterm pre { margin: 0; padding: 12px 14px; background: transparent; color: #e6e8ef; border-radius: 0; white-space: pre;
+  overflow-x: auto; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; line-height: 1.35;
+  /* Em propriedade separada: dentro do atalho `font`, o minificador do build não entende o clamp e descarta a regra. */
+  font-size: clamp(9px, calc((100cqw - 28px) / 60.5), 13px); }
+.rc-vterm .rc-ev { padding: 14px 16px; font: 13px/1.9 ui-monospace, Menlo, monospace; color: #e6e8ef; }
+.rc-vterm .rc-ev time { color: #8a90a2; margin-right: 10px; }
+.rc-vterm .rc-cap { padding: 8px 12px; font-size: 12.5px; color: #8a90a2; border-top: 1px solid rgba(255,255,255,.07); }
