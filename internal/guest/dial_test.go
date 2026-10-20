@@ -99,3 +99,35 @@ func TestDialSession(t *testing.T) {
 		t.Fatalf("nobody listening: %+v %v", res, err)
 	}
 }
+
+// TestDialLoopbackIPv6Only: servidor só em [::1] (o "localhost" do Node 17+, como o Vite) é alcançado depois de o
+// 127.0.0.1 recusar; porta fechada nos dois devolve o erro do IPv4.
+func TestDialLoopbackIPv6Only(t *testing.T) {
+	l, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("sem IPv6 no loopback deste host: %v", err)
+	}
+	defer l.Close()
+	go func() {
+		c, err := l.Accept()
+		if err == nil {
+			c.Write([]byte("v6"))
+			c.Close()
+		}
+	}()
+	port := uint16(l.Addr().(*net.TCPAddr).Port)
+	c, err := dialLoopback(port)
+	if err != nil {
+		t.Fatalf("[::1] não alcançado: %v", err)
+	}
+	buf := make([]byte, 2)
+	io.ReadFull(c, buf)
+	c.Close()
+	if string(buf) != "v6" {
+		t.Fatalf("leu %q", buf)
+	}
+	l.Close()
+	if _, err := dialLoopback(port); err == nil || !strings.Contains(err.Error(), "127.0.0.1") {
+		t.Fatalf("porta fechada: %v", err)
+	}
+}

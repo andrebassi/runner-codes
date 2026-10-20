@@ -85,6 +85,19 @@ docker save meuapp | rc machine run --image - -- ./app   # local image, no regis
 rc machine run --image ./meuapp.tar -- ./app             # docker save tar or OCI layout directory
 ```
 
+### Tabs
+
+```
+runner.codes · agent │ claude │ shell │ eventos │ ● 3000
+```
+
+| Tab | What it is |
+|-----|------------|
+| the command's tab (`claude`) | the program passed after `--`; without a command, the machine's shell. Closing the browser tab stops nothing |
+| `shell` | a separate terminal on the same machine, opened on first click (up to 8 live sessions per page) |
+| `eventos` (events) | the timeline: session started, session exited (with its code), port opened, port closed |
+| `● 3000` | one tab per port open in the machine, always last: the app in an iframe, with **reload** and **new tab ↗** (some sites refuse to be framed). It goes away when the server stops |
+
 | Point | How it works |
 |-------|--------|
 | what runs | the command after `--`; otherwise the `runner.code` `cmd`/`entrypoint`; otherwise, with `-t`, a shell |
@@ -126,11 +139,37 @@ rc machine branch --from dev --name try-1       # copy-on-write copy of the disk
 | `delete` | `--name`, `-f` | a running one only with `-f` |
 | `exec` | `--name`, `-e K=V` (repeatable), `-w DIR`, `-i` (forwards stdin), `--timeout` (0 = no limit) | argv **with no implicit shell**: for a shell, `-- sh -c '...'`. The `rc` exit code is the command's (124 on timeout) |
 | `shell` | `--name`, `-e K=V`, `-w DIR`, optional `-- CMD` | a real terminal (PTY in the guest): Ctrl+C interrupts only the command, the window size follows the host. Without a command, opens `bash` if the image has it, otherwise `sh`. The `rc` exit code is the one from `exit` |
+| `web-terminal` | `--name`, `-e K=V`, `-w DIR`, `-u USER`, `--port` (0 = free), `--no-open`, optional `-- CMD` | the same terminal in the browser: serves an xterm.js page on `127.0.0.1` with a token in the URL and opens the browser. The `rc` exit code is the program's |
 | `cp` | `SRC DST`, with `name:/path` on one side | 1 MiB chunks; atomic on both sides; up to 4 GiB |
 | `logs` | `--name`, `--tail N`, `--source all\|workload` | the VM console: what the guest, `machine.sh` and the workload write; `workload` filters to it alone |
 | `sync` | `--name` | returns the staged volume copies to the host (see [Network and volumes](/cli/network#staged-volume--v-hostgueststaged)) |
 | `data-dir` | `--name` | the machine's directory on the host (registry, disk, published sockets, logs) |
 | `prune` | `--all` | the same as `rc image prune`: frees old image builds; with `--all`, also the referenced images no machine uses |
+
+## Web terminal
+
+```bash
+rc machine web-terminal --name dev                         # the machine's shell in the browser
+rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
+```
+
+`rc` prints `web terminal: http://127.0.0.1:PORT/?t=<token>` and opens the browser. The page is a real terminal
+(xterm.js, embedded in the binary, works offline): Ctrl+C, arrow keys, full-screen editors, paste and the window size
+reach the guest's PTY. Links on screen are clickable.
+
+| Point | How it works |
+|-------|--------------|
+| session | starts with the command, not with the page: the program is already running while the browser opens |
+| reload, second tab | get the last 256 KiB of the screen again and continue live; every tab types into the same session |
+| end | when the program exits, the page shows the code and `rc` exits with it; Ctrl+C in the launching terminal ends the session. The machine stays running |
+| network | `127.0.0.1` only; `--port` picks the port (0 takes a free one) |
+| token | 128 random bits in the URL, required on every route that reads or writes the session; without it, 403 |
+| other defenses | a non-loopback `Host` (DNS rebinding) and a POST with another site's `Origin` get 403; keyboard bodies are capped at 64 KiB |
+| stopped machine | refused before any server or browser opens |
+| ports | any TCP port a program opens in the machine (on `0.0.0.0`, `::`, `127.0.0.1` or `::1`) becomes a tab within 2 s and answers on the host's `127.0.0.1`, on the same number; if that number is taken on the host, on a free one (the tab shows `5432 → 51234`). It is raw TCP over vsock: WebSocket, hot reload and absolute paths (FastAPI's `/docs`) work, and the machine needs no `--net`. A server bound only to the `eth0` IP is left out. While the tab exists, the number is taken on the host: another machine's `-p 3000` fails with `address already in use` |
+
+The [coding-agent](/guides/examples) guide opens Claude Code this way. With `IS_SANDBOX=1` in the machine's
+environment, `--dangerously-skip-permissions` runs as root; without it, Claude refuses (`cannot be used with root/sudo privileges`).
 
 ## Errors
 

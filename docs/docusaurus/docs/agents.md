@@ -80,6 +80,7 @@ rc machine start|stop|status|delete [--name N]          # stop --timeout 10s; de
 rc machine ls [--json]
 rc machine exec [--name N] [-e K=V] [-w DIR] [-i] [--timeout D] -- CMD ARGS...
 rc machine shell [--name N] [-e K=V] [-w DIR] [-- CMD]  # terminal interativo (PTY)
+rc machine web-terminal [--name N] [--port P] [--no-open] [-- CMD]  # o mesmo terminal no navegador (127.0.0.1, token)
 rc machine cp SRC DST                                    # um lado é nome:/caminho
 rc machine logs [--name N] [--tail N]
 rc serve  [--listen 127.0.0.1:8080] [--pool-size 2]
@@ -213,7 +214,7 @@ e também gerencia **máquinas** persistentes; o que segue ainda não existe, ou
 | Recurso | No `rc` hoje | Observação |
 |---------|--------------|------------|
 | `machine stats`, `machine monitor` | **não** | Fase D |
-| exec interativo por WebSocket na API | **não** | o terminal hoje é só pela CLI |
+| exec interativo por WebSocket na API | **não** | o `rc serve` não expõe terminal; o `rc machine web-terminal` serve um no navegador, em 127.0.0.1 |
 | `--error-format json` | parcial | a API já devolve códigos E00x estáveis |
 | checkpoint de RAM e CPU (Mac → Linux) | **não** | a libkrun upstream não tem snapshot; o `branch` copia o disco |
 | `--cuda` | **não** | exige host Linux com NVIDIA |

@@ -390,6 +390,40 @@ $rc machine delete --name "$name-usr" -f >/dev/null
 step "8u. Os guias (uma pasta, sem VM)"
 expect "task guides DIRS=gpu-cuda" sh -c "task guides DIRS=gpu-cuda >'$tmp/docs.log' 2>&1"
 
+step "8v. Terminal web (rc machine web-terminal)"
+# Sobe o terminal web sem navegador, lê a URL impressa e a tela pelo SSE (base64), e confere o token.
+$rc machine web-terminal --name "$name" --no-open -- sh -c 'sleep 1; echo wt-ok:$((6*7))' 2>"$tmp/wt.err" &
+wt_pid=$!
+wt_url=""
+for _ in $(seq 1 100); do wt_url=$(grep -oE 'http://127\.0\.0\.1:[0-9]+/\?t=[0-9a-f]{32}' "$tmp/wt.err" | head -1); [ -n "$wt_url" ] && break; sleep 0.1; done
+expect "URL só em 127.0.0.1, com token" test -n "$wt_url"
+expect "sem token: 403" test "$(curl -s -o /dev/null -w '%{http_code}' "${wt_url%%/\?*}/stream")" = 403
+wt_screen=$(timeout 20s curl -sN "${wt_url%%/\?*}/stream?${wt_url#*\?}" | python3 -c '
+import base64, sys
+for line in sys.stdin:
+    if line.startswith("data: ") and not line.startswith("data: {"):
+        sys.stdout.write(base64.b64decode(line[6:].strip()).decode("utf-8", "replace"))
+    if line.startswith("event: exit"):
+        break')
+expect "a tela do PTY chega pelo SSE (wt-ok:42)" grep -q 'wt-ok:42' <<<"$wt_screen"
+wait "$wt_pid"
+expect "o rc sai com o código do programa (0)" test "$?" = 0
+# Encaminhamento de portas: um servidor que o programa sobe na VM aparece em /ports e responde no 127.0.0.1 do host.
+$rc machine web-terminal --name "$name" --no-open -- sh -c 'cd /tmp && timeout 15 python3 -m http.server 8133' 2>"$tmp/wtp.err" &
+wtp_pid=$!
+wtp_url=""
+for _ in $(seq 1 100); do wtp_url=$(grep -oE 'http://127\.0\.0\.1:[0-9]+/\?t=[0-9a-f]{32}' "$tmp/wtp.err" | head -1); [ -n "$wtp_url" ] && break; sleep 0.1; done
+wtp_host=""
+for _ in $(seq 1 40); do
+  wtp_host=$(curl -s "${wtp_url%%/\?*}/ports?${wtp_url#*\?}" | python3 -c 'import json,sys; print(next((str(f["host"]) for f in json.load(sys.stdin) if f["guest"] == 8133), ""))' 2>/dev/null)
+  [ -n "$wtp_host" ] && break
+  sleep 0.5
+done
+expect "a porta 8133 da VM aparece em /ports" test -n "$wtp_host"
+expect "e responde no 127.0.0.1 do host" test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${wtp_host:-1}/")" = 200
+kill "$wtp_pid" 2>/dev/null
+wait "$wtp_pid" 2>/dev/null
+
 step "9. GPU (pula se a imagem llama não estiver construída)"
 if $rc doctor 2>&1 | grep -q "ok    image llama"; then
   out=$($rc run --stack llama --gpu --code 'vulkaninfo --summary | grep deviceName' 2>&1)

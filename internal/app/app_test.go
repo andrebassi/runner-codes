@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +100,11 @@ func (g *guest) RunStream(ctx context.Context, socket string, j protocol.Job, on
 // Interactive não é usado pelo pool; existe para o guest falso cumprir a porta.
 func (g *guest) Interactive(context.Context, string, protocol.Job, io.Reader, io.Writer, <-chan ports.Winsize) (int, error) {
 	return 0, errors.New("not used by the pool")
+}
+
+// DialPort não é usado pelo pool; existe para o guest falso cumprir a porta.
+func (g *guest) DialPort(context.Context, string, uint16) (net.Conn, error) {
+	return nil, errors.New("not used by the pool")
 }
 
 // WaitReady responde na hora, ou espera o ctx se readyErr devolver erro de bloqueio.

@@ -126,11 +126,49 @@ rc machine branch --from dev --name try-1       # 磁盘的 copy-on-write 副本
 | `delete` | `--name`、`-f` | 运行中的机器必须加 `-f` |
 | `exec` | `--name`、`-e K=V`（可重复）、`-w DIR`、`-i`（转发 stdin）、`--timeout`（0 = 不限） | argv **不经过隐式 shell**：需要 shell 时用 `-- sh -c '...'`。`rc` 的退出码就是命令的退出码（超时为 124） |
 | `shell` | `--name`、`-e K=V`、`-w DIR`、可选的 `-- CMD` | 真正的终端（guest 中的 PTY）：Ctrl+C 只中断当前命令，窗口大小跟随 host。不带命令时，镜像中有 `bash` 就打开 `bash`，否则打开 `sh`。`rc` 的退出码就是 `exit` 的退出码 |
+| `web-terminal` | `--name`、`-e K=V`、`-w DIR`、`-u USER`、`--port`（0 = 任选空闲端口）、`--no-open`、可选的 `-- CMD` | 在浏览器中打开同样的终端：在 `127.0.0.1` 上提供一个 xterm.js 页面，URL 带 token，并自动打开浏览器。`rc` 的退出码就是程序的退出码 |
 | `cp` | `SRC DST`，其中一侧为 `nome:/caminho` | 以 1 MiB 分块；两端都是原子操作；最大 4 GiB |
 | `logs` | `--name`、`--tail N`、`--source all\|workload` | VM 控制台：guest、`machine.sh` 和 workload 写出的内容；`workload` 只过滤出它的输出 |
 | `sync` | `--name` | 把 staged 卷的副本写回 host（参见[网络与卷](/cli/network#volume-staged--v-hostgueststaged)） |
 | `data-dir` | `--name` | 机器在 host 上的目录（注册信息、磁盘、发布的 socket、日志） |
 | `prune` | `--all` | 与 `rc image prune` 相同：释放旧的镜像构建；加 `--all` 时，还会释放没有任何机器使用的引用镜像 |
+
+## Web 终端 {#terminal-web}
+
+```bash
+rc machine web-terminal --name dev                         # 在浏览器中打开机器的 shell
+rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
+```
+
+`rc` 会打印 `web terminal: http://127.0.0.1:端口/?t=<token>` 并打开浏览器。页面是真正的终端（xterm.js，内嵌在二进制中，
+离线可用）：Ctrl+C、方向键、全屏编辑器、粘贴以及窗口大小都会传到 guest 的 PTY。屏幕上的链接可以点击。
+
+### 标签页 {#abas}
+
+```
+runner.codes · agent │ claude │ shell │ eventos │ ● 3000
+```
+
+| 标签页 | 说明 |
+|--------|------|
+| 命令的标签页（`claude`） | `--` 之后传入的程序；不带命令时是机器的 shell。关闭浏览器标签页不会停止任何东西 |
+| `shell` | 同一台机器上的另一个独立终端，第一次点击时打开（每个页面最多 8 个存活会话） |
+| `eventos`（事件） | 时间线：会话启动、会话退出（带退出码）、端口打开、端口关闭 |
+| `● 3000` | 机器中每个打开的端口一个标签页，始终排在最后：在 iframe 中显示应用，带 **重新加载** 和 **新标签页 ↗**（有些网站不允许被嵌入 iframe）。服务器停止后标签页消失 |
+
+| 要点 | 说明 |
+|------|------|
+| 会话 | 随命令启动，而不是随页面启动：浏览器打开时程序已经在运行 |
+| 刷新、第二个标签页 | 会重新收到屏幕最近的 256 KiB 并继续实时显示；所有标签页都在同一个会话中输入 |
+| 结束 | 程序退出时页面显示退出码，`rc` 也以该码退出；在启动它的终端按 Ctrl+C 会结束会话。机器保持运行 |
+| 网络 | 只监听 `127.0.0.1`；`--port` 指定端口（0 表示任选空闲端口） |
+| token | URL 中 128 位随机值，所有读写会话的路由都要求它；没有则返回 403 |
+| 其他防护 | 非回环的 `Host`（DNS rebinding）和来自其他站点 `Origin` 的 POST 返回 403；键盘输入每次上限 64 KiB |
+| 已停止的机器 | 在打开服务器或浏览器之前就会被拒绝 |
+| 端口 | 程序在机器中打开的任何 TCP 端口（监听 `0.0.0.0`、`::`、`127.0.0.1` 或 `::1`）会在 2 秒内变成一个标签页，并在 host 的 `127.0.0.1` 上用相同端口号响应；该端口在 host 上被占用时改用空闲端口（标签页显示 `5432 → 51234`）。走的是 vsock 上的原始 TCP：WebSocket、热重载和绝对路径（FastAPI 的 `/docs`）都能用，机器也不需要 `--net`。只绑定在 `eth0` IP 上的服务器不在此列。标签页存在期间，该端口号在 host 上被占用：另一台机器的 `-p 3000` 会报 `address already in use` |
+
+[coding-agent](/guides/examples) 指南就是这样打开 Claude Code 的。机器环境中有 `IS_SANDBOX=1` 时，
+`--dangerously-skip-permissions` 可以以 root 运行；没有时 Claude 会拒绝（`cannot be used with root/sudo privileges`）。
 
 ## 错误 {#erros}
 

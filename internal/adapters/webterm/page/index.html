@@ -1,0 +1,217 @@
+<!doctype html>
+<!-- Código de página (roda no navegador): o terminal web de uma máquina do rc, em abas. Cada aba de terminal é um
+     xterm.js ligado a uma sessão (PTY) pelo SSE (/stream?s=ID) e pelos POSTs (/input, /resize); cada porta que um
+     programa abre na máquina vira uma aba com a app num iframe; "eventos" é a linha do tempo. Tudo leva o token da URL. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rc · terminal</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  :root { --bg: #0b0c10; --bar: #11131a; --tab: #1a1d26; --fg: #e6e8ef; --muted: #8a90a2; --line: rgba(255,255,255,.08);
+          --accent: #7aa2ff; --brand: #e8b25a; --ok: #69db7c; --err: #ff7a7a; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px ui-monospace, "SF Mono", Menlo, monospace; }
+  body { display: flex; flex-direction: column; }
+  #bar { display: flex; align-items: flex-end; gap: 4px; padding: 8px 12px 0; background: var(--bar); border-bottom: 1px solid var(--line); }
+  #brand { color: var(--brand); padding: 0 14px 9px 4px; white-space: nowrap; }
+  #tabs { display: flex; gap: 2px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+  .tab { font: inherit; font-size: 13.5px; color: var(--muted); background: transparent; border: 1px solid transparent; border-bottom: 0;
+         border-radius: 9px 9px 0 0; padding: 7px 16px 8px; cursor: pointer; white-space: nowrap; position: relative; top: 1px; }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); background: var(--tab); border-color: var(--line); box-shadow: inset 0 2px 0 var(--brand); }
+  .tab.port::before { content: "● "; color: var(--ok); }
+  .tab.ended { text-decoration: line-through; opacity: .6; }
+  #st { color: var(--muted); padding: 0 4px 9px 12px; white-space: nowrap; }
+  #st::before { content: "●"; margin-right: 6px; color: var(--muted); }
+  #st.on::before { color: var(--ok); } #st.off::before { color: var(--err); }
+  #panes { flex: 1; min-height: 0; position: relative; background: var(--tab); }
+  .pane { position: absolute; inset: 0; display: none; }
+  .pane.on { display: flex; flex-direction: column; }
+  .term { flex: 1; min-height: 0; padding: 6px 8px; }
+  .end { display: none; padding: 8px 12px; background: rgba(255,122,122,.12); color: var(--err); }
+  .ptool { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--muted); }
+  .ptool a, .ptool button { font: inherit; color: var(--fg); background: rgba(255,255,255,.06); border: 1px solid var(--line);
+                           border-radius: 7px; padding: 3px 10px; cursor: pointer; text-decoration: none; }
+  .ptool .url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  iframe { flex: 1; border: 0; background: #fff; width: 100%; }
+  .events { overflow: auto; padding: 12px 16px; line-height: 1.8; }
+  .events time { color: var(--muted); margin-right: 12px; }
+  .events .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <span id="brand">runner.codes</span>
+  <div id="tabs" role="tablist" aria-label="Abas"></div>
+  <span id="st">conectando…</span>
+</div>
+<div id="panes"></div>
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script src="addon-web-links.js"></script>
+<script>
+(() => {
+  // O token vem na URL que o rc imprime; sem ele, o servidor recusa tudo o que lê ou escreve.
+  const token = new URLSearchParams(location.search).get("t") || "";
+  const tq = "t=" + encodeURIComponent(token);
+  const $ = (id) => document.getElementById(id);
+  const tabsBox = $("tabs"), panes = $("panes"), st = $("st");
+  const Term = window.Terminal.Terminal || window.Terminal;
+  const Fit = window.FitAddon.FitAddon || window.FitAddon;
+  const Links = window.WebLinksAddon && (window.WebLinksAddon.WebLinksAddon || window.WebLinksAddon);
+  const enc = new TextEncoder();
+  const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const setStatus = (cls, text) => { st.className = cls; st.textContent = text; };
+
+  // tabs: id → { btn, pane, onShow }. A ordem na barra: terminais, "shell", "eventos", portas.
+  const tabs = new Map();
+  let current = null;
+
+  // makeTab cria o botão e o painel de uma aba; before posiciona antes de outra aba (para manter a ordem).
+  function makeTab(id, label, cls, before) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "tab " + (cls || ""); btn.textContent = label;
+    btn.setAttribute("role", "tab"); btn.setAttribute("aria-selected", "false");
+    btn.addEventListener("click", () => show(id));
+    const ref = before && tabs.get(before);
+    tabsBox.insertBefore(btn, ref ? ref.btn : null);
+    const pane = document.createElement("div");
+    pane.className = "pane";
+    panes.appendChild(pane);
+    const t = { btn, pane, onShow: null };
+    tabs.set(id, t);
+    return t;
+  }
+
+  // show troca de aba; o terminal visível é reajustado ao tamanho do painel.
+  function show(id) {
+    const t = tabs.get(id); if (!t) return;
+    for (const [k, o] of tabs) { const on = k === id; o.btn.setAttribute("aria-selected", String(on)); o.pane.classList.toggle("on", on); }
+    current = id;
+    if (t.onShow) t.onShow();
+  }
+
+  // openTerminal liga uma aba a uma sessão: xterm, SSE da tela, teclado em fila e resize.
+  function openTerminal(t, sid) {
+    const box = document.createElement("div"); box.className = "term";
+    const end = document.createElement("div"); end.className = "end";
+    t.pane.append(box, end);
+    const term = new Term({ cursorBlink: true, fontSize: 14, scrollback: 5000,
+      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+      theme: { background: "#1a1d26", foreground: "#e6e8ef", cursor: "#7aa2ff", selectionBackground: "#1d4ed866" } });
+    const fit = new Fit();
+    term.loadAddon(fit);
+    // URLs clicáveis (abrem em aba nova): é por aqui que o login do Claude Code sai do terminal.
+    if (Links) term.loadAddon(new Links((_, uri) => window.open(uri, "_blank", "noopener")));
+    term.open(box);
+    const q = "?s=" + encodeURIComponent(sid) + "&" + tq;
+    // Teclado em fila: um POST por vez, na ordem; colagem grande em pedaços de 32 KiB (o servidor aceita 64).
+    let chain = Promise.resolve();
+    term.onData((data) => {
+      const all = enc.encode(data);
+      for (let i = 0; i < all.length; i += 32768) {
+        const part = all.slice(i, i + 32768);
+        chain = chain.then(() => fetch("input" + q, { method: "POST", body: part })).catch(() => {});
+      }
+    });
+    // Só a aba visível manda tamanho: todas as abas de uma sessão dividem o mesmo PTY.
+    const refit = () => {
+      if (!t.pane.classList.contains("on")) return;
+      fit.fit();
+      fetch("resize" + q, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: term.rows, cols: term.cols }) }).catch(() => {});
+    };
+    window.addEventListener("resize", refit);
+    t.onShow = () => { refit(); term.focus(); };
+    const es = new EventSource("stream" + q);
+    // replay: a tela recente ao abrir ou reconectar; limpa antes para um F5 não duplicar.
+    es.addEventListener("replay", (e) => { term.reset(); if (e.data) term.write(bytes(e.data)); setStatus("on", "conectado"); refit(); });
+    es.onmessage = (e) => term.write(bytes(e.data));
+    es.addEventListener("exit", (e) => {
+      es.close();
+      end.style.display = "block";
+      end.textContent = "O programa saiu (código " + JSON.parse(e.data).code + ").";
+      t.btn.classList.add("ended");
+    });
+    es.onerror = () => { if (es.readyState !== EventSource.CLOSED) setStatus("off", "reconectando…"); };
+  }
+
+  // Aba "shell": no primeiro clique pede um shell novo ao rc e liga a aba a ele.
+  const shellTab = makeTab("shell", "shell");
+  let shellOpen = false;
+  shellTab.onShow = async () => {
+    if (shellOpen) return;
+    shellOpen = true;
+    const r = await fetch("sessions?" + tq, { method: "POST" });
+    if (!r.ok) { shellTab.pane.textContent = "não deu para abrir um shell: " + (await r.text()); return; }
+    const info = await r.json();
+    shellTab.btn.textContent = info.label;
+    openTerminal(shellTab, info.id);
+    shellTab.onShow();
+  };
+
+  // Aba "eventos": a linha do tempo que o rc guarda (portas e sessões).
+  const evTab = makeTab("events", "eventos");
+  const evList = document.createElement("div"); evList.className = "events";
+  evTab.pane.appendChild(evList);
+
+  // Uma aba por porta aberta na máquina: a app num iframe, com recarregar e abrir em aba nova (há sites que não deixam
+  // ser exibidos em iframe; o botão resolve).
+  function portTab(p) {
+    const id = "port-" + p.guest;
+    // Portas por último na barra, depois de "eventos" (pedido do dono): terminais e linha do tempo ficam fixos.
+    const t = makeTab(id, String(p.guest) + (p.host !== p.guest ? " → " + p.host : ""), "port");
+    const url = "http://127.0.0.1:" + p.host + "/";
+    const bar = document.createElement("div"); bar.className = "ptool";
+    const u = document.createElement("span"); u.className = "url"; u.textContent = url;
+    const reload = document.createElement("button"); reload.type = "button"; reload.textContent = "recarregar";
+    const open = document.createElement("a"); open.href = url; open.target = "_blank"; open.rel = "noopener"; open.textContent = "nova aba ↗";
+    bar.append(u, reload, open);
+    const frame = document.createElement("iframe");
+    frame.title = "porta " + p.guest;
+    let loaded = false;
+    t.onShow = () => { if (!loaded) { frame.src = url; loaded = true; } };
+    reload.addEventListener("click", () => { frame.src = url; });
+    t.pane.append(bar, frame);
+  }
+
+  // Consulta o estado de 2 em 2 s: a aba principal, portas que abriram ou fecharam, e os eventos. As sessões shell-N
+  // pertencem à aba "shell" e não ganham aba própria.
+  let first = true, lastEvents = -1;
+  async function poll() {
+    let s;
+    try { s = await (await fetch("state?" + tq, { cache: "no-store" })).json(); } catch (_) { return; }
+    $("brand").textContent = "runner.codes · " + s.machine;
+    for (const sess of s.sessions) {
+      if (sess.id.startsWith("shell-")) continue;
+      const id = "s-" + sess.id;
+      if (!tabs.has(id)) openTerminal(makeTab(id, sess.label, "", "shell"), sess.id);
+      if (sess.ended) tabs.get(id).btn.classList.add("ended");
+    }
+    const live = new Set(s.ports.map((p) => "port-" + p.guest));
+    for (const id of [...tabs.keys()]) {
+      if (id.startsWith("port-") && !live.has(id)) {
+        const t = tabs.get(id);
+        if (current === id) show("s-main");
+        t.btn.remove(); t.pane.remove(); tabs.delete(id);
+      }
+    }
+    for (const p of s.ports) if (!tabs.has("port-" + p.guest)) portTab(p);
+    if (s.events.length !== lastEvents) {
+      lastEvents = s.events.length;
+      evList.replaceChildren(...(s.events.length ? s.events.slice().reverse().map((e) => {
+        const row = document.createElement("div");
+        const tm = document.createElement("time"); tm.textContent = new Date(e.at).toLocaleTimeString();
+        row.append(tm, document.createTextNode(e.text));
+        return row;
+      }) : [Object.assign(document.createElement("div"), { className: "empty", textContent: "nada ainda" })]));
+    }
+    if (first) { first = false; show("s-main"); }
+  }
+  poll();
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>

@@ -77,7 +77,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Guias',
-      items: ['guides/examples', 'guides/database-parsers-setup'],
+      items: ['guides/use-cases', 'guides/examples', 'guides/database-parsers-setup'],
     },
   ],
 };

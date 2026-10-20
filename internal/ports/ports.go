@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
 	"runner.code/internal/domain"
@@ -205,6 +206,8 @@ type GuestClient interface {
 	// saída em out, manda cada tamanho de resize e devolve o código de saída do programa.
 	Interactive(ctx context.Context, socket string, job protocol.Job, in io.Reader, out io.Writer, resize <-chan Winsize) (int, error)
 	WaitReady(ctx context.Context, socket string) error
+	// DialPort abre uma conexão TCP até 127.0.0.1:port dentro do guest, pelo vsock: funciona sem a máquina ter rede.
+	DialPort(ctx context.Context, socket string, port uint16) (net.Conn, error)
 }
 
 // Winsize é o tamanho de um terminal em linhas e colunas.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,9 @@ type fileGuest struct {
 	readyErr    error
 	execErr     error
 	workloadErr string
+	// dialed guarda as portas pedidas ao DialPort; dialErr simula porta fechada no guest.
+	dialed  []uint16
+	dialErr error
 }
 
 // Run atende as operações das máquinas.
@@ -236,6 +240,11 @@ func (g *fileGuest) Run(_ context.Context, _ string, j protocol.Job) (protocol.R
 		}
 		if len(j.Argv) >= 8 && j.Argv[3] == "stage" && j.Argv[6] == "/badstage" {
 			return protocol.Result{Status: "success", ExitCode: 1, Stderr: "stage broke"}, nil
+		}
+		// /proc/net/tcp de mentira: 0.0.0.0:8000 (1F40) em LISTEN, para o ListeningPorts.
+		if len(j.Argv) == 3 && j.Argv[0] == "sh" && strings.Contains(j.Argv[2], "/proc/net/tcp") {
+			ok.Stdout = "  sl  local_address rem_address st\n   0: 00000000:1F40 00000000:0000 0A 0 0 0 0 0 0 1\n"
+			return ok, nil
 		}
 		if len(j.Argv) == 3 && j.Argv[0] == "sh" && strings.HasPrefix(j.Argv[2], "fail") {
 			return protocol.Result{Status: "success", ExitCode: 2, Stderr: "init broke"}, nil
@@ -316,6 +325,19 @@ func (g *fileGuest) Interactive(_ context.Context, _ string, j protocol.Job, in 
 	}
 	io.Copy(out, in)
 	return 6, nil
+}
+
+// DialPort devolve uma ponta de net.Pipe que responde "porta N" e fecha; dialErr simula a porta fechada no guest.
+func (g *fileGuest) DialPort(_ context.Context, socket string, port uint16) (net.Conn, error) {
+	g.mu.Lock()
+	g.dialed = append(g.dialed, port)
+	g.mu.Unlock()
+	if g.dialErr != nil {
+		return nil, g.dialErr
+	}
+	a, b := net.Pipe()
+	go func() { fmt.Fprintf(b, "porta %d", port); b.Close() }()
+	return a, nil
 }
 
 // WaitReady responde conforme readyErr; com hang, espera o contexto acabar, como um guest

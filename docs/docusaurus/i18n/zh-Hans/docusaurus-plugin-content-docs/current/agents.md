@@ -80,6 +80,7 @@ rc machine start|stop|status|delete [--name N]          # stop --timeout 10s; de
 rc machine ls [--json]
 rc machine exec [--name N] [-e K=V] [-w DIR] [-i] [--timeout D] -- CMD ARGS...
 rc machine shell [--name N] [-e K=V] [-w DIR] [-- CMD]  # 交互式终端（PTY）
+rc machine web-terminal [--name N] [--port P] [--no-open] [-- CMD]  # 在浏览器中的同一个终端（127.0.0.1，带 token）
 rc machine cp SRC DST                                    # 其中一侧是 nome:/caminho
 rc machine logs [--name N] [--tail N]
 rc serve  [--listen 127.0.0.1:8080] [--pool-size 2]
@@ -213,7 +214,7 @@ data: {"status":"success","exitCode":0,"exception":null,"executionTime":2034,"ti
 | 功能 | 当前 `rc` 中 | 说明 |
 |---------|--------------|------------|
 | `machine stats`、`machine monitor` | **无** | 阶段 D |
-| API 中基于 WebSocket 的交互式 exec | **无** | 目前终端只能通过 CLI 使用 |
+| API 中基于 WebSocket 的交互式 exec | **无** | `rc serve` 不提供终端；`rc machine web-terminal` 在浏览器中提供一个，仅监听 127.0.0.1 |
 | `--error-format json` | 部分 | API 已返回稳定的 E00x 错误码 |
 | RAM 和 CPU 的 checkpoint（Mac → Linux） | **无** | 上游 libkrun 没有 snapshot；`branch` 复制的是磁盘 |
 | `--cuda` | **无** | 需要带 NVIDIA 的 Linux host |

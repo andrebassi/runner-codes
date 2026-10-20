@@ -516,6 +516,24 @@ task guides DIRS=gpu-cuda      # uma pasta; sem DIRS, todas (cada uma liga as su
 
 预期:每个文件夹都是 `falhas: 0`。每个文件夹验证的内容见 `examples/guides/README.md`。
 
+## 8v. Web 终端
+
+```bash
+./bin/rc machine web-terminal --name demo                 # 在浏览器中打开机器的 shell
+./bin/rc machine web-terminal --name demo --no-open -- sh -c 'echo wt-ok:$((6*7))'
+```
+
+预期:
+- `web terminal: http://127.0.0.1:端口/?t=<32 位十六进制>`:只在回环地址,带 token;浏览器会自动打开
+  (`--no-open` 只打印 URL);
+- 浏览器中是真正的终端(xterm.js):Ctrl+C、方向键、全屏编辑器和窗口大小都会传到 guest,刷新后会重新显示最近的屏幕;
+- 带命令时,屏幕显示 `wt-ok:42`,页面提示程序已退出,`rc` 以该程序的退出码退出;
+- 没有 token 的 `/stream` 返回 403,非回环的 `Host`(DNS rebinding)也返回 403。
+- 标签页 `claude`(命令)、`shell`(第一次点击时打开的独立终端)、`eventos`,最后是每个端口一个标签页:程序在 VM 中启动的服务器(任意端口)会以 iframe 显示应用,并在 host 的 `127.0.0.1` 上响应。
+
+`coding-agent` 指南就用它在浏览器中打开 Claude Code:
+`rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`。
+
 ## 9. GPU
 
 仅当 `llama` 镜像已构建时执行(`rc doctor` 显示 `ok image llama`)。

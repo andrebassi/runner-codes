@@ -86,6 +86,19 @@ docker save meuapp | rc machine run --image - -- ./app   # imagen local, sin reg
 rc machine run --image ./meuapp.tar -- ./app             # tar de docker save o directorio OCI layout
 ```
 
+### Pestañas
+
+```
+runner.codes · agent │ claude │ shell │ eventos │ ● 3000
+```
+
+| Pestaña | Qué es |
+|---------|--------|
+| la del comando (`claude`) | el programa pasado después de `--`; sin comando, el shell de la máquina. Cerrar la pestaña del navegador no detiene nada |
+| `shell` | un terminal aparte en la misma máquina, abierto con el primer clic (hasta 8 sesiones vivas por página) |
+| `eventos` | la línea de tiempo: sesión iniciada, sesión que salió (con su código), puerto abierto y puerto cerrado |
+| `● 3000` | una pestaña por puerto abierto en la máquina, siempre al final: la app en un iframe, con **recargar** y **nueva pestaña ↗** (hay sitios que no se dejan mostrar en iframe). Desaparece cuando el servidor cae |
+
 | Punto | Cómo es |
 |-------|--------|
 | qué se ejecuta | el comando después de `--`; si no, el `cmd`/`entrypoint` del `runner.code`; si no, con `-t`, un shell |
@@ -127,11 +140,37 @@ rc machine branch --from dev --name try-1       # copia copy-on-write del disco 
 | `delete` | `--name`, `-f` | encendida, solo con `-f` |
 | `exec` | `--name`, `-e K=V` (repetible), `-w DIR`, `-i` (reenvía el stdin), `--timeout` (0 = sin límite) | argv **sin shell implícito**: para un shell, `-- sh -c '...'`. El rc de `rc` es el del comando (124 en el timeout) |
 | `shell` | `--name`, `-e K=V`, `-w DIR`, `-- CMD` opcional | terminal real (PTY en el guest): Ctrl+C interrumpe solo el comando, el tamaño de la ventana sigue al host. Sin comando, abre `bash` si la imagen lo tiene, si no `sh`. El rc de `rc` es el del `exit` |
+| `web-terminal` | `--name`, `-e K=V`, `-w DIR`, `-u USER`, `--port` (0 = libre), `--no-open`, `-- CMD` opcional | el mismo terminal en el navegador: sirve en `127.0.0.1` una página con xterm.js, con token en la URL, y abre el navegador. El rc de `rc` es el del programa |
 | `cp` | `SRC DST`, con `nome:/caminho` en uno de los lados | fragmentos de 1 MiB; atómico en ambos lados; hasta 4 GiB |
 | `logs` | `--name`, `--tail N`, `--source all\|workload` | consola de la VM: lo que escriben el guest, `machine.sh` y el workload; `workload` filtra solo este último |
 | `sync` | `--name` | devuelve al host las copias de los volúmenes staged (ver [Red y volúmenes](/cli/network#volumen-staged--v-hostgueststaged)) |
 | `data-dir` | `--name` | el directorio de la máquina en el host (registro, disco, sockets publicados, logs) |
 | `prune` | `--all` | lo mismo que `rc image prune`: libera builds antiguos de imágenes; con `--all`, también las imágenes de referencia que ninguna máquina usa |
+
+## Terminal web
+
+```bash
+rc machine web-terminal --name dev                         # el shell de la máquina en el navegador
+rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
+```
+
+`rc` imprime `web terminal: http://127.0.0.1:PUERTO/?t=<token>` y abre el navegador. La página es un terminal real
+(xterm.js, embebido en el binario, funciona sin internet): Ctrl+C, flechas, editores a pantalla completa, pegar y el
+tamaño de la ventana llegan al PTY del guest. Los enlaces en pantalla son clicables.
+
+| Punto | Cómo es |
+|-------|---------|
+| sesión | nace con el comando, no con la página: el programa ya corre mientras el navegador abre |
+| F5, segunda pestaña | reciben de nuevo los últimos 256 KiB de la pantalla y siguen en vivo; todas las pestañas escriben en la misma sesión |
+| fin | cuando el programa sale, la página muestra el código y `rc` sale con él; Ctrl+C en el terminal de quien lo lanzó termina la sesión. La máquina sigue encendida |
+| red | solo `127.0.0.1`; `--port` elige el puerto (0 toma uno libre) |
+| token | 128 bits aleatorios en la URL, exigido en toda ruta que lee o escribe en la sesión; sin él, 403 |
+| otras defensas | un `Host` que no sea de loopback (DNS rebinding) y un POST con `Origin` de otro sitio reciben 403; el teclado tiene un tope de 64 KiB por envío |
+| máquina detenida | se rechaza antes de abrir servidor o navegador |
+| puertos | cualquier puerto TCP que un programa abra en la máquina (en `0.0.0.0`, `::`, `127.0.0.1` o `::1`) se vuelve una pestaña en hasta 2 s y responde en el `127.0.0.1` del host, con el mismo número; si está ocupado en el host, en uno libre (la pestaña muestra `5432 → 51234`). Es TCP crudo por vsock: WebSocket, hot reload y rutas absolutas (el `/docs` de FastAPI) funcionan, y la máquina no necesita `--net`. Un servidor atado solo a la IP de `eth0` queda fuera. Mientras la pestaña exista, el número queda ocupado en el host: un `-p 3000` de otra máquina falla con `address already in use` |
+
+La guía [coding-agent](/guides/examples) abre Claude Code así. Con `IS_SANDBOX=1` en el entorno de la máquina,
+`--dangerously-skip-permissions` corre como root; sin él, Claude se niega (`cannot be used with root/sudo privileges`).
 
 ## Errores
 

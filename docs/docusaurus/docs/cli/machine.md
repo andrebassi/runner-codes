@@ -85,6 +85,19 @@ docker save meuapp | rc machine run --image - -- ./app   # imagem local, sem reg
 rc machine run --image ./meuapp.tar -- ./app             # tar do docker save ou diretório OCI layout
 ```
 
+### Abas
+
+```
+runner.codes · agent │ claude │ shell │ eventos │ ● 3000
+```
+
+| Aba | O que é |
+|-----|---------|
+| a do comando (`claude`) | o programa passado depois de `--`; sem comando, o shell da máquina. Fechar a aba não para nada |
+| `shell` | um terminal à parte na mesma máquina, aberto no primeiro clique (até 8 sessões vivas por página) |
+| `eventos` | a linha do tempo: sessão iniciada, sessão que saiu (com o código), porta aberta e porta fechada |
+| `● 3000` | uma aba por porta aberta na máquina, sempre por último: a app num iframe, com **recarregar** e **nova aba ↗** (há sites que não deixam ser exibidos em iframe). Some quando o servidor cai |
+
 | Ponto | Como é |
 |-------|--------|
 | o que roda | o comando depois do `--`; senão o `cmd`/`entrypoint` do `runner.code`; senão, com `-t`, um shell |
@@ -126,11 +139,37 @@ rc machine branch --from dev --name try-1       # cópia copy-on-write do disco 
 | `delete` | `--name`, `-f` | ligada só com `-f` |
 | `exec` | `--name`, `-e K=V` (repete), `-w DIR`, `-i` (repassa o stdin), `--timeout` (0 = sem limite) | argv **sem shell implícito**: para shell, `-- sh -c '...'`. O rc do `rc` é o do comando (124 no timeout) |
 | `shell` | `--name`, `-e K=V`, `-w DIR`, `-- CMD` opcional | terminal de verdade (PTY no guest): Ctrl+C interrompe só o comando, tamanho da janela acompanha o host. Sem comando, abre `bash` se a imagem tiver, senão `sh`. O rc do `rc` é o do `exit` |
+| `web-terminal` | `--name`, `-e K=V`, `-w DIR`, `-u USER`, `--port` (0 = livre), `--no-open`, `-- CMD` opcional | o mesmo terminal no navegador: serve em `127.0.0.1` uma página com xterm.js, com token na URL, e abre o navegador. O rc do `rc` é o do programa |
 | `cp` | `SRC DST`, com `nome:/caminho` em um dos lados | pedaços de 1 MiB; atômico nos dois lados; até 4 GiB |
 | `logs` | `--name`, `--tail N`, `--source all\|workload` | console da VM: o que o guest, o `machine.sh` e o workload escrevem; `workload` filtra só ele |
 | `sync` | `--name` | devolve ao host as cópias dos volumes staged (ver [Rede e volumes](/cli/network#volume-staged--v-hostgueststaged)) |
 | `data-dir` | `--name` | o diretório da máquina no host (registro, disco, sockets publicados, logs) |
 | `prune` | `--all` | o mesmo que `rc image prune`: libera builds antigos de imagem; com `--all`, também as imagens de referência que nenhuma máquina usa |
+
+## Terminal web
+
+```bash
+rc machine web-terminal --name dev                         # shell da máquina no navegador
+rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
+```
+
+O `rc` imprime `web terminal: http://127.0.0.1:PORTA/?t=<token>` e abre o navegador. A página é um terminal de verdade
+(xterm.js, embutido no binário, funciona sem internet): Ctrl+C, setas, editores de tela cheia, colar e o tamanho da janela
+chegam ao PTY do guest. Links na tela são clicáveis.
+
+| Ponto | Como é |
+|-------|--------|
+| sessão | nasce com o comando, não com a página: o programa já roda enquanto o navegador abre |
+| F5, segunda aba | recebem de novo os últimos 256 KiB da tela e seguem ao vivo; todas as abas digitam na mesma sessão |
+| fim | quando o programa sai, a página avisa o código e o `rc` sai com ele; Ctrl+C no terminal de quem rodou encerra a sessão. A máquina segue ligada |
+| rede | só `127.0.0.1`; `--port` escolhe a porta (0 pega uma livre) |
+| token | 128 bits aleatórios na URL, exigido em toda rota que lê ou escreve na sessão; sem ele, 403 |
+| outras defesas | `Host` que não seja de loopback (DNS rebinding) e POST com `Origin` de outro site recebem 403; o corpo do teclado tem teto de 64 KiB |
+| máquina parada | recusada antes de abrir servidor ou navegador |
+| portas | qualquer porta TCP que um programa abrir na máquina (em `0.0.0.0`, `::`, `127.0.0.1` ou `::1`) vira, em até 2 s, uma aba e responde no `127.0.0.1` do host, no mesmo número; se ele estiver ocupado no host, numa porta livre (a aba mostra `5432 → 51234`). É TCP cru pelo vsock: WebSocket, hot reload e caminho absoluto (o `/docs` do FastAPI) funcionam, e a máquina não precisa de `--net`. Servidor preso só ao IP da `eth0` fica de fora. Enquanto a aba existir, o número fica ocupado no host: um `-p 3000` de outra máquina recusa com `address already in use` |
+
+O guia [coding-agent](/guides/examples) abre o Claude Code assim. Com `IS_SANDBOX=1` no ambiente da máquina, o
+`--dangerously-skip-permissions` roda como root; sem ele, o Claude recusa (`cannot be used with root/sudo privileges`).
 
 ## Erros
 

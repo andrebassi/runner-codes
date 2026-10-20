@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -840,6 +841,25 @@ func (m *Machines) Shell(ctx context.Context, name string, req ShellRequest, in 
 		return 0, fmt.Errorf("shell in machine %s: %w", name, err)
 	}
 	return code, nil
+}
+
+// ListeningPorts lista as portas TCP em LISTEN no guest que o host alcança pelo loopback de lá (o terminal web as
+// encaminha). Lê /proc/net/tcp e tcp6 com cat, que existe em qualquer imagem; o tcp6 ausente (kernel sem IPv6) não é erro.
+func (m *Machines) ListeningPorts(ctx context.Context, name string) ([]uint16, error) {
+	res, err := m.Exec(ctx, name, ExecRequest{User: "root", Argv: []string{"sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return domain.ParseListeningPorts(res.Stdout), nil
+}
+
+// DialPort abre uma conexão até 127.0.0.1:port dentro da máquina ligada, pelo vsock (sem precisar de rede).
+func (m *Machines) DialPort(ctx context.Context, name string, port uint16) (net.Conn, error) {
+	sock, err := m.running(name)
+	if err != nil {
+		return nil, err
+	}
+	return m.Guest.DialPort(ctx, sock, port)
 }
 
 // Fontes do console aceitas pelo Logs: tudo, ou só o workload do runner.code.

@@ -57,7 +57,7 @@ func defaultMachineName() string { return env("RC_MACHINE_NAME", "default") }
 func machineCmd() *cobra.Command {
 	c := &cobra.Command{Use: "machine", Short: "Persistent machines: create, start, exec, cp, logs, stop, delete"}
 	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineStatusCmd(), machineListCmd(),
-		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineCopyCmd(), machineLogsCmd(), machineUpdateCmd(),
+		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineWebTerminalCmd(), machineCopyCmd(), machineLogsCmd(), machineUpdateCmd(),
 		machineRunCmd(), machineBranchCmd(), machinePauseCmd(), machineResumeCmd(), machineSyncCmd(), machineDataDirCmd(),
 		imagePruneCmd("prune"))
 	return c

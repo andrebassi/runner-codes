@@ -516,6 +516,25 @@ task guides DIRS=gpu-cuda      # uma pasta; sem DIRS, todas (cada uma liga as su
 
 Esperado: `falhas: 0` em cada pasta. O que cada pasta prova está em `examples/guides/README.md`.
 
+## 8v. Terminal web
+
+```bash
+./bin/rc machine web-terminal --name demo                 # abre o navegador com o shell da máquina
+./bin/rc machine web-terminal --name demo --no-open -- sh -c 'echo wt-ok:$((6*7))'
+```
+
+Esperado:
+- `web terminal: http://127.0.0.1:PORTA/?t=<32 hexa>`: só loopback, com token; o navegador abre sozinho (`--no-open`
+  só imprime);
+- no navegador, um terminal de verdade (xterm.js): Ctrl+C, setas, editor de tela cheia e o tamanho da janela chegam
+  ao guest, e um F5 mostra de novo a tela recente;
+- com o comando, a tela mostra `wt-ok:42`, a página avisa que o programa saiu e o `rc` sai com o código dele;
+- `/stream` sem o token responde 403, e um `Host` que não seja de loopback também (DNS rebinding).
+- abas `claude` (o comando), `shell` (um terminal à parte, no 1º clique), `eventos` e, por último, uma aba por porta: um servidor que o programa sobe na VM (qualquer porta) aparece com a app num iframe e responde no `127.0.0.1` do host.
+
+O guia `coding-agent` usa isto para abrir o Claude Code no navegador:
+`rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`.
+
 ## 9. GPU
 
 Só se a imagem `llama` estiver construída (o `rc doctor` mostra `ok image llama`).

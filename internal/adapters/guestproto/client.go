@@ -112,6 +112,11 @@ func ctxError(ctx context.Context, err error) error {
 // WaitReady repete um job mínimo até o guest responder. Conectar não prova nada: a
 // libkrun cria o socket antes de o guest escutar e aceita a conexão por ele (medido
 // no spike). Só a resposta prova que o guest está pronto.
+// DialPort é o DialPort do pacote como método: o que a porta GuestClient pede.
+func (Client) DialPort(ctx context.Context, socket string, port uint16) (net.Conn, error) {
+	return DialPort(ctx, socket, port)
+}
+
 func (c Client) WaitReady(ctx context.Context, socket string) error {
 	for {
 		attempt, cancel := context.WithTimeout(ctx, 2*time.Second)

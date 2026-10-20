@@ -51,9 +51,29 @@ func run(t *testing.T, args ...string) (string, string, int) {
 	return out.String(), errb.String(), rc
 }
 
-// vmmAlive diz se sobrou algum processo de VM.
+// vmmPIDs lista os processos de VM vivos agora (pgrep -f "/rc vmm").
+func vmmPIDs() map[string]bool {
+	out, _ := exec.Command("pgrep", "-f", "/rc vmm").Output()
+	pids := map[string]bool{}
+	for _, p := range strings.Fields(string(out)) {
+		pids[p] = true
+	}
+	return pids
+}
+
+// preexisting são as VMs que já estavam ligadas antes do e2e (máquinas de quem roda, como uma sessão de agente aberta):
+// sem tirá-las da conta, todo teste que confere "nenhuma VM sobrou" reprovava por causa delas (medido em 20/10/2026:
+// 7 falsos positivos com uma máquina ligada).
+var preexisting = vmmPIDs()
+
+// vmmAlive diz se sobrou algum processo de VM criado durante o e2e.
 func vmmAlive() bool {
-	return exec.Command("pgrep", "-f", "/rc vmm").Run() == nil
+	for p := range vmmPIDs() {
+		if !preexisting[p] {
+			return true
+		}
+	}
+	return false
 }
 
 // TestStdoutAndExitCode: saída correta, e exit≠0 do programa vira rc≠0 da CLI.
