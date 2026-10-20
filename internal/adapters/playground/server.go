@@ -160,8 +160,17 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	s.cfg.Backend.Touch(machine)
+	if activity(r, id) {
+		s.cfg.Backend.Touch(machine)
+	}
 	http.StripPrefix("/v/"+id, h).ServeHTTP(w, r)
+}
+
+// activity diz se a requisição ao terminal é da PESSOA: abrir a página (GET /v/<id>/) ou qualquer POST (tecla,
+// resize, aba shell nova). O GET /state de 2 em 2 s e o stream da saída vêm sozinhos de uma aba aberta: contando,
+// uma aba esquecida seguraria uma das vagas para sempre (visto em 20/10/2026, a máquina não desligava).
+func activity(r *http.Request, id string) bool {
+	return r.Method != http.MethodGet || r.URL.Path == "/v/"+id+"/" || r.URL.Path == "/v/"+id
 }
 
 // writeErr responde {"error": msg} com o status.

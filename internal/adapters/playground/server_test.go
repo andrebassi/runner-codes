@@ -129,8 +129,23 @@ func TestPagesAndSession(t *testing.T) {
 	if c != 200 || !strings.Contains(body, `"label":"claude"`) {
 		t.Fatalf("estado do terminal: %d %s", c, body)
 	}
-	if len(*touched) == 0 || (*touched)[0] != machine {
-		t.Fatalf("uso não registrado: %v", *touched)
+	// A consulta de estado vem sozinha da aba aberta: não conta como uso (senão a máquina nunca desliga).
+	if len(*touched) != 0 {
+		t.Fatalf("GET /state contou como uso: %v", *touched)
+	}
+	// Um POST (tecla, resize, aba nova) e abrir a página contam. O POST aqui vai a uma rota que o terminal recusa: a
+	// sessão falsa do rig não lê a entrada, e o que importa é o uso ser registrado antes do terminal responder.
+	if r, err := http.Post(srv.URL+"/v/"+id+"/nada?t="+s.Token(machine), "text/plain", strings.NewReader("x")); err != nil {
+		t.Fatalf("post: %v", err)
+	} else {
+		r.Body.Close()
+	}
+	if len(*touched) != 1 || (*touched)[0] != machine {
+		t.Fatalf("tecla não registrou uso: %v", *touched)
+	}
+	get(t, srv.URL+"/v/"+id+"/?t="+s.Token(machine), "")
+	if len(*touched) != 2 {
+		t.Fatalf("abrir a página não registrou uso: %v", *touched)
 	}
 	// Mesmo visitante de novo: o mesmo hub (o programa ainda roda), não um segundo.
 	h1 := lb.hubs[machine]
