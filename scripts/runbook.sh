@@ -424,6 +424,27 @@ expect "e responde no 127.0.0.1 do host" test "$(curl -s -o /dev/null -w '%{http
 kill "$wtp_pid" 2>/dev/null
 wait "$wtp_pid" 2>/dev/null
 
+step "8w. Playground público (claude-in-chrome.runner.codes, Fly)"
+# Sem criar máquina (custo zero): a página sai com o FingerprintJS, visitante inválido é 400 e porta de máquina que
+# não existe é 502. Com RC_RUNBOOK_PLAYGROUND=1, abre uma sessão de verdade (cria ou religa uma Fly Machine) e confere
+# que o terminal recusa token errado e aceita o certo.
+pg=https://claude-in-chrome.runner.codes
+pg_page=$(timeout 30s curl -s "$pg/")
+expect "a página do playground sai com o FingerprintJS" grep -q 'FingerprintJS.load' <<<"$pg_page"
+expect "visitante inválido: 400" test "$(timeout 30s curl -s -o /dev/null -w '%{http_code}' -X POST -d '{"visitor":"../x"}' "$pg/api/session")" = 400
+expect "porta de máquina que não existe: 502" test "$(timeout 30s curl -s -o /dev/null -w '%{http_code}' https://3000-0000000000.runner.codes/)" = 502
+expect "docs.runner.codes segue no Pages (o curinga não o engole)" test "$(timeout 30s curl -s -o /dev/null -w '%{http_code}' https://docs.runner.codes/)" = 200
+if [ "${RC_RUNBOOK_PLAYGROUND:-0}" = 1 ]; then
+  pg_sess=$(timeout 120s curl -s -X POST -d '{"visitor":"runbookvisitor0001"}' "$pg/api/session")
+  pg_url=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("url",""))' "$pg_sess" 2>/dev/null)
+  expect "a sessão devolve /v/<id>/?t=<token>" grep -qE '^/v/[0-9a-f]{10}/\?t=[0-9a-f]{32}$' <<<"$pg_url"
+  pg_base=${pg_url%%\?*}
+  expect "terminal com token errado: 403" test "$(timeout 60s curl -s -o /dev/null -w '%{http_code}' "$pg${pg_base}state?t=errado")" = 403
+  expect "terminal com o token: estado com a aba claude" grep -q '"label":"claude"' <<<"$(timeout 60s curl -s "$pg${pg_base}state?${pg_url#*\?}")"
+else
+  echo "   skip  sessão real (RC_RUNBOOK_PLAYGROUND=1 cria uma Fly Machine)"
+fi
+
 step "9. GPU (pula se a imagem llama não estiver construída)"
 if $rc doctor 2>&1 | grep -q "ok    image llama"; then
   out=$($rc run --stack llama --gpu --code 'vulkaninfo --summary | grep deviceName' 2>&1)

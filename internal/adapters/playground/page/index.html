@@ -1,0 +1,119 @@
+<!doctype html>
+<!-- Código de página (roda no navegador): a entrada do playground do runner.codes. Calcula o visitorId deste navegador
+     com o FingerprintJS (embutido, v3.4.2, MIT), pede a máquina dele ao servidor e leva para o terminal. Quatro idiomas
+     pelo navigator.language, com a escolha guardada no navegador. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>runner.codes · Claude Code no navegador</title>
+<style>
+  :root { --bg: #0b0c10; --panel: #11131a; --fg: #ececf1; --muted: #9a9fab; --line: rgba(255,255,255,.1); --accent: #7aa2ff;
+          --brand: #e8b25a; --err: #ff7a7a; --ok: #69db7c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--fg); font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 12vh 20px 40px; }
+  .brand { font: 600 15px ui-monospace, Menlo, monospace; color: var(--brand); }
+  h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; letter-spacing: -.03em; margin: 14px 0 12px; }
+  p { color: var(--muted); margin: 0 0 14px; }
+  ul { color: var(--muted); padding-left: 20px; margin: 0 0 22px; }
+  li b { color: var(--fg); }
+  #st { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
+        background: var(--panel); font: 14px ui-monospace, Menlo, monospace; }
+  #st i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; flex-shrink: 0; }
+  #st.err i { background: var(--err); animation: none; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  button { margin-top: 14px; font: 600 15px inherit; padding: 10px 16px; border-radius: 10px; border: 0; background: #1d4ed8; color: #fff; cursor: pointer; display: none; }
+  .langs { position: fixed; top: 14px; right: 16px; }
+  select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font: 14px inherit; }
+  small { display: block; margin-top: 26px; color: #6b7080; font-size: 13px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="langs"><select id="lang" aria-label="Idioma"></select></div>
+<main>
+  <div class="brand">runner.codes</div>
+  <h1 data-t="title"></h1>
+  <p data-t="lead"></p>
+  <ul>
+    <li data-t="b1"></li>
+    <li data-t="b2"></li>
+    <li data-t="b3"></li>
+  </ul>
+  <div id="st"><i></i><span id="msg"></span></div>
+  <button id="retry" type="button" data-t="retry"></button>
+  <small data-t="note"></small>
+</main>
+<script src="/fp.min.js"></script>
+<script>
+(() => {
+  // Textos nos quatro idiomas do runner.codes; a chave vem do data-t de cada elemento.
+  const T = {
+    "pt-BR": { title: "Claude Code numa máquina só sua.", lead: "Cada visitante ganha uma MicroVM própria, com o Claude Code pronto para rodar sem pedir permissão. O que ele fizer fica lá dentro.",
+      b1: "<b>Sua conta:</b> faça o /login do Claude com a sua assinatura ou chave; ela fica só na sua VM.",
+      b2: "<b>Abas:</b> claude, um shell à parte, eventos e uma aba para cada porta que você abrir.",
+      b3: "<b>Temporária:</b> desliga após 30 min parada e é apagada após 24 h sem uso.",
+      prep: "preparando a sua máquina…", first: "primeira vez: criando a sua máquina (alguns segundos)…", full: "o playground está cheio agora; tente de novo em alguns minutos.",
+      fail: "não deu para abrir a máquina: ", retry: "tentar de novo",
+      note: "Este navegador é reconhecido por uma impressão digital (FingerprintJS) só para voltar à mesma máquina; não é login. Não ponha segredo seu aqui." },
+    "en": { title: "Claude Code on a machine of your own.", lead: "Every visitor gets their own MicroVM, with Claude Code ready to run without permission prompts. Whatever it does stays inside.",
+      b1: "<b>Your account:</b> run Claude's /login with your own subscription or key; it stays in your VM only.",
+      b2: "<b>Tabs:</b> claude, a separate shell, events and one tab for each port you open.",
+      b3: "<b>Temporary:</b> stops after 30 idle minutes and is deleted after 24 h unused.",
+      prep: "preparing your machine…", first: "first visit: creating your machine (a few seconds)…", full: "the playground is full right now; try again in a few minutes.",
+      fail: "couldn't open the machine: ", retry: "try again",
+      note: "This browser is recognized by a fingerprint (FingerprintJS) only to bring you back to the same machine; it is not a login. Don't put your own secrets here." },
+    "es": { title: "Claude Code en una máquina solo tuya.", lead: "Cada visitante recibe una MicroVM propia, con Claude Code listo para correr sin pedir permisos. Lo que haga se queda ahí dentro.",
+      b1: "<b>Tu cuenta:</b> haz el /login de Claude con tu suscripción o clave; queda solo en tu VM.",
+      b2: "<b>Pestañas:</b> claude, un shell aparte, eventos y una pestaña por cada puerto que abras.",
+      b3: "<b>Temporal:</b> se apaga tras 30 min sin uso y se borra tras 24 h sin uso.",
+      prep: "preparando tu máquina…", first: "primera vez: creando tu máquina (unos segundos)…", full: "el playground está lleno ahora; prueba de nuevo en unos minutos.",
+      fail: "no se pudo abrir la máquina: ", retry: "intentar de nuevo",
+      note: "Este navegador se reconoce por una huella (FingerprintJS) solo para volver a la misma máquina; no es un login. No pongas secretos tuyos aquí." },
+    "zh": { title: "在一台只属于你的机器上运行 Claude Code。", lead: "每位访客都有自己的 MicroVM，Claude Code 已就绪，无需逐项确认权限。它做的一切都留在机器里。",
+      b1: "<b>你的账号：</b>用你自己的订阅或 key 执行 Claude 的 /login；它只保存在你的 VM 中。",
+      b2: "<b>标签页：</b>claude、独立的 shell、事件，以及你打开的每个端口各一个标签页。",
+      b3: "<b>临时的：</b>空闲 30 分钟后关机，24 小时未使用即删除。",
+      prep: "正在准备你的机器…", first: "首次访问：正在创建你的机器（几秒钟）…", full: "playground 当前已满，请几分钟后再试。",
+      fail: "无法打开机器：", retry: "重试",
+      note: "此浏览器通过指纹（FingerprintJS）识别，仅用于带你回到同一台机器；这不是登录。请勿在此放入你自己的机密。" },
+  };
+  const LANGS = [["pt-BR", "🇧🇷 Português"], ["en", "🇺🇸 English"], ["es", "🇪🇸 Español"], ["zh", "🇨🇳 中文"]];
+  const pick = (tag) => ({ pt: "pt-BR", en: "en", es: "es", zh: "zh" })[(tag || "").toLowerCase().split("-")[0]] || "pt-BR";
+  let lang;
+  try { lang = localStorage.getItem("rc-lang") || pick(navigator.language); } catch (_) { lang = pick(navigator.language); }
+  const sel = document.getElementById("lang");
+  sel.innerHTML = LANGS.map(([c, l]) => `<option value="${c}"${c === lang ? " selected" : ""}>${l}</option>`).join("");
+  const apply = () => {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+    document.querySelectorAll("[data-t]").forEach((el) => { el.innerHTML = T[lang][el.dataset.t]; });
+  };
+  sel.addEventListener("change", () => { lang = sel.value; try { localStorage.setItem("rc-lang", lang); } catch (_) {} apply(); });
+  apply();
+
+  const st = document.getElementById("st"), msg = document.getElementById("msg"), retry = document.getElementById("retry");
+  const say = (key, extra) => { msg.textContent = T[lang][key] + (extra || ""); };
+
+  // Abre a sessão: visitorId do navegador → máquina do visitante → terminal. A 1ª visita cria a máquina (branch).
+  async function go() {
+    st.className = ""; retry.style.display = "none"; say("prep");
+    try {
+      const fp = await (await FingerprintJS.load()).get();
+      const slow = setTimeout(() => say("first"), 2500);
+      const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visitor: fp.visitorId }) });
+      clearTimeout(slow);
+      const body = await r.json();
+      if (r.status === 503) { st.className = "err"; say("full"); retry.style.display = "inline-block"; return; }
+      if (!r.ok) throw new Error(body.error || r.status);
+      location.replace(body.url);
+    } catch (e) {
+      st.className = "err"; say("fail", String(e.message || e)); retry.style.display = "inline-block";
+    }
+  }
+  retry.addEventListener("click", go);
+  go();
+})();
+</script>
+</body>
+</html>

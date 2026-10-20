@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -156,5 +158,67 @@ func TestForwarderEventsInHub(t *testing.T) {
 	}
 	if !strings.Contains(text, "aberta → http://127.0.0.1:") || !strings.Contains(text, "fechou na máquina") {
 		t.Fatalf("eventos %q", text)
+	}
+}
+
+// TestPublicHostAndPortURL: com PublicHost, esse nome passa e outro não; o Origin https do próprio host passa e o de
+// outro site não; PortURL troca o endereço das abas de porta.
+func TestPublicHostAndPortURL(t *testing.T) {
+	_, dial := echoGuest(t)
+	guest := freePort(t)
+	fw := NewForwarder((&lister{ports: []uint16{guest}}).list, dial, time.Hour)
+	fw.WatchOnly = true
+	fw.sync(context.Background())
+	h := hubOf(Start(context.Background(), exitAfter("", 0), ports.Winsize{}), nil, fw)
+	h.PublicHost = "Demo.Example.com"
+	h.PortURL = func(g uint16, _ int) string { return "https://" + strconv.Itoa(int(g)) + "-abc.example.com/" }
+	srv := httptest.NewServer(Handler(h))
+	defer srv.Close()
+
+	do := func(host, origin string) int {
+		req, _ := http.NewRequest("POST", srv.URL+"/input?t="+tok, strings.NewReader("x"))
+		req.Host = host
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if c := do("demo.example.com", "https://demo.example.com"); c == http.StatusForbidden {
+		t.Fatalf("host público com origem https: %d", c)
+	}
+	if c := do("outro.example.com", ""); c != http.StatusForbidden {
+		t.Fatalf("outro host: %d", c)
+	}
+	if c := do("demo.example.com", "https://atacante.example.com"); c != http.StatusForbidden {
+		t.Fatalf("origem de outro site: %d", c)
+	}
+	st := h.Snapshot()
+	if len(st.Ports) != 1 || st.Ports[0].Host != 0 || st.Ports[0].URL != "https://"+strconv.Itoa(int(guest))+"-abc.example.com/" {
+		t.Fatalf("portas %+v", st.Ports)
+	}
+	// WatchOnly não abriu nada no host: o número da porta segue livre.
+	if ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(int(guest))); err != nil {
+		t.Fatalf("WatchOnly abriu a porta no host: %v", err)
+	} else {
+		ln.Close()
+	}
+	fw.closeAll()
+}
+
+// TestDefaultPortURL: sem PortURL, a aba aponta para o encaminhamento local.
+func TestDefaultPortURL(t *testing.T) {
+	_, dial := echoGuest(t)
+	guest := freePort(t)
+	fw := NewForwarder((&lister{ports: []uint16{guest}}).list, dial, time.Hour)
+	fw.sync(context.Background())
+	defer fw.closeAll()
+	h := hubOf(Start(context.Background(), exitAfter("", 0), ports.Winsize{}), nil, fw)
+	if u := h.Snapshot().Ports[0].URL; u != "http://127.0.0.1:"+strconv.Itoa(int(guest))+"/" {
+		t.Fatalf("url %q", u)
 	}
 }

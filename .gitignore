@@ -66,3 +66,6 @@ CLAUDE.md
 # Release artifacts
 dist/
 __pycache__/
+
+# Tags das imagens do playground (scripts/playground-image.sh)
+.playground/

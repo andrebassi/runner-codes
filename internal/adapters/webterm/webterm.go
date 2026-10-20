@@ -195,7 +195,7 @@ func Handler(h *Hub) http.Handler {
 		}
 		writeJSON(w, info)
 	}))
-	return loopbackOnly(mux)
+	return allowedHosts(h.PublicHost, mux)
 }
 
 // withSession entrega ao handler a sessão do parâmetro s; aba que não existe é 404.
@@ -217,15 +217,17 @@ func writeJSON(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// loopbackOnly recusa Host que não seja de loopback (DNS rebinding) e POST vindo de outra origem (página de outro site
-// mandando teclas para o shell).
-func loopbackOnly(next http.Handler) http.Handler {
+// allowedHosts recusa Host que não seja de loopback nem o público declarado (DNS rebinding) e POST vindo de outra
+// origem (página de outro site mandando teclas para o shell). public vazio é o modo local: só loopback.
+func allowedHosts(public string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isLoopbackHost(r.Host) {
+		host := strings.ToLower(r.Host)
+		if !isLoopbackHost(host) && (public == "" || host != strings.ToLower(public)) {
 			http.Error(w, "forbidden host", http.StatusForbidden)
 			return
 		}
-		if o := r.Header.Get("Origin"); r.Method != http.MethodGet && o != "" && o != "http://"+r.Host {
+		// Atrás do túnel a página é https; no loopback, http. Qualquer outra origem é página de terceiro.
+		if o := r.Header.Get("Origin"); r.Method != http.MethodGet && o != "" && o != "http://"+r.Host && o != "https://"+r.Host {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}

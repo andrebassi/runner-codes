@@ -67,6 +67,21 @@ tasks:
     cmds:
       - ./scripts/docs-deploy.sh deploy
 
+  scan:secrets:
+    desc: Secret scan before commit (content via rtk proxy git diff + new files, and file names)
+    cmds:
+      - ./scripts/scan-secrets.sh
+
+  playground:check:
+    desc: Public playground on Fly - the front token reaches only the visitors app
+    cmds:
+      - ./scripts/playground-token-check.sh
+
+  check:path:
+    desc: Fails if a script puts ~/.nix-profile/bin before ~/.local/bin (the pass gpg2 router) in PATH
+    cmds:
+      - ./scripts/check-path-order.sh
+
   site:demos:
     desc: Real VM runs behind the runner.codes site demos; SCENES="network pack" runs some
     cmds:
@@ -91,6 +106,7 @@ tasks:
   gates:
     desc: Full gate run
     cmds:
+      - task: check:path
       - task: test:targets
       - task: test:cov
       - task: test:e2e

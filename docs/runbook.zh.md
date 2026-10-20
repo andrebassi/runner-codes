@@ -534,6 +534,28 @@ task guides DIRS=gpu-cuda      # uma pasta; sem DIRS, todas (cada uma liga as su
 `coding-agent` 指南就用它在浏览器中打开 Claude Code:
 `rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`。
 
+## 8w. 公共 playground (claude-in-chrome.runner.codes)
+
+每位访客都有一台自己的 Fly Machine(Fly 不提供 `/dev/kvm`,所以 microVM 就是 Fly 的),Web 终端里是 Claude Code,端口在
+`https://<端口>-<id>.runner.codes/`。最多 3 台;空闲 30 分钟关机,24 小时未使用则删除。
+
+```bash
+scripts/playground-cloudflare.sh     # claude-in-chrome 隧道、ingress 和 CNAME(幂等)
+scripts/playground-fly.sh setup      # runner-codes-playground 和 runner-codes-visitors 应用、独立网络、secrets
+scripts/playground-image.sh all      # 在 Fly 构建机上用 Nix 构建 visitor 和 front 镜像
+scripts/playground-fly.sh deploy     # 发布 front
+scripts/playground-token-check.sh    # front 的令牌只能访问访客应用
+curl -s https://claude-in-chrome.runner.codes/ | grep -c FingerprintJS.load
+```
+
+预期:
+- 页面打开,计算浏览器的 visitorId,并带你进入带 Claude Code 的终端 `/v/<id>/?t=<令牌>`;
+- 无效访客调用 `/api/session` 返回 400;3 台机器都在使用时返回 503 "playground is full";
+- `https://3000-0000000000.runner.codes/`(不存在的机器)返回 502,`docs.runner.codes` 仍为 200;
+- `scripts/playground-token-check.sh`:访客应用 200,网站和 front 本身 4xx;
+- 在访客机器内,连接 Fly 私有网络(`_api.internal`)失败,DNS 和互联网正常(`scripts/fly-firewall-probe.sh`
+  在一台一次性机器上测同一套防火墙)。
+
 ## 9. GPU
 
 仅当 `llama` 镜像已构建时执行(`rc doctor` 显示 `ok image llama`)。

@@ -535,6 +535,29 @@ Expected:
 The `coding-agent` guide uses this to open Claude Code in the browser:
 `rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`.
 
+## 8w. Public playground (claude-in-chrome.runner.codes)
+
+Each visitor gets a Fly Machine of their own (Fly exposes no `/dev/kvm`, so the microVM is Fly's), with Claude Code
+in the web terminal and ports at `https://<port>-<id>.runner.codes/`. At most 3 machines; 30 min idle stops one,
+24 h without use deletes it.
+
+```bash
+scripts/playground-cloudflare.sh     # claude-in-chrome tunnel, ingress and CNAMEs (idempotent)
+scripts/playground-fly.sh setup      # runner-codes-playground and runner-codes-visitors apps, own network, secrets
+scripts/playground-image.sh all      # visitor and front images built with Nix on the Fly builder
+scripts/playground-fly.sh deploy     # publishes the front
+scripts/playground-token-check.sh    # the front token only reaches the visitors app
+curl -s https://claude-in-chrome.runner.codes/ | grep -c FingerprintJS.load
+```
+
+Expected:
+- the page opens, computes the browser visitorId and takes you to the terminal `/v/<id>/?t=<token>` with Claude Code;
+- `/api/session` with an invalid visitor answers 400; with 3 machines in use, 503 "playground is full";
+- `https://3000-0000000000.runner.codes/` (a machine that does not exist) answers 502, and `docs.runner.codes` stays 200;
+- `scripts/playground-token-check.sh`: 200 on the visitors app, 4xx on the site and on the front itself;
+- inside the visitor machine, opening a connection to the Fly private network (`_api.internal`) fails, while DNS and
+  the internet work (`scripts/fly-firewall-probe.sh` measures the same firewall on a throwaway machine).
+
 ## 9. GPU
 
 Only if the `llama` image is built (`rc doctor` shows `ok image llama`).

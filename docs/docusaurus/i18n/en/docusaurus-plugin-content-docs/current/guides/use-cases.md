@@ -33,6 +33,26 @@ rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 
 Every tab open on the same URL shares one PTY: resizing one window changes the size for all of them.
 
+## Try it: claude-in-chrome.runner.codes
+
+The same terminal, published: at [claude-in-chrome.runner.codes](https://claude-in-chrome.runner.codes/) each
+visitor gets a machine of their own with Claude Code open and no permission prompts. You run `/login` with your own
+account, and the login stays on your machine only.
+
+![The playground in the browser: the shell tab and port 3000 in its own tab](/img/claude-in-chrome-playground.jpg)
+
+| What | How |
+|------|-----|
+| machine | one Fly Machine per visitor (Fly exposes no `/dev/kvm`, so the microVM is Fly's), 2 vCPUs and 2 GiB |
+| who you are | the browser visitorId (FingerprintJS v3, MIT) only picks which machine is yours; the terminal token is a server HMAC |
+| ports | any server you start answers at `https://<port>-<id>.runner.codes/` and becomes a tab |
+| network | open internet; the Fly private network and the `/.fly/api` proxy are closed to the visitor |
+| limit | 3 machines; with all of them in use the page says "playground is full" |
+| time | 30 min idle stops it; 24 h without use deletes the machine and its disk |
+
+The code lives in `cmd/rc-playground` (the front), `cmd/rc-visitor` (inside each machine) and
+`deploy/playground/flake.nix` (the images, built with Nix). The step-by-step operation is in the runbook, section 8w.
+
 ## Code playground
 
 Exercises, auto-grading, documentation sandboxes: each submission runs in a fresh MicroVM, with no network, and is gone

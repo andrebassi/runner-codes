@@ -33,6 +33,26 @@ rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 
 Todas las pestañas abiertas en la misma URL comparten un PTY: redimensionar una ventana cambia el tamaño para todas.
 
+## Pruébalo: claude-in-chrome.runner.codes
+
+El mismo terminal, publicado: en [claude-in-chrome.runner.codes](https://claude-in-chrome.runner.codes/) cada
+visitante recibe una máquina propia con Claude Code abierto y sin confirmaciones de permiso. Haces `/login` con tu
+cuenta, y el login queda solo en tu máquina.
+
+![El playground en el navegador: la pestaña shell y el puerto 3000 en su propia pestaña](/img/claude-in-chrome-playground.jpg)
+
+| Qué | Cómo |
+|-----|------|
+| máquina | una Fly Machine por visitante (Fly no expone `/dev/kvm`, así que la microVM es la de Fly), 2 vCPUs y 2 GiB |
+| quién eres | el visitorId del navegador (FingerprintJS v3, MIT) solo elige qué máquina es tuya; el token del terminal es un HMAC del servidor |
+| puertos | cualquier servidor que levantes responde en `https://<puerto>-<id>.runner.codes/` y se vuelve una pestaña |
+| red | internet abierta; la red privada de Fly y el proxy `/.fly/api` quedan cerrados para el visitante |
+| límite | 3 máquinas; con todas en uso la página avisa "playground is full" |
+| tiempo | 30 min sin uso la apaga; 24 h sin uso borra la máquina y su disco |
+
+El código está en `cmd/rc-playground` (el front), `cmd/rc-visitor` (dentro de cada máquina) y
+`deploy/playground/flake.nix` (las imágenes, con Nix). La operación paso a paso está en el runbook, sección 8w.
+
 ## Playground de código
 
 Ejercicios, corrección automática, sandbox de documentación: cada envío corre en una MicroVM nueva, sin red, y

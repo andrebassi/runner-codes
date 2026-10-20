@@ -106,14 +106,26 @@
     if (Links) term.loadAddon(new Links((_, uri) => window.open(uri, "_blank", "noopener")));
     term.open(box);
     const q = "?s=" + encodeURIComponent(sid) + "&" + tq;
-    // Teclado em fila: um POST por vez, na ordem; colagem grande em pedaços de 32 KiB (o servidor aceita 64).
-    let chain = Promise.resolve();
-    term.onData((data) => {
-      const all = enc.encode(data);
-      for (let i = 0; i < all.length; i += 32768) {
-        const part = all.slice(i, i + 32768);
-        chain = chain.then(() => fetch("input" + q, { method: "POST", body: part })).catch(() => {});
+    // Teclado em fila: um POST por vez, na ordem, e o que for digitado enquanto um está no ar vai JUNTO no próximo.
+    // Um POST por tecla esperando o anterior dava ~5 teclas/s com o terminal longe (playground no Fly, 20/10/2026).
+    // Cada POST leva até 32 KiB (o servidor aceita 64): colagem grande sai em pedaços.
+    let pending = new Uint8Array(0), sending = false;
+    const flush = async () => {
+      if (sending) return;
+      sending = true;
+      while (pending.length) {
+        const part = pending.slice(0, 32768);
+        pending = pending.slice(part.length);
+        try { await fetch("input" + q, { method: "POST", body: part }); } catch (_) {}
       }
+      sending = false;
+    };
+    term.onData((data) => {
+      const add = enc.encode(data), next = new Uint8Array(pending.length + add.length);
+      next.set(pending);
+      next.set(add, pending.length);
+      pending = next;
+      flush();
     });
     // Só a aba visível manda tamanho: todas as abas de uma sessão dividem o mesmo PTY.
     const refit = () => {
@@ -161,8 +173,8 @@
   function portTab(p) {
     const id = "port-" + p.guest;
     // Portas por último na barra, depois de "eventos" (pedido do dono): terminais e linha do tempo ficam fixos.
-    const t = makeTab(id, String(p.guest) + (p.host !== p.guest ? " → " + p.host : ""), "port");
-    const url = "http://127.0.0.1:" + p.host + "/";
+    const t = makeTab(id, String(p.guest) + (p.host && p.host !== p.guest ? " → " + p.host : ""), "port");
+    const url = p.url || "http://127.0.0.1:" + p.host + "/";
     const bar = document.createElement("div"); bar.className = "ptool";
     const u = document.createElement("span"); u.className = "url"; u.textContent = url;
     const reload = document.createElement("button"); reload.type = "button"; reload.textContent = "recarregar";

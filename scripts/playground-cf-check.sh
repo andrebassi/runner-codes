@@ -2,8 +2,13 @@
 # Confere o que o playground precisa na Cloudflare: a zona runner.codes, o que o token do pass pode fazer
 # (túnel e DNS) e os registros que já existem na zona. Não muda nada. O token nunca é impresso.
 set -u
-export PATH="$HOME/.nix-profile/bin:$PATH"
-CF_TOKEN=$(pass show bassi/cloudflare/token) || { echo "pass falhou"; exit 1; }
+# ~/.local/bin antes do perfil do Nix: lá está o roteador gpg2 do pass (zfold/YubiKey); o gpg2 do Nix na frente manda
+# o pass ao agente local e o pedido de aprovação nunca chega ao celular (task check:path reprova a ordem invertida).
+export PATH="$HOME/.local/bin:$HOME/.nix-profile/bin:$PATH"
+# pass pelo roteador ~/.local/bin/gpg2 (zfold ou YubiKey): o gpg2 do perfil do Nix iria direto ao agente local e o
+# pedido de aprovação nunca chegaria ao celular (medido em 20/10/2026).
+pass_cmd() { PATH="$HOME/.local/bin:/usr/bin:/bin:$PATH" pass "$@"; }
+CF_TOKEN=$(pass_cmd show bassi/cloudflare/token) || { echo "pass falhou"; exit 1; }
 api() { timeout 30s curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4$1"; }
 
 echo "== token"
@@ -21,7 +26,7 @@ echo "== registros da zona"
 api "/zones/$ZONE/dns_records?per_page=100" | python3 -c '
 import json, sys
 for r in json.load(sys.stdin).get("result", []):
-    print(f"{r[\"type\"]:6} {r[\"name\"]:45} {r[\"content\"][:50]:50} proxied={r[\"proxied\"]}")'
+    print("%-6s %-45s %-50s proxied=%s" % (r["type"], r["name"], r["content"][:50], r["proxied"]))'
 echo "== túneis da conta (permissão de Tunnel)"
 api "/accounts/$ACC/cfd_tunnel?is_deleted=false" | python3 -c '
 import json, sys

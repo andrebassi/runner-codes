@@ -1,0 +1,29 @@
+# Máquina-base do playground (claude-in-chrome.runner.codes). Cada visitante ganha um branch copy-on-write dela, então
+# o init roda uma vez só, aqui. Sem volume do host e sem agente SSH: a VM do visitante não alcança nada deste computador.
+image = "node:22-bookworm-slim"
+# Teto por visitante: 2 vCPUs e 2 GiB cabem um Claude Code e um servidor de dev; a memória da libkrun é elástica, então
+# a VM ociosa ocupa bem menos que isso no host.
+cpus = 2
+memory = 2048
+storage = 5
+
+# IS_SANDBOX: o Claude Code aceita --dangerously-skip-permissions como root quando sabe que está isolado.
+env = ["IS_SANDBOX=1"]
+workdir = "/workspace"
+
+init = [
+  "apt-get update -qq && apt-get install -yqq git python3 python3-venv python3-pip curl ca-certificates ripgrep procps >/dev/null",
+  "git config --system --add safe.directory '*'",
+  "npm install -g --silent @anthropic-ai/claude-code",
+]
+
+[network]
+# Saída só para o que o Claude e os gerenciadores de pacote usam (cada nome cobre os subdomínios). block_private fecha
+# a rede local de quem hospeda (RFC 1918, CGNAT, ULA) mesmo para um nome permitido que aponte para lá.
+allow_hosts = [
+  "anthropic.com", "claude.ai", "claude.com",
+  "registry.npmjs.org", "npmjs.org", "pypi.org", "files.pythonhosted.org",
+  "deb.debian.org", "security.debian.org",
+  "github.com", "githubusercontent.com",
+]
+block_private = true

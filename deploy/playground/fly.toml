@@ -1,0 +1,25 @@
+# Front do playground público (claude-in-chrome.runner.codes) no Fly.io: uma máquina com o rc-playground e o
+# cloudflared, imagem do Nix (deploy/playground/flake.nix, atributo front). Sem [http_service] e sem [[services]]:
+# nenhum IP público; a entrada é o Cloudflare Tunnel (scripts/playground-cloudflare.sh).
+#
+# O app fica na rede privada própria claude-in-chrome (fly apps create --network), junto só do app das máquinas de
+# visitante: a rede padrão da org é plana e alcançaria o banco do site.
+app = "runner-codes-playground"
+primary_region = "gru"
+
+kill_signal = "SIGTERM"
+kill_timeout = 10
+
+[env]
+  # O app onde o front cria uma Fly Machine por visitante (teto de 3, --max).
+  RC_VISITOR_APP = "runner-codes-visitors"
+  # Secrets (fly secrets, scripts/playground-fly.sh setup): FLY_API_TOKEN (deploy token só do app de visitantes),
+  # RC_SECRET (assina os tokens; fixo), TUNNEL_TOKEN (pass bassi/runner-codes/playground-tunnel-token).
+  # RC_VISITOR_IMAGE vem no deploy (--env), da tag publicada por scripts/playground-image.sh.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[[restart]]
+  policy = "always"

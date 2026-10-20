@@ -133,7 +133,7 @@ func (d *deps) newExecutor(poolSize int) (*app.Executor, *app.Pool) {
 // main registra os subcomandos.
 func main() {
 	root := &cobra.Command{Use: "rc", Short: "Run untrusted code in libkrun microVMs", Version: Version, SilenceUsage: true}
-	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd(), packCmd())
+	root.AddCommand(vmmCmd(), imageCmd(), runCmd(), shellCmd(), machineCmd(), serveCmd(), languagesCmd(), doctorCmd(), packCmd(), playgroundCmd())
 	// Executável com payload (um artefato de `rc pack create`): os subcomandos dele viram os
 	// da máquina empacotada. O vmm é o próprio stub chamado pelo launcher, e passa direto.
 	if exe, err := os.Executable(); err == nil && (len(os.Args) < 2 || os.Args[1] != "vmm") {

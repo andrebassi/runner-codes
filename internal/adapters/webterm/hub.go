@@ -57,6 +57,11 @@ type Hub struct {
 	newShell ShellFunc
 	fw       *Forwarder
 
+	// PublicHost, se não vazio, é o único nome fora de loopback que a página aceita (o playground atrás de um túnel).
+	PublicHost string
+	// PortURL monta o endereço da aba de uma porta; nil é http://127.0.0.1:<host>/ (o encaminhamento local).
+	PortURL func(guest uint16, host int) string
+
 	mu     sync.Mutex
 	order  []string
 	tabs   map[string]*tab
@@ -110,6 +115,17 @@ func (h *Hub) session(id string) *Session {
 	return nil
 }
 
+// MainEnded diz se o programa da aba principal já saiu (o playground abre um hub novo quando o visitante volta).
+func (h *Hub) MainEnded() bool {
+	s := h.session(MainSession)
+	select {
+	case <-s.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 // OpenShell abre uma aba de shell nova; erro se a aba estiver desligada ou o teto de sessões vivas tiver sido atingido.
 func (h *Hub) OpenShell() (TabInfo, error) {
 	if h.newShell == nil {
@@ -147,6 +163,13 @@ func (h *Hub) Snapshot() State {
 	st := State{Machine: h.machine, Ports: []Forward{}}
 	if h.fw != nil {
 		st.Ports = h.fw.Ports()
+	}
+	for i, p := range st.Ports {
+		if h.PortURL != nil {
+			st.Ports[i].URL = h.PortURL(p.Guest, p.Host)
+		} else {
+			st.Ports[i].URL = fmt.Sprintf("http://127.0.0.1:%d/", p.Host)
+		}
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()

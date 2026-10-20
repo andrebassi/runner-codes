@@ -20,6 +20,8 @@ type PortDialer func(ctx context.Context, port uint16) (net.Conn, error)
 type Forward struct {
 	Guest uint16 `json:"guest"`
 	Host  int    `json:"host"`
+	// URL é o endereço que a aba abre (o Hub preenche: local ou o subdomínio do playground).
+	URL string `json:"url,omitempty"`
 }
 
 // PollInterval é de quanto em quanto tempo o guest é consultado: 2 s fazem o link aparecer logo depois de o servidor
@@ -39,6 +41,9 @@ type Forwarder struct {
 	// listen abre o listener do host; variável para o teste forçar porta ocupada.
 	listen func(port int) (net.Listener, error)
 
+	// WatchOnly só acompanha as portas, sem abrir listener no host: no playground o tráfego chega por um proxy de
+	// subdomínio, e abrir a porta no host deste computador seria expor a VM do visitante na máquina de quem hospeda.
+	WatchOnly bool
 	// notify anota na aba "eventos" quando uma porta abre ou fecha (o Hub liga; nil não anota).
 	notify func(format string, args ...any)
 
@@ -85,13 +90,20 @@ func (f *Forwarder) sync(ctx context.Context) {
 	defer f.mu.Unlock()
 	for p, ln := range f.open {
 		if !want[p] {
-			ln.Close()
+			if ln != nil {
+				ln.Close()
+			}
 			delete(f.open, p)
 			f.event("porta %d fechou na máquina", p)
 		}
 	}
 	for _, p := range ports {
 		if _, ok := f.open[p]; ok {
+			continue
+		}
+		if f.WatchOnly {
+			f.open[p] = nil
+			f.event("porta %d aberta na máquina", p)
 			continue
 		}
 		// O mesmo número do guest, para o link ser o que o programa imprime; ocupado no host, qualquer livre.
@@ -145,7 +157,11 @@ func (f *Forwarder) Ports() []Forward {
 	defer f.mu.Unlock()
 	out := make([]Forward, 0, len(f.open))
 	for p, ln := range f.open {
-		out = append(out, Forward{Guest: p, Host: ln.Addr().(*net.TCPAddr).Port})
+		host := 0
+		if ln != nil {
+			host = ln.Addr().(*net.TCPAddr).Port
+		}
+		out = append(out, Forward{Guest: p, Host: host})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Guest < out[j].Guest })
 	return out
@@ -156,7 +172,9 @@ func (f *Forwarder) closeAll() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for p, ln := range f.open {
-		ln.Close()
+		if ln != nil {
+			ln.Close()
+		}
 		delete(f.open, p)
 	}
 }

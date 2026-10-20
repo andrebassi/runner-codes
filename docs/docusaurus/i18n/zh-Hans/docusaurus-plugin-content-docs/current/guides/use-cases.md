@@ -33,6 +33,25 @@ rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 
 同一个 URL 打开的所有标签页共用一个 PTY：调整其中一个窗口的大小会改变所有标签页的尺寸。
 
+## 试一试:claude-in-chrome.runner.codes {#experimente-claude-in-chromerunnercodes}
+
+同一个终端,公开发布:在 [claude-in-chrome.runner.codes](https://claude-in-chrome.runner.codes/) 每位访客都有一台自己的
+机器,Claude Code 已打开且不需要确认权限。你用自己的账号执行 `/login`,登录信息只留在你的机器上。
+
+![浏览器中的 playground:shell 标签页和单独标签页中的 3000 端口](/img/claude-in-chrome-playground.jpg)
+
+| 内容 | 方式 |
+|------|------|
+| 机器 | 每位访客一台 Fly Machine(Fly 不提供 `/dev/kvm`,所以 microVM 是 Fly 的),2 个 vCPU 和 2 GiB |
+| 你是谁 | 浏览器的 visitorId(FingerprintJS v3,MIT)只用来选出哪台机器是你的;终端令牌是服务器的 HMAC |
+| 端口 | 你启动的任何服务器都会在 `https://<端口>-<id>.runner.codes/` 响应,并成为一个标签页 |
+| 网络 | 互联网开放;Fly 私有网络和 `/.fly/api` 代理对访客关闭 |
+| 上限 | 3 台机器;全部在用时页面提示 "playground is full" |
+| 时间 | 空闲 30 分钟关机;24 小时未使用则删除机器和磁盘 |
+
+代码在 `cmd/rc-playground`(front)、`cmd/rc-visitor`(每台机器内部)和 `deploy/playground/flake.nix`(用 Nix
+构建的镜像)。逐步操作见 runbook 第 8w 节。
+
 ## 代码 playground {#playground-de-código}
 
 练习题、自动评分、文档 sandbox：每次提交都在一台全新的、无网络的 MicroVM 中运行，结束即消失。同一个路由支持 15 种语言，

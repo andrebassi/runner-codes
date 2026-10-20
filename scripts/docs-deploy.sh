@@ -3,7 +3,9 @@
 # Uso: scripts/docs-deploy.sh list   -> projetos do Pages da conta (para achar o do docs)
 #      scripts/docs-deploy.sh deploy -> build com link quebrado reprovando + upload para o projeto DOCS_PAGES_PROJECT
 set -euo pipefail
-export PATH="$HOME/.nix-profile/bin:$PATH"
+# ~/.local/bin antes do perfil do Nix: lá está o roteador gpg2 do pass (zfold/YubiKey); o gpg2 do Nix na frente manda
+# o pass ao agente local e o pedido de aprovação nunca chega ao celular (task check:path reprova a ordem invertida).
+export PATH="$HOME/.local/bin:$HOME/.nix-profile/bin:$PATH"
 # Conta "Bassi | Global": a única que o login OAuth enxerga (wrangler whoami, 20/10/2026).
 export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-e11c18594fd320087af6f18de03012b7}"
 # 3.112.0: a 3.114.0 avisa que quebrou o deploy com nodejs_compat; versão fixa evita que o npx pegue outra.
