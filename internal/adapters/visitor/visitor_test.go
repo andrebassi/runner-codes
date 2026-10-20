@@ -209,3 +209,34 @@ func TestLockFlyAPI(t *testing.T) {
 		}
 	}
 }
+
+// TestPortsHideOwners: a porta cujo socket é do processo claude some; a do python (outro processo) fica; processo sem
+// cmdline legível e fd que não é socket são ignorados; sem HideOwners nada some.
+func TestPortsHideOwners(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "net"), 0o755)
+	// 8BD3 = 35795 (do claude, inode 2530) e 0BB8 = 3000 (do python, inode 777), as duas em LISTEN.
+	tcp := "  sl  local_address rem_address   st tx rx tr retr uid timeout inode\n" +
+		"   0: 0100007F:8BD3 00000000:0000 0A 0:0 0:0 0 1000 0 2530\n" +
+		"   1: 00000000:0BB8 00000000:0000 0A 0:0 0:0 0 1000 0 777\n"
+	os.WriteFile(filepath.Join(dir, "net/tcp"), []byte(tcp), 0o644)
+	proc := func(pid, argv0 string, links map[string]string) {
+		os.MkdirAll(filepath.Join(dir, pid, "fd"), 0o755)
+		if argv0 != "" {
+			os.WriteFile(filepath.Join(dir, pid, "cmdline"), []byte(argv0+"\x00--dangerously-skip-permissions\x00"), 0o644)
+		}
+		for fd, target := range links {
+			os.Symlink(target, filepath.Join(dir, pid, "fd", fd))
+		}
+	}
+	proc("690", "/bin/claude", map[string]string{"0": "/dev/pts/0", "21": "socket:[2530]"})
+	proc("700", "python3", map[string]string{"3": "socket:[777]"})
+	proc("800", "", nil)
+	p := Ports{ProcRoot: dir, HideOwners: []string{"claude"}}
+	if got, err := p.List(context.Background()); err != nil || fmt.Sprint(got) != "[3000]" {
+		t.Fatalf("com HideOwners: %v %v", got, err)
+	}
+	if got, _ := (Ports{ProcRoot: dir}).List(context.Background()); fmt.Sprint(got) != "[3000 35795]" {
+		t.Fatalf("sem HideOwners: %v", got)
+	}
+}

@@ -99,7 +99,7 @@ func run(noFirewall bool) error {
 			return localpty.Run(ctx, localpty.Command{Argv: argv, Env: env, Dir: work, Cred: cred}, size, in, out, resize)
 		}
 	}
-	lister := visitor.Ports{ProcRoot: "/proc", Exclude: []uint16{playground.VisitorTerminalPort, playground.VisitorPortsPort}}
+	lister := visitor.Ports{ProcRoot: "/proc", Exclude: []uint16{playground.VisitorTerminalPort, playground.VisitorPortsPort}, HideOwners: []string{"claude"}}
 	portURL := os.Getenv("RC_PORT_URL")
 	holder := &visitor.Holder{New: func() *webterm.Hub {
 		fw := webterm.NewForwarder(lister.List, visitor.Dial, webterm.PollInterval)

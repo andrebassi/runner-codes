@@ -90,6 +90,11 @@ func FilterEnv(env []string) []string {
 type Ports struct {
 	ProcRoot string
 	Exclude  []uint16
+	// HideOwners esconde as portas cujo socket pertence a um processo com este nome (o argv[0] sem diretório). O
+	// Claude Code abre sozinho um servidor interno em 127.0.0.1 numa porta aleatória (visto em 20/10/2026: pid do
+	// `claude --dangerously-skip-permissions` em 127.0.0.1:35795) e ele virava uma aba que não leva a nada. Servidor
+	// que o visitante ou o Claude sobem roda em outro processo (python, node) e continua aparecendo.
+	HideOwners []string
 }
 
 // List lê tcp e tcp6 e devolve as portas alcançáveis pelo loopback, em ordem.
@@ -103,13 +108,66 @@ func (p Ports) List(context.Context) ([]uint16, error) {
 		all.Write(b)
 		all.WriteByte('\n')
 	}
+	hidden := p.hiddenPorts(all.String())
 	var out []uint16
 	for _, port := range domain.ParseListeningPorts(all.String()) {
-		if !contains(p.Exclude, port) {
+		if !contains(p.Exclude, port) && !hidden[port] {
 			out = append(out, port)
 		}
 	}
 	return out, nil
+}
+
+// hiddenPorts acha as portas em LISTEN cujo inode de socket está aberto por um processo de HideOwners: junta
+// inode→porta do /proc/net/tcp* com os /proc/<pid>/fd que apontam para socket:[inode].
+func (p Ports) hiddenPorts(procNet string) map[uint16]bool {
+	hidden := map[uint16]bool{}
+	if len(p.HideOwners) == 0 {
+		return hidden
+	}
+	byInode := map[string]uint16{}
+	for _, line := range strings.Split(procNet, "\n") {
+		f := strings.Fields(line)
+		// "N: LOCAL REMOTE ST TX:RX TR:WHEN RETR UID TIMEOUT INODE": 0A é LISTEN, o inode é o 10º campo.
+		if len(f) < 10 || f[3] != "0A" {
+			continue
+		}
+		_, portHex, _ := strings.Cut(f[1], ":")
+		if port, err := strconv.ParseUint(portHex, 16, 16); err == nil {
+			byInode[f[9]] = uint16(port)
+		}
+	}
+	pids, _ := filepath.Glob(filepath.Join(p.ProcRoot, "[0-9]*"))
+	for _, dir := range pids {
+		cmd, err := os.ReadFile(filepath.Join(dir, "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv0, _, _ := strings.Cut(string(cmd), "\x00")
+		if !containsString(p.HideOwners, filepath.Base(argv0)) {
+			continue
+		}
+		fds, _ := os.ReadDir(filepath.Join(dir, "fd"))
+		for _, fd := range fds {
+			target, err := os.Readlink(filepath.Join(dir, "fd", fd.Name()))
+			if inode, ok := strings.CutPrefix(target, "socket:["); err == nil && ok {
+				if port, ok := byInode[strings.TrimSuffix(inode, "]")]; ok {
+					hidden[port] = true
+				}
+			}
+		}
+	}
+	return hidden
+}
+
+// containsString diz se s está na lista.
+func containsString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // contains diz se port está na lista.
