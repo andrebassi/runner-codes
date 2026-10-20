@@ -38,7 +38,7 @@ rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 同一个终端,公开发布:在 [claude-in-chrome.runner.codes](https://claude-in-chrome.runner.codes/) 每位访客都有一台自己的
 机器,Claude Code 已打开且不需要确认权限。你用自己的账号执行 `/login`,登录信息只留在你的机器上。
 
-![浏览器中的 playground:shell 标签页和单独标签页中的 3000 端口](/img/claude-in-chrome-playground.jpg)
+![浏览器中的 playground:已打开的 Claude Code 和单独标签页中的 3000 端口](/img/claude-in-chrome-playground.jpg)
 
 | 内容 | 方式 |
 |------|------|

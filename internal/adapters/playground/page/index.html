@@ -99,9 +99,16 @@
   async function go() {
     st.className = ""; retry.style.display = "none"; say("prep");
     try {
-      const fp = await (await FingerprintJS.load()).get();
+      // O 1º visitorId fica guardado e vale nas visitas seguintes: o FingerprintJS mudou o id do mesmo navegador
+      // entre duas visitas (20/10/2026), e cada id novo criava outra máquina e gastava uma vaga do teto de 3.
+      let visitor = null;
+      try { visitor = localStorage.getItem("rc-visitor"); } catch (_) {}
+      if (!visitor) {
+        visitor = (await (await FingerprintJS.load()).get()).visitorId;
+        try { localStorage.setItem("rc-visitor", visitor); } catch (_) {}
+      }
       const slow = setTimeout(() => say("first"), 2500);
-      const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visitor: fp.visitorId }) });
+      const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visitor }) });
       clearTimeout(slow);
       const body = await r.json();
       if (r.status === 503) { st.className = "err"; say("full"); retry.style.display = "inline-block"; return; }

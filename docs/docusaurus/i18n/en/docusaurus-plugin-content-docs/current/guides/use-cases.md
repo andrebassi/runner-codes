@@ -39,7 +39,7 @@ The same terminal, published: at [claude-in-chrome.runner.codes](https://claude-
 visitor gets a machine of their own with Claude Code open and no permission prompts. You run `/login` with your own
 account, and the login stays on your machine only.
 
-![The playground in the browser: the shell tab and port 3000 in its own tab](/img/claude-in-chrome-playground.jpg)
+![The playground in the browser: Claude Code open and port 3000 in its own tab](/img/claude-in-chrome-playground.jpg)
 
 | What | How |
 |------|-----|

@@ -39,7 +39,7 @@ El mismo terminal, publicado: en [claude-in-chrome.runner.codes](https://claude-
 visitante recibe una máquina propia con Claude Code abierto y sin confirmaciones de permiso. Haces `/login` con tu
 cuenta, y el login queda solo en tu máquina.
 
-![El playground en el navegador: la pestaña shell y el puerto 3000 en su propia pestaña](/img/claude-in-chrome-playground.jpg)
+![El playground en el navegador: Claude Code abierto y el puerto 3000 en su propia pestaña](/img/claude-in-chrome-playground.jpg)
 
 | Qué | Cómo |
 |-----|------|
