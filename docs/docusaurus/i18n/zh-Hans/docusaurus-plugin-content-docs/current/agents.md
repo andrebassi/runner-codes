@@ -15,7 +15,7 @@ root 只读，结束时销毁。VMM 是 libkrun，内核来自 libkrunfw。启�
 | Host | Guest | Hypervisor | 状态 |
 |------|-------|-----------|----------|
 | macOS Apple Silicon | Linux arm64 | Hypervisor.framework | 已端到端测试 |
-| Linux x86_64 / aarch64 | 相同架构的 Linux | KVM（`/dev/kvm`） | 可编译；隔离已测试；完整启动未测量（没有带 KVM 的 host） |
+| Linux x86_64 / aarch64 | 同架构的 Linux | KVM（`/dev/kvm`） | x86_64 已在带 KVM 的 droplet 上实测（job 在 Landlock + seccomp 下运行，Kubernetes 运行时）；aarch64 仅能编译 |
 | Windows | — | — | 不在范围内：上游 libkrun 没有 WHP。Windows 构建会被有意设为失败 |
 
 ## 安装 {#instalação}
@@ -69,6 +69,7 @@ task build                           # bin/rc（macOS 上已签名）+ bin/rc-gu
 | 使用 GPU（AI、Vulkan） | 在 `llama` stack 上使用 `--gpu`（[GPU](/advanced/gpu)） |
 | 判断 host 是否就绪 | `rc doctor` |
 | 列出 stack 以及哪些镜像已构建 | `rc languages` |
+| 让 k3s/microk8s 集群中的每个 pod 各自运行在一台 microVM 中 | 运行 `deploy/k3s/install.sh` 或 `deploy/microk8s/install.sh` 后使用 `runtimeClassName: rc`（[Kubernetes](/advanced/kubernetes)） |
 
 ## CLI 结构 {#estrutura-da-cli}
 
@@ -242,4 +243,5 @@ Linux 上每台 job VM 都运行在 Landlock + seccomp 之下。
 
 - [架构](/architecture)、[安全](/advanced/security)、[GPU](/advanced/gpu)
 - [测试报告](/advanced/test-report)：每个平台上测量了什么
+- [Kubernetes](/advanced/kubernetes)：k3s 和 microk8s 上的 `rc` 运行时；完整的技术说明见 `deploy/README.md`
 - `docs/prd.md`、`docs/architecture.md`、`docs/stories/`：需求、决策，以及每个 story 及其缺陷日志

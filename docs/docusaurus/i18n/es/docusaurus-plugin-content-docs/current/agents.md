@@ -16,7 +16,7 @@ tarda unos 260 ms.
 | Host | Guest | Hipervisor | Estado |
 |------|-------|-----------|----------|
 | macOS Apple Silicon | Linux arm64 | Hypervisor.framework | probado de punta a punta |
-| Linux x86_64 / aarch64 | Linux de la misma arquitectura | KVM (`/dev/kvm`) | compila; confinamiento probado; arranque completo no medido (sin host con KVM) |
+| Linux x86_64 / aarch64 | Linux de la misma arquitectura | KVM (`/dev/kvm`) | x86_64 medido en un droplet con KVM (job bajo Landlock + seccomp, runtime de Kubernetes); aarch64 solo compila |
 | Windows | — | — | fuera: libkrun upstream no tiene WHP. El build para Windows falla a propósito |
 
 ## Instalación
@@ -70,6 +70,7 @@ Sin Homebrew ni Docker: todo vía Nix. `nix develop` ofrece Go, task, coreutils 
 | usar la GPU (IA, Vulkan) | `--gpu` en la stack `llama` ([GPU](/advanced/gpu)) |
 | saber si el host está listo | `rc doctor` |
 | listar stacks y cuáles imágenes están construidas | `rc languages` |
+| poner cada pod de un clúster k3s/microk8s en su propia microVM | `runtimeClassName: rc` tras `deploy/k3s/install.sh` o `deploy/microk8s/install.sh` ([Kubernetes](/advanced/kubernetes)) |
 
 ## Estructura de la CLI
 
@@ -247,5 +248,6 @@ proyecto.
 
 - [Arquitectura](/architecture), [Seguridad](/advanced/security), [GPU](/advanced/gpu)
 - [Informe de pruebas](/advanced/test-report): lo que se midió en cada plataforma
+- [Kubernetes](/advanced/kubernetes): el runtime `rc` en k3s y microk8s; el relato técnico completo está en `deploy/README.md`
 - `docs/prd.md`, `docs/architecture.md`, `docs/stories/`: requisitos, decisiones y cada story con el registro de los
   defectos

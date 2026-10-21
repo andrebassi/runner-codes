@@ -15,7 +15,7 @@ read-only root, and destroys the VM at the end. The VMM is libkrun and the kerne
 | Host | Guest | Hypervisor | Status |
 |------|-------|-----------|----------|
 | macOS Apple Silicon | Linux arm64 | Hypervisor.framework | tested end to end |
-| Linux x86_64 / aarch64 | Linux of the same architecture | KVM (`/dev/kvm`) | compiles; confinement tested; full boot not measured (no host with KVM) |
+| Linux x86_64 / aarch64 | Linux of the same architecture | KVM (`/dev/kvm`) | x86_64 measured on a droplet with KVM (job under Landlock + seccomp, Kubernetes runtime); aarch64 only builds |
 | Windows | — | — | out: upstream libkrun has no WHP. The Windows build fails on purpose |
 
 ## Installation
@@ -69,6 +69,7 @@ No Homebrew and no Docker: everything goes through Nix. `nix develop` gives you 
 | use the GPU (AI, Vulkan) | `--gpu` on the `llama` stack ([GPU](/advanced/gpu)) |
 | find out whether the host is ready | `rc doctor` |
 | list stacks and which images are built | `rc languages` |
+| put each pod of a k3s/microk8s cluster in its own microVM | `runtimeClassName: rc` after `deploy/k3s/install.sh` or `deploy/microk8s/install.sh` ([Kubernetes](/advanced/kubernetes)) |
 
 ## CLI structure
 
@@ -242,4 +243,5 @@ Suggested order: A → B → D → C, with C last because opening the network is
 
 - [Architecture](/architecture), [Security](/advanced/security), [GPU](/advanced/gpu)
 - [Test report](/advanced/test-report): what was measured on each platform
+- [Kubernetes](/advanced/kubernetes): the `rc` runtime on k3s and microk8s; the full technical write-up is in `deploy/README.md`
 - `docs/prd.md`, `docs/architecture.md`, `docs/stories/`: requirements, decisions and each story with its defect log

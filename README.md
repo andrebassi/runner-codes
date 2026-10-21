@@ -17,7 +17,7 @@ e no **Linux x86_64/aarch64** (KVM). As linguagens saem de **imagens OCI oficiai
 
 ## Números medidos
 
-macOS 27.0.1, Apple Silicon, 19/10/2026. Testes por plataforma (macOS de ponta a ponta, Linux com Landlock + seccomp, Windows) e o que não foi testado: [relatório de testes](docs/docusaurus/docs/advanced/test-report.md).
+macOS 27.0.1, Apple Silicon, 19/10/2026. Testes por plataforma (macOS de ponta a ponta, Linux com KVM e Kubernetes, Linux com Landlock + seccomp, Windows) e o que não foi testado: [relatório de testes](docs/docusaurus/docs/advanced/test-report.md).
 
 | Medida | Valor |
 |---|---|
@@ -54,7 +54,8 @@ Para testar à mão, passo a passo: [docs/runbook.md](docs/runbook.md) (`task ru
 
 Referência para agentes (cada comando, flag, rota e erro, o que ainda não existe e o plano de evolução):
 [docs/docusaurus/docs/agents.md](docs/docusaurus/docs/agents.md). GPU de ponta a ponta:
-[docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md).
+[docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md). Kubernetes (k3s e microk8s):
+[deploy/README.md](deploy/README.md).
 
 ## Instalação
 
@@ -128,8 +129,16 @@ sudo deploy/k3s/install.sh            # ou deploy/microk8s/install.sh (nó Linux
 kubectl apply -f deploy/k8s/example-pod.yaml && kubectl logs rc-hello   # kernel: Linux 6.12.91
 ```
 
-Provado com `deploy/k8s/e2e.sh` (19 checagens) no k3s 1.36 e no microk8s 1.35. Limites (port-forward, hostNetwork,
-volumes copiados na criação) em [Kubernetes](docs/docusaurus/docs/advanced/kubernetes.md).
+Provado com `deploy/k8s/e2e.sh` (19 checagens) no k3s 1.36 e no microk8s 1.35, duas rodadas seguidas, em droplets
+da DigitalOcean com KVM.
+
+- como funciona, decisões, defeitos achados no nó real, como testar e o que fazer quando der errado:
+  [deploy/README.md](deploy/README.md);
+- uso e limites (port-forward, hostNetwork, volumes copiados na criação):
+  [docs › Kubernetes](docs/docusaurus/docs/advanced/kubernetes.md);
+- números e defeitos por plataforma:
+  [relatório de testes › Linux com KVM e Kubernetes](docs/docusaurus/docs/advanced/test-report.md#linux-com-kvm-e-kubernetes);
+- passo a passo conferido: [runbook, seção 8x](docs/runbook.md#8x-runtime-de-kubernetes-k3s-e-microk8s).
 
 ### Shell dentro da VM
 

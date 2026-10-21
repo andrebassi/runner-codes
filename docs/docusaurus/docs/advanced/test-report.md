@@ -24,12 +24,17 @@ No Linux, Landlock + seccomp foram testados com o processo confinado de verdade 
 microVM completa no Linux **não foi medida**. `--nested` só teve a **recusa** medida (este Mac é M1); o caminho que
 liga não foi medido.
 
+> **Atualização da mesma data:** uma microVM completa **foi medida** no Linux x86_64 com KVM (droplet da
+> DigitalOcean, KVM aninhado), com o job sob Landlock (por thread, ABI 4) + seccomp, e o runtime de Kubernetes passou
+> 19/19 no k3s e no microk8s. Detalhes em [Linux com KVM e Kubernetes](#linux-com-kvm-e-kubernetes).
+
 ## Resumo por plataforma
 
 | Plataforma | Ambiente | microVM real | Resultado |
 |---|---|---|---|
 | **macOS** | MacBook M1 Pro, macOS 27.0.1, Hypervisor.framework | **sim** | e2e 42/42 em duas rodadas seguidas; runbook e guias sem falha |
 | **Linux** | Ubuntu 26.04.1 LTS no VMPal, kernel 7.0.0-30, aarch64 | **não** (sem `/dev/kvm`) | confinamento Landlock + seccomp aplicado e provado no processo real; 30 testes verdes em duas rodadas |
+| **Linux com KVM** | droplet DigitalOcean `s-4vcpu-8gb`, Ubuntu 24.04, kernel 6.8, x86_64, KVM aninhado | **sim** | job Python sob Landlock (ABI 4, por thread) + seccomp; Kubernetes 19/19 no k3s 1.36 e no microk8s 1.35, duas rodadas |
 | **Windows** | Windows 11 Pro 24H2 (build 26100.9457) ARM64 no VMPal | **não** | fora do escopo: build recusado de propósito; hypervisor não sobe na VM (`EL2 not present`) |
 
 O motivo comum do "não" no Linux e no Windows: as duas são VMs dentro de um **M1 Pro**. O Virtualization.framework
@@ -266,6 +271,49 @@ warn  landlock ABI 8 < 9: a VM process can still connect to another VM's unix so
   precisar de outro caminho, a VM não sobe; `RUNNER_SANDBOX=off` desliga o confinamento para diagnóstico;
 - `linux/amd64` (só compilado).
 
+## Linux com KVM e Kubernetes
+
+### Ambiente
+
+| Item | Valor |
+|---|---|
+| máquina | droplet DigitalOcean `s-4vcpu-8gb` (4 vCPU, 8 GB), nyc3; `scripts/do-kvm-probe.sh` mediu `/dev/kvm` e as flags `vmx` antes de criar o nó de teste |
+| sistema | Ubuntu 24.04, kernel 6.8.0-142, x86_64; Landlock **ABI 4** |
+| libkrun | 1.19.5 e libkrunfw 5.5.0 do nixpkgs (`task krun:install`) |
+| Kubernetes | k3s v1.36.5 (containerd 2.3.4, flannel) e microk8s v1.35.6 (containerd 2.1.6, Calico), um droplet cada |
+
+### Resultado
+
+| O quê | Medido |
+|---|---|
+| `rc run --stack python`, boot frio | `status=success`, ~1,4 s de ponta a ponta (KVM aninhado; no Mac, ~240 ms) |
+| `rc image build --stack python` | 60 s (o `mkfs` levou 45 s) |
+| pod `runtimeClassName: rc` até `Running` | ~2 s, imagem já no nó |
+| `deploy/k8s/e2e.sh` | **19/19** no k3s e no microk8s, duas rodadas seguidas em cada |
+| prova de falha do e2e | código de saída fixo em 0 no shim: as 2 checagens de código de saída reprovaram |
+| `task k8s:defects` | 20 defeitos plantados; 19 pegos na 1ª rodada, o que passou batido virou teste, 20 de 20 depois |
+| `TestRestrictThreadBlocks` (root, kernel real) | Landlock por thread barra o arquivo de fora; sem o `landlock_restrict_self` o teste reprova |
+| `TestAttach` (root, netns de verdade) | tap0 nasce no netns do pod e não no do host, com um filtro mirred em cada sentido |
+
+### Defeitos achados só no Linux real
+
+| Sintoma | Causa | Correção |
+|---|---|---|
+| `nix profile add .#krun` falha com `File exists` | na libkrun do nixpkgs, `lib/` e `lib64/` trazem os mesmos arquivos | `ln -sf` no `flake.nix` |
+| todo job falha: `prctl(PR_SET_NO_NEW_PRIVS): operation not supported` | abaixo da ABI 8 o go-landlock usa psx, e sem cgo o `AllThreadsSyscall` devolve ENOTSUP (o purego faz o runtime se ver "com cgo") | ruleset na thread do `krun_start_enter` (`sandbox_rules.go`); as threads da libkrun herdam |
+| teste do launcher não compilava no Linux | `syscall.Getsid` só existe no BSD/macOS | `unix.Getsid` |
+| cópia do rootfs "falha" com `waitid: no child processes` | o pkg/shim colhe todo filho no SIGCHLD | filho do shim espera pelo `reaper.Default` |
+| resumo do kubelet quebra no nó inteiro; namespace preso em Terminating | `Stats` vazio do shim (`failed to decode container metrics`) | métricas cgroup v2 com o uso real do vmm |
+| microk8s: `unsupported protocol: Yunix` | o containerd 2.1 lia a resposta protobuf do start como endereço | JSON antigo para quem chama pelo protocolo antigo |
+| microk8s: pod sem rede (`Network is unreachable`) | Calico dá `/32` com gateway `169.254.1.1` fora da sub-rede | rota de link para o gateway antes da padrão |
+
+### Não testado no Linux com KVM
+
+- `linux/arm64` com KVM (só x86_64);
+- Landlock com ABI ≥ 8 (caminho TSYNC) com uma microVM real: o droplet tem ABI 4;
+- `--nested` ligando (o `rc doctor` do droplet diz `supported`, sem prova);
+- o vmm da VM de pod roda **sem** Landlock/seccomp (dívida declarada).
+
 ## Windows (fora do escopo, medido)
 
 ### Ambiente
@@ -304,8 +352,8 @@ suporte do `rc`, essa VM não teria onde criar microVMs.
 
 | Lacuna | O que destrava |
 |---|---|
-| microVM sob Landlock + seccomp | Linux com KVM: Mac M3+ (VMPal com `--nested on`) ou servidor Linux físico |
-| `linux/amd64` em execução | Linux x86 com KVM |
+| microVM sob Landlock com TSYNC (ABI ≥ 8) | Linux com KVM e Landlock ABI ≥ 8 (o Ubuntu 26.04, kernel 7.0, tem a 8) (a ABI 4 do droplet já foi medida, pelo caminho por thread) |
+| `linux/arm64` com KVM em execução | Linux arm64 com KVM (o `linux/amd64` foi medido no droplet) |
 | isolamento de socket Unix entre VMs | kernel com Landlock ABI ≥ 9 |
 | `--nested` ligando de verdade | Mac M3+ ou Linux com KVM aninhável |
 | Windows nativo | trocar a libkrun upstream pelo fork com WHP (decisão de arquitetura) e máquina Windows com virtualização |

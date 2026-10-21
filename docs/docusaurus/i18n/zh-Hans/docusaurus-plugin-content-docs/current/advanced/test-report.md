@@ -22,12 +22,17 @@ stack 的执行）来自 **2026/10/19**，在同一台 host 上。本页每个�
 在 Linux 上，Landlock + seccomp 已在 Ubuntu 26.04 中对真实受约束进程完成测试，该 VM 没有 KVM；Linux 上完整的
 microVM **尚未测量**。`--nested` 只测了**拒绝**路径（这台 Mac 是 M1）；开启的路径没有测量。
 
+> **同日更新：** 已在带 KVM 的 x86_64 Linux（DigitalOcean droplet，嵌套 KVM）上**完成**完整 microVM 的测量，
+> job 在 Landlock（按线程，ABI 4）+ seccomp 下运行；Kubernetes 运行时在 k3s 和 microk8s 上均通过 19/19。详见
+> [带 KVM 的 Linux 与 Kubernetes](#linux-com-kvm-e-kubernetes)。
+
 ## 各平台概览 {#resumo-por-plataforma}
 
 | 平台 | 环境 | 真实 microVM | 结果 |
 |---|---|---|---|
 | **macOS** | MacBook M1 Pro，macOS 27.0.1，Hypervisor.framework | **是** | e2e 42/42，连续两轮；runbook 和指南无失败 |
 | **Linux** | VMPal 中的 Ubuntu 26.04.1 LTS，内核 7.0.0-30，aarch64 | **否**（没有 `/dev/kvm`） | Landlock + seccomp 约束已在真实进程上应用并证明；30 个测试连续两轮通过 |
+| **带 KVM 的 Linux** | DigitalOcean droplet `s-4vcpu-8gb`，Ubuntu 24.04，内核 6.8，x86_64，嵌套 KVM | **是** | Python job 在 Landlock（ABI 4，按线程）+ seccomp 下运行；Kubernetes 在 k3s 1.36 和 microk8s 1.35 上 19/19，两轮 |
 | **Windows** | VMPal 中的 Windows 11 Pro 24H2（build 26100.9457）ARM64 | **否** | 不在范围内：构建被有意拒绝；VM 中 hypervisor 起不来（`EL2 not present`） |
 
 Linux 和 Windows 都是“否”的共同原因：两者都是运行在 **M1 Pro** 上的 VM。Virtualization.framework 从 **M3** 起才
@@ -258,6 +263,49 @@ warn  landlock ABI 8 < 9: a VM process can still connect to another VM's unix so
   常见设备节点，并预先加载 libkrunfw。如果 libkrun 需要其他路径，VM 就起不来；`RUNNER_SANDBOX=off` 可关闭约束用于诊断；
 - `linux/amd64`（仅编译）。
 
+## 带 KVM 的 Linux 与 Kubernetes {#linux-com-kvm-e-kubernetes}
+
+### 环境
+
+| 项目 | 值 |
+|---|---|
+| 机器 | DigitalOcean droplet `s-4vcpu-8gb`（4 vCPU，8 GB），nyc3；创建测试节点前，`scripts/do-kvm-probe.sh` 已测得 `/dev/kvm` 和 `vmx` 标志 |
+| 系统 | Ubuntu 24.04，内核 6.8.0-142，x86_64；Landlock **ABI 4** |
+| libkrun | nixpkgs 的 1.19.5 和 libkrunfw 5.5.0（`task krun:install`） |
+| Kubernetes | k3s v1.36.5（containerd 2.3.4，flannel）和 microk8s v1.35.6（containerd 2.1.6，Calico），各一台 droplet |
+
+### 结果
+
+| 内容 | 实测 |
+|---|---|
+| `rc run --stack python`，冷启动 | `status=success`，端到端约 1.4 秒（嵌套 KVM；Mac 上约 240 毫秒） |
+| `rc image build --stack python` | 60 秒（`mkfs` 占 45 秒） |
+| `runtimeClassName: rc` 的 pod 到 `Running` | 约 2 秒，镜像已在节点上 |
+| `deploy/k8s/e2e.sh` | k3s 和 microk8s 均为 **19/19**，各连续两轮 |
+| e2e 的失败证明 | 在 shim 中把退出码固定为 0：两项退出码检查失败 |
+| `task k8s:defects` | 植入 20 个缺陷；第一轮发现 19 个，漏掉的那个变成了测试，之后 20/20 |
+| `TestRestrictThreadBlocks`（root，真实内核） | 按线程的 Landlock 拦住了策略外的文件；去掉 `landlock_restrict_self` 测试即失败 |
+| `TestAttach`（root，真实 netns） | tap0 创建在 pod 的 netns 中而不是 host 中，每个方向各一个 mirred 过滤器 |
+
+### 只在真实 Linux 上发现的缺陷
+
+| 现象 | 原因 | 修复 |
+|---|---|---|
+| `nix profile add .#krun` 报 `File exists` | nixpkgs 的 libkrun 中 `lib/` 和 `lib64/` 包含相同文件 | `flake.nix` 中改用 `ln -sf` |
+| 所有 job 失败：`prctl(PR_SET_NO_NEW_PRIVS): operation not supported` | ABI 8 以下 go-landlock 使用 psx，而没有 cgo 时 `AllThreadsSyscall` 返回 ENOTSUP（purego 让运行时以为自己"带 cgo"） | 在 `krun_start_enter` 所在线程上应用规则集（`sandbox_rules.go`），libkrun 的线程会继承 |
+| launcher 的测试在 Linux 上无法编译 | `syscall.Getsid` 只存在于 BSD/macOS | 改用 `unix.Getsid` |
+| 复制 rootfs 时"失败"：`waitid: no child processes` | pkg/shim 在 SIGCHLD 时回收所有子进程 | shim 的子进程通过 `reaper.Default` 等待 |
+| kubelet 摘要在整个节点上失效；namespace 卡在 Terminating | shim 的 `Stats` 为空（`failed to decode container metrics`） | 返回带 vmm 真实用量的 cgroup v2 指标 |
+| microk8s：`unsupported protocol: Yunix` | containerd 2.1 把 protobuf 格式的 start 响应当成地址读取 | 对使用旧协议的调用方返回旧格式 JSON |
+| microk8s：pod 没有网络（`Network is unreachable`） | Calico 分配 `/32`，网关 `169.254.1.1` 在子网之外 | 在默认路由之前加一条到网关的链路路由 |
+
+### 在带 KVM 的 Linux 上未测试的内容
+
+- 带 KVM 的 `linux/arm64`（只测了 x86_64）；
+- 在真实 microVM 上使用 ABI ≥ 8 的 Landlock（TSYNC 路径）：droplet 是 ABI 4；
+- 真正开启 `--nested`（droplet 的 `rc doctor` 显示 `supported`，但没有验证）；
+- pod VM 的 vmm **没有** Landlock/seccomp（已声明的技术债）。
+
 ## Windows（不在范围内，已测量） {#windows-fora-do-escopo-medido}
 
 ### 环境 {#ambiente}
@@ -295,8 +343,8 @@ VM 也没有地方创建 microVM。
 
 | 缺口 | 解锁条件 |
 |---|---|
-| 在 Landlock + seccomp 下运行 microVM | 带 KVM 的 Linux：M3+ 的 Mac（VMPal 开启 `--nested on`）或物理 Linux 服务器 |
-| 运行 `linux/amd64` | 带 KVM 的 x86 Linux |
+| 在 TSYNC（ABI ≥ 8）的 Landlock 下运行 microVM | 带 KVM 且 Landlock ABI ≥ 8 的 Linux（Ubuntu 26.04 的 7.0 内核为 8）（droplet 的 ABI 4 已通过按线程路径测量） |
+| 带 KVM 运行 `linux/arm64` | 带 KVM 的 arm64 Linux（`linux/amd64` 已在 droplet 上测量） |
 | VM 之间的 Unix socket 隔离 | Landlock ABI ≥ 9 的内核 |
 | 真正开启 `--nested` | M3+ 的 Mac 或支持嵌套 KVM 的 Linux |
 | 原生 Windows | 把上游 libkrun 换成带 WHP 的 fork（架构决策），并使用开启虚拟化的 Windows 机器 |

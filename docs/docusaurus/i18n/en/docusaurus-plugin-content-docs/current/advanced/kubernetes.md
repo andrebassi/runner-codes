@@ -69,6 +69,43 @@ spec:
 | `deploy/k8s/e2e.sh` test | 19/19 on k3s 1.36 (containerd 2.3) and microk8s 1.35 (containerd 2.1) |
 | defects planted in the runtime code (`task k8s:defects`) | 20, all caught by the tests |
 
+## Design decisions
+
+| Decision | Why |
+|---|---|
+| **one shim per pod**, grouped by the `io.kubernetes.cri.sandbox-id` annotation | without grouping, containerd would start one shim per container, and the app container would not find the pod VM |
+| **containerd library v2.3.7**, not 2.4 | 2.4 only accepts the new start protocol (containerd ≥ 2.3); microk8s 1.35 ships containerd 2.1.6. 2.3.7 reads both, and the reply is translated into the old JSON only for callers of the old path |
+| **copied rootfs**, not re-exported | re-exporting the snapshotter overlay through virtio-fs breaks copy-up inside the guest; `cp -a --reflink=auto` is instant on btrfs/xfs |
+| **no crun inside the VM** | the rc guest runs each process in a chroot on the container rootfs; the whole VM is already the pod's isolation boundary |
+| **TAP + `tc mirred`**, no NAT and no gVisor | the guest takes over the IP, MAC and gateway of the pod `eth0`, so the rest of the cluster (bridge, ARP, kube-proxy) sees no difference |
+| **`Stats` with the real vmm usage** | an empty `Stats` breaks the kubelet stats summary for the whole node; the VM usage all goes to the first app container, so nothing is counted twice |
+| **shim children waited through the containerd reaper** | pkg/shim reaps every child on SIGCHLD, and a plain `cmd.Wait` gets `waitid: no child processes` |
+
+## How it was tested
+
+- **Real nodes with KVM:** two DigitalOcean droplets (4 vCPU, 8 GB, Ubuntu 24.04), one with k3s 1.36 and one with
+  microk8s 1.35. `/dev/kvm` was measured first (`task k8s:kvm-probe`).
+- **End to end:** `deploy/k8s/e2e.sh` (19 checks) with **0 failures** on both, two consecutive runs on each. A defect
+  planted in the exit code made exactly the two right checks fail.
+- **Unit:** the shim (`internal/adapters/k8sshim`) at 95.4% coverage and the pod network (`internal/adapters/podnet`)
+  at 100%; the real Attach (netns, tap, tc) and per-thread Landlock run as root on Linux.
+- **Planted defects:** `task k8s:defects` plants 20 defects in the runtime code; the tests catch all of them.
+- What only showed up on real Linux, and how it was fixed, is in the
+  [test report](./test-report.md#linux-com-kvm-e-kubernetes).
+
+## Reproduce
+
+```bash
+K8S_NODE=k3s task k8s:node -- create         # droplet with KVM (~US$ 0.07/h while it exists)
+K8S_NODE=k3s task k8s:node -- provision      # Nix, libkrun and the build on the node
+K8S_NODE=k3s task k8s:node -- ssh 'curl -sfL https://get.k3s.io | sh -'
+task k8s:e2e -- k3s                          # reinstalls the runtime and runs the 19 checks
+K8S_NODE=k3s task k8s:node -- destroy        # deletes the droplet and the key
+```
+
+The same with `K8S_NODE=microk8s` and `snap install microk8s --classic`. The commented walkthrough is in
+[`deploy/README.md`](https://github.com/andrebassi/runner-codes/blob/main/deploy/README.md).
+
 ## Limits
 
 | What | Why |
@@ -79,4 +116,4 @@ spec:
 | per-container limits, per-container `kubectl top` | the limit applies to the whole VM; the VM usage goes to the first container |
 | Landlock/seccomp on the pod vmm | not yet: the pod vmm runs without the confinement of job VMs |
 
-The full test sequence is in the runbook, section 8x.
+The full test sequence is in the [runbook, section 8x](https://github.com/andrebassi/runner-codes/blob/main/docs/runbook.en.md#8x-kubernetes-runtime-k3s-and-microk8s).
