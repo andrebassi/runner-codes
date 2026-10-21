@@ -81,7 +81,7 @@ task runbook
 ```
 
 Executa o `docs/runbook.md` passo a passo e confere cada resultado esperado. Todo recurso novo ganha, na mesma entrega,
-uma seção no runbook e o passo no `scripts/runbook.sh`. Na rodada de 20/10/2026: 116 conferências, 0 falhas.
+uma seção no runbook e o passo no `scripts/runbook.sh`. Na rodada de 21/10/2026: 126 conferências, 0 falhas.
 
 ## task guides
 
@@ -91,7 +91,7 @@ task guides DIRS="pack teardown"
 ```
 
 Cada pasta de `examples/guides` tem um `run.sh` que prova o que o guia diz numa VM de verdade e sai com o número de
-falhas. Na rodada de 20/10/2026: 12 pastas, 215 conferências, 0 falhas. Veja [Exemplos e guias](/guides/examples).
+falhas. Na rodada de 21/10/2026: 9 pastas, 175 conferências, 0 falhas. Veja [Exemplos e guias](/guides/examples).
 
 ## task gates
 

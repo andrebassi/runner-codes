@@ -24,9 +24,6 @@ task guides DIRS="pack teardown"   # algumas
 | [pack](pack/) | imagem e máquina num artefato; o marcador vem junto com a origem apagada; cache reaproveitado |
 | [teardown](teardown/) | parar, apagar, provar limpo; Ctrl-C e `kill -9` no CLI não deixam VM viva |
 | [credentials](credentials/) | o valor nunca entra na VM (busca com contraprova); interceptação só no host da binding; 403 na URL |
-| [dev-env](dev-env/) | persistência de pacote, `$HOME` e disco; `/tmp` zera; init uma vez, como root; `user` e `--user` |
-| [docker-in-machine](docker-in-machine/) | Docker num ext4 de verdade, contêiner aninhado, `docker.sock` no host, dados que sobrevivem |
-| [coding-agent](coding-agent/) | claude e opencode instalados pelo init; git no repo montado; agente SSH do host sem a chave na VM; chave da API como segredo |
 | [branch-and-checkpoint](branch-and-checkpoint/) | checkpoint de disco com retenção e trava, restauração de qualquer geração, pause/resume, filhas de uma fonte aquecida, checkpoint exportado como pack |
 | [gpu-cuda](gpu-cuda/) | não há CUDA: `doctor`, CLI, `runner.code` e API dizem não, com o motivo, sem criar nada |
 | [local-api](local-api/) | `rc serve` com corpos JSON de ciclo de vida; exitCode no corpo; SSE uma linha por evento; campo desconhecido recusado |
@@ -42,7 +39,7 @@ Coisas que os guias usam e o rc não tinha, ou tinha errado. Cada uma tem teste 
 | `machine run` preso ao CLI | um `kill -9` no `rc` deixava a VM rodando, com o código não confiável sem prazo (trap do teardown) |
 | `/dev/stdin`, `/dev/fd` no guest | `grep -f /dev/stdin` falhava, e a busca de contenção do guia credentials dava 0 por estar cega |
 | vsock sem meio-fechamento | cliente que fazia `SHUT_WR` perdia a resposta (porta publicada e `docker.sock`) |
-| `--user` / `user` | dev-env: workload, exec e shell como o usuário, init como root, `uid:gid` para volume do host |
+| `--user` / `user` | workload, exec e shell como o usuário, init como root, `uid:gid` para volume do host |
 | volume de disco (`-v /var/lib/docker`) | o overlay2 do Docker precisa de ext4 de verdade, persistente |
 | `docker_socket` | o `docker` do host fala com o daemon da VM sem porta TCP aberta |
 | `--secret-env`, `--secret-file`, `[secrets]` | o valor só em memória no guest; com o nome de uma credencial, alimenta a binding |

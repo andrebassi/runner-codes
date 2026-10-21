@@ -9,7 +9,8 @@ go back to the VM. No VNC client and no graphical server are needed on the host.
 ## At a glance
 
 ```bash
-rc machine run -d --name desktop -s examples/desktop/runner.code   # Weston, 1280x800
+rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+rc machine start  --name tela
 open http://localhost:6080
 rc machine create --name ui --image alpine:latest --gpu --display 1920x1080 --display-port 7000
 ```
@@ -67,9 +68,6 @@ On macOS, virtio-gpu with Venus (Vulkan) does not serve 2D resources.
 | the display | `gpu = true`; the libkrunfw kernel already ships `virtio_gpu` (DRM/KMS, no fbdev: there is no `/dev/fb0`) |
 | keyboard and mouse in a compositor | `udev` running (libinput enumerates through it); on Alpine, `eudev` + `udevadm trigger` |
 | a compositor without logind | `seatd` |
-
-The [`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop/runner.code) example sets this up in
-`cmd`.
 
 ## Security
 

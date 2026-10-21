@@ -168,7 +168,7 @@ reach the guest's PTY. Links on screen are clickable.
 | stopped machine | refused before any server or browser opens |
 | ports | any TCP port a program opens in the machine (on `0.0.0.0`, `::`, `127.0.0.1` or `::1`) becomes a tab within 2 s and answers on the host's `127.0.0.1`, on the same number; if that number is taken on the host, on a free one (the tab shows `5432 → 51234`). It is raw TCP over vsock: WebSocket, hot reload and absolute paths (FastAPI's `/docs`) work, and the machine needs no `--net`. A server bound only to the `eth0` IP is left out. While the tab exists, the number is taken on the host: another machine's `-p 3000` fails with `address already in use` |
 
-The [coding-agent](/guides/examples) guide opens Claude Code this way. With `IS_SANDBOX=1` in the machine's
+The [Claude Code use case](/guides/use-cases) opens the agent this way. With `IS_SANDBOX=1` in the machine's
 environment, `--dangerously-skip-permissions` runs as root; without it, Claude refuses (`cannot be used with root/sudo privileges`).
 
 ## Errors

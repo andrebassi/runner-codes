@@ -37,7 +37,7 @@ sudo deploy/microk8s/install.sh   # microk8s：在 containerd-template.toml 中�
 
 两个安装脚本都会调用 `deploy/install-node.sh`（rc 和 libkrun 放在 `/opt/rc`，pod VM 镜像、
 `/usr/local/bin/containerd-shim-rc-v2` 和 `/etc/rc/shim.json`），给节点打上 `runner.codes/runtime=true` 标签，
-并应用 `deploy/k8s/runtimeclass.yaml`。可以安全地重复执行；发行版升级后需要再运行一次。
+并应用 RuntimeClass `rc`（`deploy/lib.sh` 中的 `rc_runtime_class`）。可以安全地重复执行；发行版升级后需要再运行一次。
 
 ## 使用
 

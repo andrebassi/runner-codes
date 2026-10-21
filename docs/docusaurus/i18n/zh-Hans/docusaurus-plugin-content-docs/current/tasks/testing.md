@@ -80,7 +80,7 @@ task runbook
 ```
 
 逐步执行 `docs/runbook.md`，并检查每个预期结果。每个新功能都要在同一次交付中，在 runbook 中新增一节，并在
-`scripts/runbook.sh` 中加上对应步骤。在 2026/10/20 的轮次中：116 项检查，0 失败。
+`scripts/runbook.sh` 中加上对应步骤。在 2026/10/21 的轮次中：126 项检查，0 失败。
 
 ## task guides {#task-guides}
 
@@ -90,7 +90,7 @@ task guides DIRS="pack teardown"
 ```
 
 `examples/guides` 中的每个目录都有一个 `run.sh`，它在真实 VM 中证明指南所说的内容，并以失败数作为退出码。在
-2026/10/20 的轮次中：12 个目录，215 项检查，0 失败。见[示例与指南](/guides/examples)。
+2026/10/21 的轮次中：9 个目录，175 项检查，0 失败。见[示例与指南](/guides/examples)。
 
 ## task gates {#task-gates}
 

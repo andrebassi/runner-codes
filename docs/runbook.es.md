@@ -259,37 +259,24 @@ servidor que escucha solo en localhost, como vite u openclaw, responde.
 ## 8g. Pantalla en el navegador: display, teclado y mouse
 
 ```bash
-./bin/rc machine run -d --name desktop -s examples/desktop/runner.code
+./bin/rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+./bin/rc machine start --name tela
+./bin/rc machine exec --name tela -- sh -c 'apk add -q --no-cache libdrm-tests evtest; cat /sys/class/input/event*/device/name'
+./bin/rc machine exec --name tela -- sh -c 'c=$(modetest -M virtio_gpu -c | awk "/connected/ {print \$1; exit}"); (modetest -M virtio_gpu -s $c:1024x768 >/dev/null 2>&1 </dev/null &)'
 open http://localhost:6080
-./bin/rc machine stop --name desktop
+./bin/rc machine exec --name tela -- sh -c '(timeout 25 evtest /dev/input/event0 > /tmp/k.log 2>&1 </dev/null &)'
+# haz clic en la página y escribe algunas letras; después:
+./bin/rc machine exec --name tela -- grep 'value 1' /tmp/k.log
+./bin/rc machine delete --name tela -f
 ```
 
 Esperado:
-- el escritorio Weston aparece en la página, con el panel y el reloj del guest;
-- el clic en el ícono del panel abre la terminal;
-- lo que se escribe en la página llega a la terminal, incluidas mayúsculas, símbolos y Ctrl.
+- el guest lista `runner.code keyboard` y `runner.code tablet`;
+- la página muestra las barras de color de `modetest`, en vivo, en 1024x768;
+- cada tecla que se escribe en la página aparece en el `evtest` del guest (`KEY_R`, `KEY_C`...).
 
-`task runbook` verifica el mismo camino sin necesitar ojo humano:
-- una máquina alpine con `--display 1024x768`;
-- `modetest` enciende la pantalla;
-- el cuadro de 1024x768 llega al visualizador;
-- un `KEY_A` enviado por `POST /input` aparece en el `evtest` del guest.
-
-## 8h. Ejemplos
-
-```bash
-./bin/rc machine run -s examples/python-app/runner.code -- python3 --version
-./bin/rc machine run -s examples/node-app/runner.code -- node -e 'console.log("ola", 1+1)'
-./bin/rc machine run -d --name doom -s examples/doom-web/runner.code && open http://localhost:8080
-```
-
-Esperado:
-- `Python 3.12.x`;
-- `ola 2`;
-- DOOM en el navegador.
-
-Los demás ejemplos y lo que mide cada uno están en [`examples/README.md`](../examples/README.md). El
-`docker-in-vm` tiene una verificación propia, `examples/docker-in-vm/check.sh`.
+`task runbook` verifica el mismo camino sin necesitar ojo humano: el cuadro de 1024x768 llega al visualizador y un
+`KEY_A` enviado por `POST /input` aparece en `evtest`.
 
 ## 8i. Branch y pausa
 
@@ -532,7 +519,7 @@ Esperado:
 - `/stream` sin el token responde 403, y un `Host` que no sea de loopback también (DNS rebinding).
 - pestañas `claude` (el comando), `shell` (un terminal aparte, con el primer clic), `eventos` y, al final, una pestaña por puerto: un servidor que el programa levante en la VM (cualquier puerto) aparece con la app en un iframe y responde en el `127.0.0.1` del host.
 
-La guía `coding-agent` usa esto para abrir Claude Code en el navegador:
+Para abrir Claude Code en el navegador así:
 `rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`.
 
 ## 8w. Playground público (claude-in-chrome.runner.codes)

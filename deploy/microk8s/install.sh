@@ -11,10 +11,10 @@ command -v microk8s >/dev/null || { echo "microk8s não instalado (snap install 
 deploy/install-node.sh
 tpl=/var/snap/microk8s/current/args/containerd-template.toml
 [ -f "$tpl" ] || { echo "template do containerd do microk8s não achado: $tpl" >&2; exit 1; }
-# O cabeçalho do plugin CRI depende da versão do config (2 no microk8s 1.35, com containerd 2.1): copia o do
-# runc que o próprio template declara.
-hdr=$(grep -E "\.containerd\.runtimes\.runc\][[:space:]]*$" "$tpl" | head -1 | sed 's/^[[:space:]]*//')
-[ -n "$hdr" ] || { echo "não achei o runtime runc em $tpl" >&2; exit 1; }
+# shellcheck source=deploy/lib.sh
+source deploy/lib.sh
+# O cabeçalho da tabela do runtime sai da versão que o template declara (2 no microk8s 1.35): rc_cri_table.
+hdr=$(rc_cri_table "$tpl")
 begin="# rc:begin (deploy/microk8s/install.sh)"
 end="# rc:end"
 # Tira o bloco de uma instalação anterior e põe o atual no fim: tabela TOML com o caminho completo vale
@@ -24,7 +24,7 @@ sed -i "\\|^$begin\$|,\\|^$end\$|d" "$tpl"
 cat >>"$tpl" <<TOML
 $begin
 # Runtime do rc (microVM por pod). Sem a tabela [options]: as do runc não valem para este shim.
-${hdr/.runtimes.runc]/.runtimes.rc]}
+$hdr
   runtime_type = "$(printf 'io.containerd.rc.v2')"
   # As anotações runner.codes/* do pod (tamanho da VM) chegam à spec do sandbox.
   pod_annotations = ["runner.codes/*"]
@@ -38,5 +38,5 @@ for _ in $(seq 30); do systemctl is-active --quiet snap.microk8s.daemon-containe
 systemctl is-active --quiet snap.microk8s.daemon-containerd || { echo "containerd do microk8s não voltou" >&2; exit 1; }
 timeout 300s microk8s status --wait-ready >/dev/null
 microk8s kubectl label node --all runner.codes/runtime=true --overwrite
-microk8s kubectl apply -f deploy/k8s/runtimeclass.yaml
+rc_runtime_class | microk8s kubectl apply -f -
 echo "runtime rc ligado ao microk8s; prova: deploy/k8s/e2e.sh microk8s"

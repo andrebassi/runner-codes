@@ -13,14 +13,15 @@ K3S_CD=/var/lib/rancher/k3s/agent/etc/containerd
 gen="$K3S_CD/config-v3.toml"
 [ -f "$gen" ] || gen="$K3S_CD/config.toml"
 grep -q 'config-v3.toml.d' "$gen" || { echo "o config do k3s não importa config-v3.toml.d/: k3s antigo? ($gen)" >&2; exit 1; }
-# O cabeçalho do plugin CRI muda entre versões do containerd: copia o do runc que o próprio k3s gerou.
-hdr=$(grep -E "\.containerd\.runtimes\.runc\][[:space:]]*$" "$gen" | head -1)
-[ -n "$hdr" ] || { echo "não achei o runtime runc em $gen" >&2; exit 1; }
+# shellcheck source=deploy/lib.sh
+source deploy/lib.sh
+# O cabeçalho da tabela do runtime sai da versão do config que o k3s gerou (rc_cri_table).
+hdr=$(rc_cri_table "$gen")
 install -d "$K3S_CD/config-v3.toml.d"
 cat >"$K3S_CD/config-v3.toml.d/rc.toml" <<TOML
 # Runtime do rc (microVM por pod): deploy/k3s/install.sh. Sem a tabela [options]: as do runc
 # (BinaryName, SystemdCgroup) não valem para este shim.
-${hdr/.runtimes.runc]/.runtimes.rc]}
+$hdr
   runtime_type = "$(printf 'io.containerd.rc.v2')"
   # As anotações runner.codes/* do pod (tamanho da VM) chegam à spec do sandbox.
   pod_annotations = ["runner.codes/*"]
@@ -29,5 +30,5 @@ systemctl restart k3s
 # Até 2 min para o apiserver voltar depois do restart.
 for _ in $(seq 60); do k3s kubectl get --raw /readyz >/dev/null 2>&1 && break; sleep 2; done
 k3s kubectl label node --all runner.codes/runtime=true --overwrite
-k3s kubectl apply -f deploy/k8s/runtimeclass.yaml
+rc_runtime_class | k3s kubectl apply -f -
 echo "runtime rc ligado ao k3s; prova: deploy/k3s/e2e.sh"

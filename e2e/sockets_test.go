@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// TestDockerSocketAndDiskVolume trava as duas peças do docs/docker-in-machine sem precisar do
+// TestDockerSocketAndDiskVolume trava as duas peças do Docker dentro da máquina sem precisar do
 // Docker (que é lento de instalar):
 //   - docker_socket: um servidor no /var/run/docker.sock do guest responde a quem conecta no
 //     docker.sock do diretório da máquina, no host;

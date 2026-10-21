@@ -113,4 +113,4 @@ task runbook
 ```
 
 Executa o `docs/runbook.md` de ponta a ponta e reprova se algum passo sair diferente do esperado. Na última rodada
-(20/10/2026, macOS 27), foram 116 conferências e 0 falhas.
+(21/10/2026, macOS 27), foram 126 conferências e 0 falhas.

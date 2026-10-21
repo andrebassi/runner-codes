@@ -81,7 +81,7 @@ task runbook
 ```
 
 Runs `docs/runbook.md` step by step and checks every expected result. Every new feature gets, in the same delivery, a
-section in the runbook and the step in `scripts/runbook.sh`. In the 10/20/2026 run: 116 checks, 0 failures.
+section in the runbook and the step in `scripts/runbook.sh`. In the 10/21/2026 run: 126 checks, 0 failures.
 
 ## task guides
 
@@ -91,7 +91,7 @@ task guides DIRS="pack teardown"
 ```
 
 Each folder in `examples/guides` has a `run.sh` that proves what the guide says in a real VM and exits with the number
-of failures. In the 10/20/2026 run: 12 folders, 215 checks, 0 failures. See [Examples and guides](/guides/examples).
+of failures. In the 10/21/2026 run: 9 folders, 175 checks, 0 failures. See [Examples and guides](/guides/examples).
 
 ## task gates
 

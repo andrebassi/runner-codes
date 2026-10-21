@@ -6,6 +6,8 @@
 # Uso (root, no nó): deploy/k8s/e2e.sh k3s   ou   deploy/k8s/e2e.sh microk8s
 set -u
 cd "$(dirname "$0")/../.."
+# shellcheck source=deploy/lib.sh
+source deploy/lib.sh
 # A distribuição escolhe o kubectl embutido dela (k3s kubectl / microk8s kubectl).
 dist=${1:-k3s}
 case "$dist" in k3s | microk8s) K=("$dist" kubectl) ;; *) echo "uso: $0 k3s|microk8s" >&2; exit 2 ;; esac
@@ -23,7 +25,7 @@ kc create namespace "$ns" >/dev/null
 trap 'kc delete namespace "$ns" --wait=false >/dev/null 2>&1' EXIT
 
 echo "== pod numa microVM"
-kc -n "$ns" apply -f deploy/k8s/example-pod.yaml >/dev/null
+rc_demo_pod | kc -n "$ns" apply -f - >/dev/null
 expect "Ready em até 120 s" timeout 130s "${K[@]}" -n "$ns" wait --for=condition=Ready pod/rc-hello --timeout=120s
 logs=$(kc -n "$ns" logs rc-hello)
 expect "logs com RC_K8S_OK" grep -q RC_K8S_OK <<<"$logs"
@@ -54,7 +56,9 @@ kc -n "$ns" exec rc-hello -- sh -c 'mkdir -p /srv && echo hello-from-rc >/srv/in
 expect "pod runc alcança pod rc ($podip)" sh -c "timeout 60s ${K[*]} -n $ns exec web -- wget -qO- -T 5 http://$podip:8081/ | grep -q hello-from-rc"
 kc -n "$ns" label pod rc-hello app=rc-hello >/dev/null
 kc -n "$ns" expose pod rc-hello --name rc-svc --port 80 --target-port 8081 >/dev/null
-expect "Service ClusterIP até o pod rc" sh -c "timeout 60s ${K[*]} -n $ns exec web -- wget -qO- -T 5 http://rc-svc.$ns.svc.cluster.local/ | grep -q hello-from-rc"
+# Até 30 s (15 x 2 s): o Service recém-criado só responde depois que o kube-proxy programa a regra. No k3s isso
+# passa de 1 s, e uma tentativa só reprovava sempre num cluster novo (21/10/2026), com o caminho funcionando.
+expect "Service ClusterIP até o pod rc" sh -c "for i in \$(seq 15); do timeout 60s ${K[*]} -n $ns exec web -- wget -qO- -T 5 http://rc-svc.$ns.svc.cluster.local/ 2>/dev/null | grep -q hello-from-rc && exit 0; sleep 2; done; exit 1"
 
 echo "== código de saída e dois containers"
 cat <<'YAML' | kc -n "$ns" apply -f - >/dev/null

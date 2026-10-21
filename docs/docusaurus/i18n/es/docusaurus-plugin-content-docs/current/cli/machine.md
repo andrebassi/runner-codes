@@ -169,7 +169,7 @@ tamaño de la ventana llegan al PTY del guest. Los enlaces en pantalla son clica
 | máquina detenida | se rechaza antes de abrir servidor o navegador |
 | puertos | cualquier puerto TCP que un programa abra en la máquina (en `0.0.0.0`, `::`, `127.0.0.1` o `::1`) se vuelve una pestaña en hasta 2 s y responde en el `127.0.0.1` del host, con el mismo número; si está ocupado en el host, en uno libre (la pestaña muestra `5432 → 51234`). Es TCP crudo por vsock: WebSocket, hot reload y rutas absolutas (el `/docs` de FastAPI) funcionan, y la máquina no necesita `--net`. Un servidor atado solo a la IP de `eth0` queda fuera. Mientras la pestaña exista, el número queda ocupado en el host: un `-p 3000` de otra máquina falla con `address already in use` |
 
-La guía [coding-agent](/guides/examples) abre Claude Code así. Con `IS_SANDBOX=1` en el entorno de la máquina,
+El [caso de uso de Claude Code](/guides/use-cases) abre el agente así. Con `IS_SANDBOX=1` en el entorno de la máquina,
 `--dangerously-skip-permissions` corre como root; sin él, Claude se niega (`cannot be used with root/sudo privileges`).
 
 ## Errores

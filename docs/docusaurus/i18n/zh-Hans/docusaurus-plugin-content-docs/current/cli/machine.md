@@ -167,7 +167,7 @@ runner.codes · agent │ claude │ shell │ eventos │ ● 3000
 | 已停止的机器 | 在打开服务器或浏览器之前就会被拒绝 |
 | 端口 | 程序在机器中打开的任何 TCP 端口（监听 `0.0.0.0`、`::`、`127.0.0.1` 或 `::1`）会在 2 秒内变成一个标签页，并在 host 的 `127.0.0.1` 上用相同端口号响应；该端口在 host 上被占用时改用空闲端口（标签页显示 `5432 → 51234`）。走的是 vsock 上的原始 TCP：WebSocket、热重载和绝对路径（FastAPI 的 `/docs`）都能用，机器也不需要 `--net`。只绑定在 `eth0` IP 上的服务器不在此列。标签页存在期间，该端口号在 host 上被占用：另一台机器的 `-p 3000` 会报 `address already in use` |
 
-[coding-agent](/guides/examples) 指南就是这样打开 Claude Code 的。机器环境中有 `IS_SANDBOX=1` 时，
+[Claude Code 用例](/guides/use-cases)就是这样打开 agent 的。机器环境中有 `IS_SANDBOX=1` 时，
 `--dangerously-skip-permissions` 可以以 root 运行；没有时 Claude 会拒绝（`cannot be used with root/sudo privileges`）。
 
 ## 错误 {#erros}

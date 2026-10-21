@@ -16,8 +16,8 @@ whatever was not tested is stated as not tested.
 | `task test` | 20 packages, all green (unit tests with `-race`) |
 | `task test:cov` | **95.2%** total, domain **100%**, guest **75%** (ratchet at 75), Python SDK **100%** in lines and branches |
 | `task test:e2e` | **42 of 42** tests green, in two consecutive runs |
-| `task runbook` | **116** checks, **0** failures |
-| `task guides` | **12** folders, **215** checks, **0** failures |
+| `task runbook` | **126** checks, **0** failures |
+| `task guides` | **9** folders, **175** checks, **0** failures |
 | `task test:targets` | darwin/arm64, linux/amd64 and linux/arm64 compile; windows/amd64 rejected with the reason |
 
 On Linux, Landlock + seccomp were tested with the process actually confined on Ubuntu 26.04, in a VM without KVM; a

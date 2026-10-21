@@ -55,8 +55,9 @@ Depois cada instalador liga o runtime ao containerd da distribuição:
 
 - **k3s** ([`k3s/install.sh`](k3s/install.sh)): o `config-v3.toml` que o k3s gera importa
   `config-v3.toml.d/*.toml`, então o runtime entra em `config-v3.toml.d/rc.toml`, sem tocar no template (onde moram
-  mirrors e auth de registry). O cabeçalho do plugin CRI é copiado do runtime `runc` que o próprio k3s gerou, porque
-  ele muda entre versões do containerd. Reinicia o k3s e espera o `/readyz`.
+  mirrors e auth de registry). O cabeçalho da tabela do runtime sai da `version` que o próprio
+  config declara (`rc_cri_table`, em [`lib.sh`](lib.sh)): o nome do plugin CRI muda entre as versões do formato.
+  Reinicia o k3s e espera o `/readyz`.
 - **microk8s** ([`microk8s/install.sh`](microk8s/install.sh)): acrescenta um bloco entre marcadores
   (`# rc:begin` … `# rc:end`) no fim do `containerd-template.toml` do snap; reexecutar troca o bloco em vez de
   duplicar. Reinicia o `microk8s.daemon-containerd` e espera o serviço voltar (veja
@@ -71,7 +72,7 @@ O bloco é o mesmo nos dois, só o cabeçalho muda:
 ```
 
 Sem a tabela `[options]`: as opções do runc (`BinaryName`, `SystemdCgroup`) não valem para este shim. Por fim o nó
-ganha o rótulo `runner.codes/runtime=true` e a [RuntimeClass `rc`](k8s/runtimeclass.yaml) é aplicada. Reexecutar é
+ganha o rótulo `runner.codes/runtime=true` e a RuntimeClass `rc` (`rc_runtime_class`, em [`lib.sh`](lib.sh)) é aplicada. Reexecutar é
 seguro; depois de um upgrade da distribuição, rodar de novo.
 
 ## Usar
@@ -92,7 +93,7 @@ spec:
       command: ["sh", "-c", "uname -sr; sleep 3600"]
 ```
 
-O mesmo está em [`k8s/example-pod.yaml`](k8s/example-pod.yaml). `kubectl logs rc-hello` mostra `Linux 6.12.91`, o
+O pod que o e2e usa sai de `rc_demo_pod`, em [`lib.sh`](lib.sh). `kubectl logs rc-hello` mostra `Linux 6.12.91`, o
 kernel da libkrunfw, e não o do nó. As anotações chegam ao shim porque o runtime declara `pod_annotations`.
 
 ## Como funciona
@@ -243,6 +244,6 @@ reconstrói `/opt/rc/pod.ext4` (a chave de cache inclui o hash do guest).
 | [`internal/guest/proc.go`](../internal/guest/proc.go) | `OpProc`: processo de container em chroot, com stdio, TTY e sinais |
 | [`internal/adapters/krun/vmm_net.go`](../internal/adapters/krun/vmm_net.go) | `startPodNet`: a rede do pod no processo vmm (`VMSpec.PodNetns`) |
 | [`deploy/install-node.sh`](install-node.sh), [`k3s/`](k3s/), [`microk8s/`](microk8s/) | instaladores |
-| [`deploy/k8s/`](k8s/) | RuntimeClass, pod de exemplo e o e2e |
+| [`deploy/lib.sh`](lib.sh), [`deploy/k8s/e2e.sh`](k8s/e2e.sh) | RuntimeClass, pod de prova e cabeçalho do runtime; o e2e |
 | [`scripts/k8s-node.sh`](../scripts/k8s-node.sh), [`k8s-e2e.sh`](../scripts/k8s-e2e.sh), [`k8s-defects.py`](../scripts/k8s-defects.py), [`do-kvm-probe.sh`](../scripts/do-kvm-probe.sh) | nós de teste, prova de ponta a ponta, defeitos plantados, medição de KVM |
 | [`docs/stories/8.1.kubernetes-runtime.md`](../docs/stories/8.1.kubernetes-runtime.md) | a story, com critérios de aceite e registro do desenvolvimento |

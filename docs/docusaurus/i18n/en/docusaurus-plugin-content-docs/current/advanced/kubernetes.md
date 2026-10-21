@@ -39,7 +39,7 @@ sudo deploy/microk8s/install.sh   # microk8s: block in containerd-template.toml,
 
 Both installers call `deploy/install-node.sh` (rc and libkrun in `/opt/rc`, the pod VM image,
 `/usr/local/bin/containerd-shim-rc-v2` and `/etc/rc/shim.json`), label the node `runner.codes/runtime=true` and apply
-`deploy/k8s/runtimeclass.yaml`. Re-running is safe; after a distribution upgrade, run it again.
+the `rc` RuntimeClass (`rc_runtime_class`, in `deploy/lib.sh`). Re-running is safe; after a distribution upgrade, run it again.
 
 ## Use
 

@@ -4,7 +4,7 @@
 // A sessão nasce com o comando, não com o navegador: o programa (o Claude Code, por exemplo) já roda enquanto a página
 // abre, e um F5 ou uma segunda aba recebem de novo os últimos bytes da tela em vez de começar no escuro.
 //
-// Segurança: é um shell na máquina, e no caso do guia coding-agent um agente sem confirmação de permissão. Por isso:
+// Segurança: é um shell na máquina, e, com o Claude Code em --dangerously-skip-permissions, um agente sem confirmação de permissão. Por isso:
 //   - escuta só em loopback (quem chama abre o listener em 127.0.0.1);
 //   - toda rota que lê ou escreve na sessão exige o token aleatório da URL (comparação em tempo constante);
 //   - o Host tem de ser de loopback: um domínio que resolve para 127.0.0.1 (DNS rebinding) recebe 403;

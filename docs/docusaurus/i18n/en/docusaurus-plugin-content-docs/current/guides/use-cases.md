@@ -3,7 +3,7 @@ title: 'Use cases'
 description: 'Claude Code in the browser inside a MicroVM, a code playground over the API, a local LLM on the GPU and a desktop in the browser'
 ---
 
-Each case has a guide in [`examples/`](https://github.com/andrebassi/runner-codes/tree/main/examples) that boots in a real VM and checks what it promises.
+Each case below was run in a real VM.
 
 ## Claude Code in the browser
 
@@ -11,7 +11,8 @@ An agent with no brakes, in a box. Claude Code runs inside a MicroVM with `--dan
 installs and executes without asking, because whatever goes wrong stays in the VM.
 
 ```bash
-rc machine create --name agent -f examples/guides/coding-agent/runner.code
+rc machine create --name agent --image node:22 --net -e IS_SANDBOX=1 \
+  --init "npm install -g @anthropic-ai/claude-code"
 rc machine start  --name agent
 rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 ```
@@ -107,9 +108,9 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/j
 
 llama.cpp with Vulkan inside the VM, talking to the host GPU through virtio-gpu (Venus → MoltenVK → Metal): 56.7
 tokens/s on the GPU versus 10.3 on the CPU (Qwen2.5 0.5B). No host directory is mounted unless you declare a volume.
-Guide: [`local-llm`](https://github.com/andrebassi/runner-codes/tree/main/examples/local-llm).
+Details in [GPU](/advanced/gpu).
 
 ## Desktop in the browser
 
-Weston on the browser screen, with keyboard and mouse, at `http://127.0.0.1:6080`: for testing a GUI app or letting an
-agent use a screen. Guide: [`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop); details in [Display in the browser](/cli/display).
+The browser screen (`--display`), with keyboard and mouse, at `http://127.0.0.1:6080`: for testing a GUI app or letting an
+agent use a screen. Details in [Display in the browser](/cli/display).

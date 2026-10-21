@@ -212,15 +212,6 @@ sleep 6
 expect "tecla do navegador chega ao guest (KEY_A desce e sobe)" sh -c "grep -q 'KEY_A), value 1' '$tmp/keys.txt' && grep -q 'KEY_A), value 0' '$tmp/keys.txt'"
 expect "stop" $rc machine stop --name "$name-disp"
 
-step "8h. Exemplos (examples/)"
-out=$($rc machine run -s examples/python-app/runner.code -- python3 --version 2>/dev/null)
-expect "python-app: python3 --version" grep -q '^Python 3\.12' <<<"$out"
-out=$($rc machine run -s examples/node-app/runner.code -- node -e 'console.log("ola", 1+1)' 2>/dev/null)
-expect "node-app: node -e" grep -q 'ola 2' <<<"$out"
-$rc machine run -d --name "$name-doom" -s examples/doom-web/runner.code >/dev/null 2>&1
-expect "doom-web: index.html servido do volume na porta 8080" sh -c "for i in 1 2 3 4 5 6 7 8 9 10; do curl -s --max-time 2 http://127.0.0.1:8080/ | grep -q 'DOOM' && exit 0; sleep 1; done; exit 1"
-$rc machine delete --name "$name-doom" -f >/dev/null
-
 step "8i. Branch e pausa"
 $rc machine create --name "$name-mom" --stack python >/dev/null && $rc machine start --name "$name-mom" >/dev/null
 $rc machine exec --name "$name-mom" -- sh -c 'echo antes > /root/marca'
@@ -451,8 +442,8 @@ step "8x. Runtime de Kubernetes (k3s e microk8s)"
 # K8S_NODE=k3s e microk8s, cada um com a distribuição instalada): pod numa microVM, exec, rede, Service, limpeza.
 arch=$(go env GOARCH)
 expect "shim containerd-shim-rc-v2 compilado para Linux" sh -c "file bin/containerd-shim-rc-v2-linux-$arch | grep -q 'ELF'"
-expect "instaladores k3s, microk8s e comum sem erro de sintaxe" sh -c "bash -n deploy/install-node.sh && bash -n deploy/k3s/install.sh && bash -n deploy/microk8s/install.sh && bash -n deploy/k8s/e2e.sh"
-expect "RuntimeClass rc com handler rc" grep -q '^handler: rc$' deploy/k8s/runtimeclass.yaml
+expect "instaladores k3s, microk8s e comum sem erro de sintaxe" sh -c "bash -n deploy/lib.sh && bash -n deploy/install-node.sh && bash -n deploy/k3s/install.sh && bash -n deploy/microk8s/install.sh && bash -n deploy/k8s/e2e.sh"
+expect "RuntimeClass rc com handler rc" bash -c "source deploy/lib.sh && rc_runtime_class | grep -q '^handler: rc$'"
 if [ "${RC_RUNBOOK_K8S:-0}" = 1 ]; then
   expect "e2e no k3s (0 falhas)" ./scripts/k8s-e2e.sh k3s
   expect "e2e no microk8s (0 falhas)" ./scripts/k8s-e2e.sh microk8s

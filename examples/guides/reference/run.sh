@@ -126,7 +126,11 @@ while True:
 	exposed="$("$RC" machine data-dir --name "$p-sk")/app.sock"
 	got=""
 	for _ in $(seq 1 40); do
-		got=$(python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b"ping"); print(s.recv(64).decode())' "$exposed" 2>/dev/null) && break
+		# Só a resposta encerra a espera: a ponte do rc aceita o connect antes de o servidor do guest
+		# escutar e fecha sem dados, e o python sai 0 com resposta vazia (medido em 21/10/2026: o laço
+		# parava na 1ª volta e o check reprovava com a ponte funcionando).
+		got=$(python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b"ping"); print(s.recv(64).decode())' "$exposed" 2>/dev/null)
+		[ -n "$got" ] && break
 		sleep 0.25
 	done
 	check "--expose-socket: o host fala com o servidor do guest" test "$got" = do-guest:ping

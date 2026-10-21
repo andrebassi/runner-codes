@@ -259,37 +259,24 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/
 ## 8g. 浏览器中的屏幕:显示、键盘和鼠标
 
 ```bash
-./bin/rc machine run -d --name desktop -s examples/desktop/runner.code
+./bin/rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+./bin/rc machine start --name tela
+./bin/rc machine exec --name tela -- sh -c 'apk add -q --no-cache libdrm-tests evtest; cat /sys/class/input/event*/device/name'
+./bin/rc machine exec --name tela -- sh -c 'c=$(modetest -M virtio_gpu -c | awk "/connected/ {print \$1; exit}"); (modetest -M virtio_gpu -s $c:1024x768 >/dev/null 2>&1 </dev/null &)'
 open http://localhost:6080
-./bin/rc machine stop --name desktop
+./bin/rc machine exec --name tela -- sh -c '(timeout 25 evtest /dev/input/event0 > /tmp/k.log 2>&1 </dev/null &)'
+# 点击页面并输入几个字母;然后:
+./bin/rc machine exec --name tela -- grep 'value 1' /tmp/k.log
+./bin/rc machine delete --name tela -f
 ```
 
 预期:
-- 页面上出现 Weston 桌面,带有 guest 的面板和时钟;
-- 点击面板上的图标会打开终端;
-- 在页面上输入的内容会到达终端,包括大写字母、符号和 Ctrl。
+- guest 列出 `runner.code keyboard` 和 `runner.code tablet`;
+- 页面实时显示 `modetest` 的彩条,分辨率 1024x768;
+- 在页面上按下的每个键都会出现在 guest 的 `evtest` 中(`KEY_R`、`KEY_C`……)。
 
-`task runbook` 无需人眼即可核对同一路径:
-- 一台带 `--display 1024x768` 的 alpine 机器;
-- `modetest` 点亮屏幕;
-- 1024x768 的画面到达查看器;
-- 通过 `POST /input` 发送的 `KEY_A` 出现在 guest 的 `evtest` 中。
-
-## 8h. 示例
-
-```bash
-./bin/rc machine run -s examples/python-app/runner.code -- python3 --version
-./bin/rc machine run -s examples/node-app/runner.code -- node -e 'console.log("ola", 1+1)'
-./bin/rc machine run -d --name doom -s examples/doom-web/runner.code && open http://localhost:8080
-```
-
-预期:
-- `Python 3.12.x`;
-- `ola 2`;
-- 浏览器中的 DOOM。
-
-其他示例以及每个示例测量的内容见 [`examples/README.md`](../examples/README.md)。
-`docker-in-vm` 有自己的核对脚本 `examples/docker-in-vm/check.sh`。
+`task runbook` 无需人眼即可核对同一路径:1024x768 的画面到达查看器,通过 `POST /input` 发送的 `KEY_A` 出现在
+`evtest` 中。
 
 ## 8i. Branch 与暂停
 
@@ -531,7 +518,7 @@ task guides DIRS=gpu-cuda      # uma pasta; sem DIRS, todas (cada uma liga as su
 - 没有 token 的 `/stream` 返回 403,非回环的 `Host`(DNS rebinding)也返回 403。
 - 标签页 `claude`(命令)、`shell`(第一次点击时打开的独立终端)、`eventos`,最后是每个端口一个标签页:程序在 VM 中启动的服务器(任意端口)会以 iframe 显示应用,并在 host 的 `127.0.0.1` 上响应。
 
-`coding-agent` 指南就用它在浏览器中打开 Claude Code:
+这样在浏览器中打开 Claude Code:
 `rc machine web-terminal --name agent -- claude --dangerously-skip-permissions`。
 
 ## 8w. 公共 playground (claude-in-chrome.runner.codes)

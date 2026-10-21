@@ -9,7 +9,8 @@ teclado y el mouse de la página vuelven a la VM. No hace falta un cliente VNC n
 ## En una pantalla
 
 ```bash
-rc machine run -d --name desktop -s examples/desktop/runner.code   # Weston, 1280x800
+rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+rc machine start  --name tela
 open http://localhost:6080
 rc machine create --name ui --image alpine:latest --gpu --display 1920x1080 --display-port 7000
 ```
@@ -68,9 +69,6 @@ En macOS, virtio-gpu con Venus (Vulkan) no atiende recursos 2D.
 | la pantalla | `gpu = true`; el kernel de libkrunfw ya trae `virtio_gpu` (DRM/KMS, sin fbdev: no hay `/dev/fb0`) |
 | teclado y mouse en un compositor | `udev` en ejecución (libinput enumera a través de él); en Alpine, `eudev` + `udevadm trigger` |
 | compositor sin logind | `seatd` |
-
-El ejemplo [`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop/runner.code) arma esto en
-el `cmd`.
 
 ## Seguridad
 

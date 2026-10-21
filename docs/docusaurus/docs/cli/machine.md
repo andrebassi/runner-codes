@@ -168,7 +168,7 @@ chegam ao PTY do guest. Links na tela são clicáveis.
 | máquina parada | recusada antes de abrir servidor ou navegador |
 | portas | qualquer porta TCP que um programa abrir na máquina (em `0.0.0.0`, `::`, `127.0.0.1` ou `::1`) vira, em até 2 s, uma aba e responde no `127.0.0.1` do host, no mesmo número; se ele estiver ocupado no host, numa porta livre (a aba mostra `5432 → 51234`). É TCP cru pelo vsock: WebSocket, hot reload e caminho absoluto (o `/docs` do FastAPI) funcionam, e a máquina não precisa de `--net`. Servidor preso só ao IP da `eth0` fica de fora. Enquanto a aba existir, o número fica ocupado no host: um `-p 3000` de outra máquina recusa com `address already in use` |
 
-O guia [coding-agent](/guides/examples) abre o Claude Code assim. Com `IS_SANDBOX=1` no ambiente da máquina, o
+O [caso de uso do Claude Code](/guides/use-cases) abre o agente assim. Com `IS_SANDBOX=1` no ambiente da máquina, o
 `--dangerously-skip-permissions` roda como root; sem ele, o Claude recusa (`cannot be used with root/sudo privileges`).
 
 ## Erros

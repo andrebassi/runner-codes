@@ -9,7 +9,8 @@ description: '在浏览器中提供机器的显示：virtio-gpu framebuffer，�
 ## 一屏看懂 {#em-uma-tela}
 
 ```bash
-rc machine run -d --name desktop -s examples/desktop/runner.code   # Weston，1280x800
+rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+rc machine start  --name tela
 open http://localhost:6080
 rc machine create --name ui --image alpine:latest --gpu --display 1920x1080 --display-port 7000
 ```
@@ -66,9 +67,6 @@ guest                                    机器的 `rc vmm` 进程（host）
 | 屏幕 | `gpu = true`；libkrunfw 的内核已自带 `virtio_gpu`（DRM/KMS，没有 fbdev：不存在 `/dev/fb0`） |
 | 合成器中的键盘和鼠标 | 运行 `udev`（libinput 通过它枚举设备）；在 Alpine 上为 `eudev` + `udevadm trigger` |
 | 没有 logind 的合成器 | `seatd` |
-
-示例 [`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop/runner.code) 在
-`cmd` 中完成了这些设置。
 
 ## 安全 {#segurança}
 

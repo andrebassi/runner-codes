@@ -52,7 +52,8 @@ Detalhes em [docs/architecture.md](docs/architecture.md); requisitos em [docs/pr
 
 Para testar à mão, passo a passo: [docs/runbook.md](docs/runbook.md) (`task runbook` executa e confere a mesma sequência).
 
-Referência para agentes (cada comando, flag, rota e erro, o que ainda não existe e o plano de evolução):
+Para agentes de IA: [AGENTS.md](AGENTS.md) (uso do `rc` e como trabalhar neste repositório) e a referência completa
+(cada comando, flag, rota e erro, o que ainda não existe e o plano de evolução):
 [docs/docusaurus/docs/agents.md](docs/docusaurus/docs/agents.md). GPU de ponta a ponta:
 [docs/docusaurus/docs/advanced/gpu.md](docs/docusaurus/docs/advanced/gpu.md). Kubernetes (k3s e microk8s):
 [deploy/README.md](deploy/README.md).
@@ -126,7 +127,7 @@ CNI deu ao pod: `kubectl exec`, logs, Service e DNS do cluster funcionam como nu
 
 ```bash
 sudo deploy/k3s/install.sh            # ou deploy/microk8s/install.sh (nó Linux com /dev/kvm)
-kubectl apply -f deploy/k8s/example-pod.yaml && kubectl logs rc-hello   # kernel: Linux 6.12.91
+(source deploy/lib.sh && rc_demo_pod) | kubectl apply -f - && kubectl logs rc-hello   # kernel: Linux 6.12.91
 ```
 
 Provado com `deploy/k8s/e2e.sh` (19 checagens) no k3s 1.36 e no microk8s 1.35, duas rodadas seguidas, em droplets

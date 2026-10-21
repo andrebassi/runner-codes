@@ -3,7 +3,7 @@ title: 'Casos de uso'
 description: 'Claude Code en el navegador dentro de una MicroVM, playground de código por la API, LLM local en la GPU y escritorio en el navegador'
 ---
 
-Cada caso tiene una guía en [`examples/`](https://github.com/andrebassi/runner-codes/tree/main/examples) que arranca en una VM real y comprueba lo que promete.
+Cada caso de abajo se ejecutó en una VM real.
 
 ## Claude Code en el navegador
 
@@ -11,7 +11,8 @@ Un agente sin frenos, dentro de una caja. Claude Code corre dentro de una MicroV
 edita, instala y ejecuta sin pedir confirmación, porque lo que salga mal se queda en la VM.
 
 ```bash
-rc machine create --name agent -f examples/guides/coding-agent/runner.code
+rc machine create --name agent --image node:22 --net -e IS_SANDBOX=1 \
+  --init "npm install -g @anthropic-ai/claude-code"
 rc machine start  --name agent
 rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 ```
@@ -107,9 +108,9 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/j
 
 llama.cpp con Vulkan dentro de la VM, hablando con la GPU del host por virtio-gpu (Venus → MoltenVK → Metal): 56,7
 tokens/s en la GPU frente a 10,3 en la CPU (Qwen2.5 0.5B). No se monta ningún directorio del host salvo que declares un
-volumen. Guía: [`local-llm`](https://github.com/andrebassi/runner-codes/tree/main/examples/local-llm).
+volumen. Detalles en [GPU](/advanced/gpu).
 
 ## Escritorio en el navegador
 
-Weston en la pantalla del navegador, con teclado y ratón, en `http://127.0.0.1:6080`: para probar una app gráfica o
-dejar que un agente use una pantalla. Guía: [`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop); detalles en [Pantalla en el navegador](/cli/display).
+La pantalla del navegador (`--display`), con teclado y ratón, en `http://127.0.0.1:6080`: para probar una app gráfica o
+dejar que un agente use una pantalla. Detalles en [Pantalla en el navegador](/cli/display).

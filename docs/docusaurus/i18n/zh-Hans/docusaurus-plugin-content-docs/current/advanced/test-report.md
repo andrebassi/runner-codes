@@ -15,8 +15,8 @@ stack 的执行）来自 **2026/10/19**，在同一台 host 上。本页每个�
 | `task test` | 20 个包，全部通过（单元测试带 `-race`） |
 | `task test:cov` | 总计 **95,2%**，domain **100%**，guest **75%**（棘轮为 75），Python SDK 行与分支均为 **100%** |
 | `task test:e2e` | **42/42** 测试通过，连续两轮 |
-| `task runbook` | **116** 项检查，**0** 失败 |
-| `task guides` | **12** 个目录，**215** 项检查，**0** 失败 |
+| `task runbook` | **126** 项检查，**0** 失败 |
+| `task guides` | **9** 个目录，**175** 项检查，**0** 失败 |
 | `task test:targets` | darwin/arm64、linux/amd64 和 linux/arm64 可编译；windows/amd64 被拒绝并说明原因 |
 
 在 Linux 上，Landlock + seccomp 已在 Ubuntu 26.04 中对真实受约束进程完成测试，该 VM 没有 KVM；Linux 上完整的

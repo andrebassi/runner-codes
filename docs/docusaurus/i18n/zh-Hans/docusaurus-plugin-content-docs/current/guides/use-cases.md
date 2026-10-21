@@ -3,7 +3,7 @@ title: '使用场景'
 description: '在浏览器中运行于 MicroVM 内的 Claude Code、通过 API 的代码 playground、GPU 上的本地 LLM，以及浏览器中的桌面'
 ---
 
-每个场景在 [`examples/`](https://github.com/andrebassi/runner-codes/tree/main/examples) 里都有一份指南，会在真实的 VM 中启动并验证它所承诺的内容。
+下面每个场景都在真实的 VM 中运行过。
 
 ## 浏览器中的 Claude Code {#claude-code-no-navegador}
 
@@ -11,7 +11,8 @@ description: '在浏览器中运行于 MicroVM 内的 Claude Code、通过 API �
 安装和执行，无需确认，因为出了问题也只留在 VM 里。
 
 ```bash
-rc machine create --name agent -f examples/guides/coding-agent/runner.code
+rc machine create --name agent --image node:22 --net -e IS_SANDBOX=1 \
+  --init "npm install -g @anthropic-ai/claude-code"
 rc machine start  --name agent
 rc machine web-terminal --name agent -- claude --dangerously-skip-permissions
 ```
@@ -105,9 +106,9 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/run -H 'content-type: application/j
 ## GPU 上的本地 LLM {#llm-local-na-gpu}
 
 VM 内的 llama.cpp 使用 Vulkan，通过 virtio-gpu（Venus → MoltenVK → Metal）调用 host 的 GPU：GPU 上 56.7 tokens/s，
-CPU 上 10.3（Qwen2.5 0.5B）。除非你声明了卷，否则不会挂载任何 host 目录。指南：[`local-llm`](https://github.com/andrebassi/runner-codes/tree/main/examples/local-llm)。
+CPU 上 10.3（Qwen2.5 0.5B）。除非你声明了卷，否则不会挂载任何 host 目录。详见 [GPU](/advanced/gpu)。
 
 ## 浏览器中的桌面 {#desktop-no-navegador}
 
-浏览器里的 Weston 桌面，支持键盘和鼠标，地址 `http://127.0.0.1:6080`：适合测试图形应用，或让 agent 使用一块屏幕。
-指南：[`desktop`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop)；详见[浏览器中的显示](/cli/display)。
+浏览器里的屏幕（`--display`），支持键盘和鼠标，地址 `http://127.0.0.1:6080`：适合测试图形应用，或让 agent 使用一块屏幕。
+详见[浏览器中的显示](/cli/display)。

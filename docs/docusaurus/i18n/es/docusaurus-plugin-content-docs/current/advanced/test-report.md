@@ -16,8 +16,8 @@ no se probó se indica como no probado.
 | `task test` | 20 paquetes, todos en verde (unitarias con `-race`) |
 | `task test:cov` | **95,2%** total, dominio **100%**, guest **75%** (catraca en 75), SDK de Python **100%** en línea y branch |
 | `task test:e2e` | **42 de 42** pruebas en verde, en dos ejecuciones seguidas |
-| `task runbook` | **116** comprobaciones, **0** fallos |
-| `task guides` | **12** carpetas, **215** comprobaciones, **0** fallos |
+| `task runbook` | **126** comprobaciones, **0** fallos |
+| `task guides` | **9** carpetas, **175** comprobaciones, **0** fallos |
 | `task test:targets` | darwin/arm64, linux/amd64 y linux/arm64 compilan; windows/amd64 rechazado con el motivo |
 
 En Linux, Landlock + seccomp se probaron con el proceso realmente confinado en Ubuntu 26.04, en una VM sin KVM; una
