@@ -132,5 +132,5 @@ open http://127.0.0.1:6080
 A partir de ahí, tres formas de enviar trabajo al Claude de esa VM, todas por el SDK de Go
 ([`examples/desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent)):
 `claude -p` por exec (respuesta en JSON), la tarea escrita en su ventana, o escrita por la API de pantalla. Y, con el
-[`rc mcp`](/cli/screen#para-un-agente-rc-mcp), el Claude Code de tu máquina opera la pantalla de la VM como opera un
+[`rc mcp`](/cli/screen#para-um-agente-rc-mcp), el Claude Code de tu máquina opera la pantalla de la VM como opera un
 navegador: captura, clic, teclado.

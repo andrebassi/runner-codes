@@ -99,7 +99,7 @@ c.screen_actions("desk", {"action": "scroll", "x": 640, "y": 400, "direction": "
                  {"action": "wait", "ms": 300}, {"action": "key", "keys": "ctrl+c"})
 ```
 
-## Para un agente: `rc mcp`
+## Para un agente: `rc mcp` {#para-um-agente-rc-mcp}
 
 `rc mcp` es un servidor [MCP](https://modelcontextprotocol.io) por stdio, vinculado a una máquina. Registrado en Claude
 Code, le da al agente las herramientas para operar la VM:
