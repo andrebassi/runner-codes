@@ -38,6 +38,8 @@ type MachineService interface {
 	Resume(name string) error
 	Sync(ctx context.Context, name string) error
 	Branch(ctx context.Context, from, to string) (domain.Machine, error)
+	// DisplayPort é a porta do visualizador da tela de uma máquina ligada (rotas /screen).
+	DisplayPort(name string) (uint16, error)
 }
 
 // CreateMachineRequest é o corpo de POST /api/v1/machines.
@@ -197,6 +199,8 @@ func (s *Server) machineRoutes(v1 *gin.RouterGroup) {
 	g.POST("/:name/resume", s.resumeMachine)
 	g.POST("/:name/sync", s.syncMachine)
 	g.POST("/:name/branch", s.branchMachine)
+	g.GET("/:name/screen", s.screenshot)
+	g.POST("/:name/screen/actions", s.screenActions)
 }
 
 // machineError responde o erro com o status HTTP do código estável.

@@ -104,6 +104,8 @@ type Display struct {
 	Width  uint32 `json:"width"`
 	Height uint32 `json:"height"`
 	Port   uint16 `json:"port"`
+	// Title é o nome na barra da página do visualizador (e da aba); vazio usa o padrão do visualizador.
+	Title string `json:"title,omitempty"`
 }
 
 // DefaultDisplayPort é a porta padrão do visualizador (a do noVNC, conhecida de quem já

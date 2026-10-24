@@ -59,6 +59,7 @@ func machineCmd() *cobra.Command {
 	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineStatusCmd(), machineListCmd(),
 		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineWebTerminalCmd(), machineCopyCmd(), machineLogsCmd(), machineUpdateCmd(),
 		machineRunCmd(), machineBranchCmd(), machinePauseCmd(), machineResumeCmd(), machineSyncCmd(), machineDataDirCmd(),
+		machineScreenCmd(),
 		imagePruneCmd("prune"))
 	return c
 }

@@ -5,18 +5,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tela da máquina</title>
+<title>{{title}}</title>
 <style>
   :root { --bg: #111; --fg: #ddd; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
   #bar { padding: 6px 12px; display: flex; gap: 16px; align-items: center; }
+  #bar { height: 22px; box-sizing: content-box; }
   #wrap { display: flex; justify-content: center; }
   canvas { max-width: 100vw; max-height: calc(100vh - 34px); outline: none; cursor: default; }
+  /* Seta e clique do agente (automação pela CLI, API, SDK ou MCP), desenhados por cima da tela. */
+  /* 28 px, contorno branco fino e sombra leve: legível sobre fundo claro ou escuro sem pesar. A margem negativa põe a
+     ponta da seta (x=4, y=2 no viewBox de 24) exatamente no ponto da ação. */
+  #ptr { position: fixed; width: 28px; height: 28px; margin: -2.3px 0 0 -5.8px; pointer-events: none; opacity: 0;
+         z-index: 10; filter: drop-shadow(0 0 2px rgba(232,120,79,.95)) drop-shadow(0 0 7px rgba(232,120,79,.5));
+         transition: left 1.1s cubic-bezier(.25,.1,.25,1), top 1.1s cubic-bezier(.25,.1,.25,1), opacity .3s; }
+  #ptr.on { opacity: 1; }
+  .ripple { position: fixed; width: 36px; height: 36px; margin: -18px 0 0 -18px; border: 3px solid #d97757;
+            border-radius: 50%; pointer-events: none; z-index: 9; animation: rip .7s ease-out forwards; }
+  @keyframes rip { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+  #typing { position: fixed; transform: translate(16px, 18px); background: #d97757; color: #fff; font-size: 12px;
+            padding: 2px 8px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+  #typing.on { opacity: 1; }
 </style>
 </head>
 <body>
-<div id="bar"><b>runner.code</b><span id="st">conectando…</span><span id="fps"></span></div>
+<div id="bar"><b>{{title}}</b><span id="st">conectando…</span><span id="fps"></span></div>
 <div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+<svg id="ptr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2 L5 20 L9.5 15.8 L12.4 22 L15.2 20.8 L12.3 14.6 L18.5 14.6 Z" fill="#fff5ef" stroke="#e8784f" stroke-width="1.6" stroke-linejoin="round"/></svg>
+<div id="typing">digitando…</div>
 <script>
 // Tipos e códigos do evdev (linux/input-event-codes.h).
 const EV_SYN = 0, EV_KEY = 1, EV_ABS = 3, SYN_REPORT = 0, ABS_X = 0, ABS_Y = 1;
@@ -106,6 +122,57 @@ c.addEventListener("keyup", e => {
   if (!isMod(e.code)) syncMods(e);
   e.preventDefault();
 });
+// Tela que acompanha a janela: pede ao guest a resolução da área livre da página (abaixo da barra),
+// ao abrir e 400 ms depois de a janela parar de mudar (um pedido por arrasto, não um por pixel).
+// Sem suporte do lado do rc (404) ou do guest (sem o gancho, nada muda), a tela fica no tamanho do boot.
+let fitTimer = 0, fitOff = false, fitLast = "";
+function fit() {
+  if (fitOff) return;
+  const w = Math.floor(window.innerWidth), h = Math.floor(window.innerHeight - document.getElementById("bar").offsetHeight);
+  if (w + "x" + h === fitLast) return;
+  fitLast = w + "x" + h;
+  fetch("resize", { method: "POST", body: JSON.stringify({ width: w, height: h }) })
+    .then(r => { if (r.status === 404) fitOff = true; }).catch(() => {});
+}
+window.addEventListener("resize", () => { clearTimeout(fitTimer); fitTimer = setTimeout(fit, 400); });
+fit();
+// Seta do agente: a automação (CLI, API, SDK, MCP) marca os eventos dela, e o visualizador os repassa aqui por
+// long-poll. A página leva a seta até o ponto, pulsa um círculo no clique e mostra "digitando…" nas teclas; a seta
+// fica 30 s depois da última ação (dá tempo de quem assiste achar onde o agente está) e então some. Na primeira resposta só lê a posição: o que aconteceu antes de a página abrir não
+// é animado de novo.
+const ptr = document.getElementById("ptr"), typing = document.getElementById("typing");
+let pseq = 0, pfirst = true, hideTimer = 0, typingTimer = 0;
+function place(el, e) {
+  const r = c.getBoundingClientRect();
+  el.style.left = (r.left + e.x * r.width) + "px";
+  el.style.top = (r.top + e.y * r.height) + "px";
+}
+function showPointer(e) {
+  place(ptr, e); ptr.classList.add("on");
+  clearTimeout(hideTimer); hideTimer = setTimeout(() => ptr.classList.remove("on"), 30000);
+  if (e.kind === "click") {
+    const rp = document.createElement("div"); rp.className = "ripple"; place(rp, e);
+    document.body.appendChild(rp); setTimeout(() => rp.remove(), 800);
+  }
+  if (e.kind === "key") {
+    place(typing, e); typing.classList.add("on");
+    clearTimeout(typingTimer); typingTimer = setTimeout(() => typing.classList.remove("on"), 1200);
+  }
+}
+async function pointerLoop() {
+  for (;;) {
+    try {
+      const r = await fetch("pointer?after=" + pseq, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      if (!pfirst) for (const e of j.events || []) showPointer(e);
+      pfirst = false; pseq = j.seq;
+    } catch (e) {
+      await new Promise(ok => setTimeout(ok, 1000));
+    }
+  }
+}
+pointerLoop();
 loop();
 </script>
 </body>

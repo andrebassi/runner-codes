@@ -116,6 +116,8 @@ type VMDisplay struct {
 	Width  uint32 `json:"width"`
 	Height uint32 `json:"height"`
 	Listen string `json:"listen"`
+	// Title é o nome na barra da página do visualizador; vazio usa o padrão.
+	Title string `json:"title,omitempty"`
 }
 
 // VMMount é um device virtio-fs: Tag identifica no guest, HostPath é o diretório exposto e

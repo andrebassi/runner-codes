@@ -28,10 +28,18 @@ type fakeMachines struct {
 	tail     int
 	source   string
 	created  domain.Machine
+	// displayName é a máquina pedida no último DisplayPort.
+	displayName string
 }
 
 // Pause devolve o erro configurado.
 func (f *fakeMachines) Pause(string) error { return f.err }
+
+// DisplayPort devolve a porta 6080 (ou o erro configurado) e guarda o nome pedido.
+func (f *fakeMachines) DisplayPort(name string) (uint16, error) {
+	f.displayName = name
+	return 6080, f.err
+}
 
 // Resume devolve o erro configurado.
 func (f *fakeMachines) Resume(string) error { return f.err }

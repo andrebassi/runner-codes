@@ -14,7 +14,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-__all__ = ["Client", "RunnerCodeError", "Job", "JobResult", "ExecResult"]
+__all__ = ["Client", "RunnerCodeError", "Job", "JobResult", "ExecResult", "Screenshot"]
 
 # Teto do cliente HTTP: acima dos 300 s que um job pode durar, para o servidor responder
 # o timeout do job antes de o cliente desistir.
@@ -64,6 +64,37 @@ class ExecResult:
     stderr: str
     timed_out: bool
     execution_time: int
+
+
+@dataclass
+class Screenshot:
+    """Tela de uma máquina: o quadro em JPEG e o tamanho em pixels (as coordenadas das ações são nesses pixels)."""
+
+    jpeg: bytes
+    width: int
+    height: int
+
+
+def _jpeg_size(data: bytes) -> tuple:
+    """Lê largura e altura do marcador SOF de um JPEG (a biblioteca padrão não decodifica JPEG).
+
+    Percorre os segmentos do cabeçalho até um SOFn (0xC0..0xCF, menos DHT 0xC4, JPG 0xC8 e DAC 0xCC), onde a altura
+    e a largura ficam em 16 bits big-endian logo depois da precisão.
+    """
+    if data[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG")
+    i = 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            raise ValueError("broken JPEG segment")
+        marker = data[i + 1]
+        length = int.from_bytes(data[i + 2:i + 4], "big")
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            if i + 9 > len(data):
+                break
+            return int.from_bytes(data[i + 7:i + 9], "big"), int.from_bytes(data[i + 5:i + 7], "big")
+        i += 2 + length
+    raise ValueError("JPEG without a frame header")
 
 
 def _decode_error(status: int, body: bytes) -> RunnerCodeError:
@@ -192,3 +223,30 @@ class Client:
     def branch(self, source: str, name: str) -> dict:
         """Cria name como cópia copy-on-write do disco de source."""
         return self._json("POST", self._machine(source, "/branch"), {"name": name})
+
+    def screenshot(self, name: str) -> Screenshot:
+        """Captura a tela de uma máquina ligada com display."""
+        data = self._do("GET", self._machine(name, "/screen"), raw=True)
+        try:
+            width, height = _jpeg_size(data)
+        except ValueError as e:
+            raise RunnerCodeError(200, "", f"screen is not an image: {e}") from None
+        return Screenshot(jpeg=data, width=width, height=height)
+
+    def screen_actions(self, name: str, *actions: dict) -> None:
+        """Executa ações na tela, em ordem: {"action": "click", "x": 10, "y": 20}, {"action": "type", "text": "ls"},
+        {"action": "key", "keys": "Return"}... (click, move, drag, type, key, scroll, wait). Ação inválida recusa
+        a lista inteira (RunnerCodeError 400) antes de qualquer evento chegar à máquina."""
+        self._json("POST", self._machine(name, "/screen/actions"), {"actions": list(actions)})
+
+    def click(self, name: str, x: int, y: int, button: str = "left", double: bool = False) -> None:
+        """Clica em (x, y)."""
+        self.screen_actions(name, _compact({"action": "click", "x": x, "y": y, "button": button, "double": double}))
+
+    def type(self, name: str, text: str) -> None:
+        """Digita o texto na janela em foco (teclado US, só ASCII)."""
+        self.screen_actions(name, {"action": "type", "text": text})
+
+    def key(self, name: str, keys: str) -> None:
+        """Aperta uma tecla ou atalho: "Return", "ctrl+c", "alt+F4"."""
+        self.screen_actions(name, {"action": "key", "keys": keys})

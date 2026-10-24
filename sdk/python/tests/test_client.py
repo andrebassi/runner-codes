@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from runner_code import Client, Job, RunnerCodeError
+from runner_code import Client, Job, RunnerCodeError, _jpeg_size
 
 MACHINE = {"name": "dev", "stack": "python", "state": "running", "pid": 42,
            "network": {"name": "lab", "address": "100.98.0.10"}}
@@ -35,6 +35,14 @@ class FakeAPI(BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         """Silencia o log de acesso do http.server na saída dos testes."""
+
+
+def jpeg(width: int, height: int, marker: int = 0xC0) -> bytes:
+    """Cabeçalho mínimo de um JPEG: SOI, um APP0 (para o SOF não ser o primeiro segmento), uma DHT e o SOF."""
+    app0 = b"\xff\xe0" + (16).to_bytes(2, "big") + b"JFIF\x00" + bytes(9)
+    dht = b"\xff\xc4" + (3).to_bytes(2, "big") + b"\x00"
+    sof = bytes([0xFF, marker]) + (17).to_bytes(2, "big") + b"\x08" + height.to_bytes(2, "big") + width.to_bytes(2, "big") + bytes(10)
+    return b"\xff\xd8" + app0 + dht + sof
 
 
 class SDKTest(unittest.TestCase):
@@ -145,6 +153,47 @@ class SDKTest(unittest.TestCase):
         with self.assertRaises(RunnerCodeError) as e:
             self.client.pause("nope")
         self.assertEqual(e.exception.status, 418)
+
+    def test_screen(self):
+        """screenshot lê a imagem e o tamanho; click, type e key mandam a ação certa; erro da API e corpo que não é
+        imagem viram RunnerCodeError."""
+        ROUTES.update({
+            "GET /api/v1/machines/desk/screen": (200, jpeg(1512, 794)),
+            "POST /api/v1/machines/desk/screen/actions": (204, b""),
+            "GET /api/v1/machines/broken/screen": (200, b"not an image"),
+            "POST /api/v1/machines/a%2Fb/screen/actions": (400, {"code": "CONFIG_ERROR", "error": {"code": "CONFIG_ERROR", "message": "bad"}}),
+        })
+        c = self.client
+        shot = c.screenshot("desk")
+        self.assertEqual((shot.width, shot.height), (1512, 794))
+        self.assertTrue(shot.jpeg.startswith(b"\xff\xd8"))
+        c.click("desk", 10, 20)
+        c.click("desk", 5, 6, button="right", double=True)
+        c.type("desk", "ls")
+        c.key("desk", "Return")
+        bodies = [json.loads(call[2])["actions"] for call in CALLS[1:5]]
+        self.assertEqual(bodies, [
+            [{"action": "click", "x": 10, "y": 20, "button": "left"}],
+            [{"action": "click", "x": 5, "y": 6, "button": "right", "double": True}],
+            [{"action": "type", "text": "ls"}], [{"action": "key", "keys": "Return"}],
+        ])
+        c.screen_actions("desk", {"action": "wait", "ms": 10}, {"action": "key", "keys": "a"})
+        self.assertEqual(len(json.loads(self.last()[2])["actions"]), 2)
+        with self.assertRaises(RunnerCodeError) as e:
+            c.screen_actions("a/b", {"action": "fly"})
+        self.assertEqual((e.exception.status, e.exception.code), (400, "CONFIG_ERROR"))
+        with self.assertRaises(RunnerCodeError) as e:
+            c.screenshot("broken")
+        self.assertIn("not an image", e.exception.message)
+
+    def test_jpeg_size(self):
+        """O tamanho sai do SOF depois de pular segmentos; cabeçalho torto, sem SOF ou cortado no SOF é ValueError."""
+        self.assertEqual(_jpeg_size(jpeg(640, 480)), (640, 480))
+        self.assertEqual(_jpeg_size(jpeg(7, 9, marker=0xC2)), (7, 9))  # JPEG progressivo (SOF2)
+        for bad in (b"PNG...", b"\xff\xd8\x00\x00\x00\x00", b"\xff\xd8\xff\xc4\x00\x02",
+                    b"\xff\xd8\xff\xc0\x00\x11\x08\x00"):
+            with self.assertRaises(ValueError):
+                _jpeg_size(bad)
 
     def test_transport_failure(self):
         """Servidor fora do ar não é erro da API: chega como OSError (URLError)."""

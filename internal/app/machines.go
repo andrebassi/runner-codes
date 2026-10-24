@@ -437,7 +437,7 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 	}
 	if st.Display != nil {
 		spec.Display = &ports.VMDisplay{Width: st.Display.Width, Height: st.Display.Height,
-			Listen: fmt.Sprintf("127.0.0.1:%d", st.Display.Port)}
+			Listen: fmt.Sprintf("127.0.0.1:%d", st.Display.Port), Title: st.Display.Title}
 	}
 	if st.GPU {
 		spec.GPU, spec.GPUVRAMMiB = true, l.GPUVRAMMiB

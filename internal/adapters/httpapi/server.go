@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runner.codes/internal/adapters/screenctl"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,9 @@ type Server struct {
 	// AllowNested aceita nested no create de máquina. Desligado, quem alcança a porta não
 	// entrega as extensões de virtualização do host a um guest (rc serve --allow-nested-virt).
 	AllowNested bool
+	// ScreenFor monta o controle da tela pela porta do visualizador; nil usa o visualizador no 127.0.0.1 do host
+	// (os testes apontam para um visualizador falso).
+	ScreenFor func(port uint16) screenctl.Screen
 }
 
 // FileRequest é um arquivo no corpo da requisição.

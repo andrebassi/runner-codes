@@ -34,6 +34,7 @@ type machineFlags struct {
 	diskFrom string
 	display  string
 	dport    uint16
+	dtitle   string
 	// exposeSock e mountSock são as pontes de socket (--expose-socket, --mount-socket).
 	exposeSock []string
 	mountSock  []string
@@ -80,6 +81,7 @@ func addMachineFlags(f *pflag.FlagSet, defName string) *machineFlags {
 	f.StringVar(&mc.Network.Name, "network", "", "named network: machines in it reach each other by IP and <name>.<network>.internal")
 	f.StringVar(&mf.display, "display", "", "screen WIDTHxHEIGHT, viewed in the browser (needs --gpu)")
 	f.Uint16Var(&mf.dport, "display-port", domain.DefaultDisplayPort, "port of the screen viewer on 127.0.0.1")
+	f.StringVar(&mf.dtitle, "display-title", "", "name shown on the screen viewer's bar and tab (default runner.codes)")
 	f.StringArrayVar(&mf.exposeSock, "expose-socket", nil, "GUEST[:HOST]: a unix socket the workload listens on, reachable on the host at HOST (default: its name in rc machine data-dir) (repeatable)")
 	f.StringArrayVar(&mf.mountSock, "mount-socket", nil, "HOST:GUEST: a host unix socket, reachable in the machine at GUEST (repeatable)")
 	f.BoolVar(&mc.Nested, "nested", false, "give the guest the host's virtualization extensions (/dev/kvm inside; needs nested KVM on Linux or an M3+ Mac on macOS 15+; slow)")
@@ -162,8 +164,10 @@ func (mf *machineFlags) build(flags *pflag.FlagSet, workload []string) (domain.M
 		if err != nil {
 			return mc, "", err
 		}
-		d.Port = mf.dport
+		d.Port, d.Title = mf.dport, mf.dtitle
 		mc.Display = &d
+	} else if mf.dtitle != "" {
+		return mc, "", errors.New("--display-title needs --display")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {

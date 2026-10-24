@@ -48,9 +48,10 @@ type file struct {
 	NetBackend  string                  `toml:"net_backend"`
 	Ports       []string                `toml:"ports"`
 	Network     *network                `toml:"network"`
-	// Display e DisplayPort são do rc.
-	Display     string  `toml:"display"`
-	DisplayPort *uint16 `toml:"display_port"`
+	// Display, DisplayPort e DisplayTitle são do rc.
+	Display      string  `toml:"display"`
+	DisplayPort  *uint16 `toml:"display_port"`
+	DisplayTitle string  `toml:"display_title"`
 	Dev         *dev    `toml:"dev"`
 }
 
@@ -197,7 +198,10 @@ func Parse(data []byte) (domain.Machine, error) {
 		if f.DisplayPort != nil {
 			d.Port = *f.DisplayPort
 		}
+		d.Title = f.DisplayTitle
 		m.Display = &d
+	} else if f.DisplayTitle != "" {
+		return domain.Machine{}, errors.New("runner.code: display_title needs display")
 	}
 	names := make([]string, 0, len(f.Secrets))
 	for n := range f.Secrets {
@@ -391,7 +395,13 @@ func Override(base, flags domain.Machine, set func(key string) bool) domain.Mach
 		be.BlockPrivate = fe.BlockPrivate
 	}
 	if flags.Display != nil {
-		base.Display = flags.Display
+		// --display sem --display-title mantém o título do arquivo: trocar o tamanho pela linha de
+		// comando não deve apagar o nome que o runner.code deu à tela.
+		d := *flags.Display
+		if d.Title == "" && base.Display != nil {
+			d.Title = base.Display.Title
+		}
+		base.Display = &d
 	}
 	if set("volume") {
 		// Como o env: a flag acrescenta ao que o arquivo declarou.

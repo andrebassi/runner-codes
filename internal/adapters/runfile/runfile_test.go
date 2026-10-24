@@ -260,6 +260,34 @@ func TestDisplayKeys(t *testing.T) {
 	}
 }
 
+// TestDisplayTitle: display_title vai para a tela; sem display é recusado (não haveria página); --display
+// sem título mantém o do arquivo, e com título troca.
+func TestDisplayTitle(t *testing.T) {
+	m, err := Parse([]byte("stack = \"python\"\ndisplay = \"800x600\"\ndisplay_title = \"superbot.computer\"\n"))
+	if err != nil || m.Display.Title != "superbot.computer" {
+		t.Fatalf("%+v %v", m.Display, err)
+	}
+	if _, err := Parse([]byte("stack = \"python\"\ndisplay_title = \"x\"\n")); err == nil || !strings.Contains(err.Error(), "display_title needs display") {
+		t.Fatalf("title sem tela: %v", err)
+	}
+	none := func(string) bool { return false }
+	over := Override(m, domain.Machine{Display: &domain.Display{Width: 1024, Height: 768}}, none)
+	if over.Display.Title != "superbot.computer" || over.Display.Width != 1024 {
+		t.Fatalf("--display apagou o título: %+v", over.Display)
+	}
+	over = Override(m, domain.Machine{Display: &domain.Display{Width: 1024, Height: 768, Title: "outro"}}, none)
+	if over.Display.Title != "outro" {
+		t.Fatalf("--display-title não venceu: %+v", over.Display)
+	}
+	if m.Display.Title != "superbot.computer" {
+		t.Fatal("o Override mexeu na tela de quem chamou")
+	}
+	over = Override(domain.Machine{}, domain.Machine{Display: &domain.Display{Width: 1024, Height: 768}}, none)
+	if over.Display.Title != "" {
+		t.Fatalf("sem arquivo, título vazio: %+v", over.Display)
+	}
+}
+
 // TestMounts: volumes do topo e do [dev] somam; o Load resolve "./" contra a pasta do
 // arquivo e "~" contra o HOME; o que já é absoluto fica como está.
 func TestMounts(t *testing.T) {
