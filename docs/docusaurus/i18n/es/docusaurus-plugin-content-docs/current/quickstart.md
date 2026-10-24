@@ -114,4 +114,4 @@ task runbook
 ```
 
 Ejecuta `docs/runbook.md` de punta a punta y falla si algún paso sale distinto de lo esperado. En la última ronda
-(21/10/2026, macOS 27), hubo 126 verificaciones y 0 fallas.
+(24/10/2026, macOS 27), hubo 146 verificaciones y 0 fallas.

@@ -47,4 +47,4 @@ The folder's `lib.sh` gathers what every `run.sh` uses: the `rc machine ls` form
 
 Besides the guides, [`docs/runbook.md`](https://github.com/andrebassi/runner-codes/blob/main/docs/runbook.md) is the
 manual test sequence, step by step, with the expected result of each step; `task runbook` runs the same steps and
-fails if any of them comes out different (126 checks, 0 failures on 10/21/2026).
+fails if any of them comes out different (146 checks, 0 failures on 10/24/2026).

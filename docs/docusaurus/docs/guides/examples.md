@@ -47,4 +47,4 @@ O `lib.sh` da pasta reúne o que todo `run.sh` usa: o formato do `rc machine ls`
 
 Além dos guias, o [`docs/runbook.md`](https://github.com/andrebassi/runner-codes/blob/main/docs/runbook.md) é a
 sequência de teste à mão, passo a passo, com o resultado esperado de cada um; `task runbook` executa os mesmos passos
-e reprova se algum sair diferente (126 conferências, 0 falhas em 21/10/2026).
+e reprova se algum sair diferente (146 conferências, 0 falhas em 24/10/2026).

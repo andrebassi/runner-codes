@@ -81,7 +81,7 @@ task runbook
 ```
 
 Runs `docs/runbook.md` step by step and checks every expected result. Every new feature gets, in the same delivery, a
-section in the runbook and the step in `scripts/runbook.sh`. In the 10/21/2026 run: 126 checks, 0 failures.
+section in the runbook and the step in `scripts/runbook.sh`. In the 10/24/2026 run: 146 checks, 0 failures.
 
 ## task guides
 

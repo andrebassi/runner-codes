@@ -81,7 +81,7 @@ task runbook
 ```
 
 Ejecuta el `docs/runbook.md` paso a paso y verifica cada resultado esperado. Todo recurso nuevo gana, en la misma entrega,
-una sección en el runbook y el paso en `scripts/runbook.sh`. En la ejecución del 21/10/2026: 126 comprobaciones, 0 fallos.
+una sección en el runbook y el paso en `scripts/runbook.sh`. En la ejecución del 24/10/2026: 146 comprobaciones, 0 fallos.
 
 ## task guides
 

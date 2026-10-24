@@ -113,4 +113,4 @@ task runbook
 ```
 
 Runs `docs/runbook.md` end to end and fails if any step differs from what is expected. In the latest run
-(2026-10-21, macOS 27), there were 126 checks and 0 failures.
+(2026-10-24, macOS 27), there were 146 checks and 0 failures.

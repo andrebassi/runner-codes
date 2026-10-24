@@ -80,7 +80,7 @@ task runbook
 ```
 
 逐步执行 `docs/runbook.md`，并检查每个预期结果。每个新功能都要在同一次交付中，在 runbook 中新增一节，并在
-`scripts/runbook.sh` 中加上对应步骤。在 2026/10/21 的轮次中：126 项检查，0 失败。
+`scripts/runbook.sh` 中加上对应步骤。在 2026/10/24 的轮次中：146 项检查，0 失败。
 
 ## task guides {#task-guides}
 

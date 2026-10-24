@@ -81,7 +81,7 @@ task runbook
 ```
 
 Executa o `docs/runbook.md` passo a passo e confere cada resultado esperado. Todo recurso novo ganha, na mesma entrega,
-uma seção no runbook e o passo no `scripts/runbook.sh`. Na rodada de 21/10/2026: 126 conferências, 0 falhas.
+uma seção no runbook e o passo no `scripts/runbook.sh`. Na rodada de 24/10/2026: 146 conferências, 0 falhas.
 
 ## task guides
 

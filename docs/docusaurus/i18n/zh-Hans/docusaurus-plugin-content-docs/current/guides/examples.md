@@ -45,4 +45,4 @@ task guides DIRS="pack teardown"   # 部分目录
 ## Runbook {#runbook}
 
 除了指南，[`docs/runbook.md`](https://github.com/andrebassi/runner-codes/blob/main/docs/runbook.md) 是手工测试的
-步骤序列，逐步给出每一步的预期结果；`task runbook` 执行相同的步骤，任何一步结果不同就判定失败（2026/10/21：126 项检查，0 失败）。
+步骤序列，逐步给出每一步的预期结果；`task runbook` 执行相同的步骤，任何一步结果不同就判定失败（2026/10/24：146 项检查，0 失败）。

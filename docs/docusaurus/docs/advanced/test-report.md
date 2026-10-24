@@ -16,7 +16,7 @@ não foi testado está dito como não testado.
 | `task test` | 20 pacotes, todos verdes (unidade com `-race`) |
 | `task test:cov` | **95,2%** total, domínio **100%**, guest **75%** (catraca em 75), SDK Python **100%** em linha e branch |
 | `task test:e2e` | **42 de 42** testes verdes, em duas rodadas seguidas |
-| `task runbook` | **126** conferências, **0** falhas |
+| `task runbook` | **146** conferências, **0** falhas |
 | `task guides` | **9** pastas, **175** conferências, **0** falhas |
 | `task test:targets` | darwin/arm64, linux/amd64 e linux/arm64 compilam; windows/amd64 recusado com o motivo |
 

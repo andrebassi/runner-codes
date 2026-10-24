@@ -47,4 +47,4 @@ El `lib.sh` de la carpeta reúne lo que usa todo `run.sh`: el formato de `rc mac
 
 Además de las guías, el [`docs/runbook.md`](https://github.com/andrebassi/runner-codes/blob/main/docs/runbook.md) es la
 secuencia de prueba manual, paso a paso, con el resultado esperado de cada uno; `task runbook` ejecuta los mismos pasos
-y falla si alguno sale distinto (126 comprobaciones, 0 fallos el 21/10/2026).
+y falla si alguno sale distinto (146 comprobaciones, 0 fallos el 24/10/2026).
