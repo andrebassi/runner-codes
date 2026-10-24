@@ -48,7 +48,7 @@ Instala o pacote `runner_code`, sem dependência nenhuma. Sem instalar, de um cl
 
 Um job efêmero: o código roda numa microVM nova, sem rede, que é destruída no fim.
 
-```go
+```go title="Go"
 package main
 
 import (
@@ -69,7 +69,7 @@ func main() {
 }
 ```
 
-```python
+```python title="Python"
 from runner_code import Client, Job
 
 c = Client("http://127.0.0.1:8080")
@@ -93,7 +93,7 @@ PYTHONPATH=sdk/python python3 examples/sdk-python-recipes/main.py http://127.0.0
 `status: "success"` quer dizer só que a API executou o pedido. Quem diz se o programa deu certo é `exception` (vazio
 quando deu) e o `stderr`.
 
-```go
+```go title="Go"
 code := "import sys\nprint(sum(range(10)))\nprint('aviso', file=sys.stderr)"
 r, err := c.Execute(ctx, client.Job{Language: "python", Code: code, Timeout: 10})
 if err != nil {
@@ -106,7 +106,7 @@ fmt.Printf("stdout=%s stderr=%s tempo=%dms\n",
 	strings.TrimSpace(r.Stdout), strings.TrimSpace(r.Stderr), r.ExecutionTime)
 ```
 
-```python
+```python title="Python"
 code = "import sys\nprint(sum(range(10)))\nprint('aviso', file=sys.stderr)"
 r = c.execute(Job(language="python", code=code, timeout=10))
 if r.exception:
@@ -120,7 +120,7 @@ Saída: `stdout=45 stderr=aviso tempo=58ms` (o tempo varia; com o pool cheio fic
 
 O primeiro arquivo é o ponto de entrada; os outros ficam no mesmo diretório e podem ser importados.
 
-```go
+```go title="Go"
 r, err := c.Execute(ctx, client.Job{
 	Language: "python",
 	Files: []client.File{
@@ -131,7 +131,7 @@ r, err := c.Execute(ctx, client.Job{
 })
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(
     language="python",
     files=[
@@ -149,12 +149,12 @@ Saída: `42`.
 Passou do `Timeout` (segundos), a VM inteira morre. O resultado chega normal, com `exception: "Timeout"`, e não como
 erro do SDK.
 
-```go
+```go title="Go"
 r, _ := c.Execute(ctx, client.Job{Language: "python", Code: "while True: pass", Timeout: 2})
 fmt.Println(r.Exception) // Timeout
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(language="python", code="while True: pass", timeout=2))
 print(r.exception)  # Timeout
 ```
@@ -164,12 +164,12 @@ print(r.exception)  # Timeout
 Em linguagem compilada (C, C++, Rust, Java, Kotlin...), a falha de compilação vem com `exception: "Compilation failed"`
 e a mensagem do compilador no `stderr`.
 
-```go
+```go title="Go"
 r, _ := c.Execute(ctx, client.Job{Language: "c", Code: "int main(void) { return x; }"})
 fmt.Println(r.Exception, r.Stderr != "") // Compilation failed true
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(language="c", code="int main(void) { return x; }"))
 print(r.exception, bool(r.stderr))  # Compilation failed True
 ```
@@ -182,7 +182,7 @@ com `exception` vazio.
 Uma máquina fica de pé entre um comando e outro. Aqui a saída para a internet está liberada só para `pypi.org`: o mesmo
 programa consegue falar com ele e é recusado no `example.com`.
 
-```go
+```go title="Go"
 name := "minha-maquina"
 _, err := c.CreateMachine(ctx, client.MachineSpec{
 	Name:   name,
@@ -205,7 +205,7 @@ if err == nil && out.ExitCode != 0 {
 data, _ := c.ReadFile(ctx, name, "/work/saida.txt")
 ```
 
-```python
+```python title="Python"
 name = "minha-maquina"
 c.create_machine(name, stack="python", net=True, egress={"allow_hosts": ["pypi.org"]})
 try:
@@ -230,7 +230,7 @@ máquina **não** vira erro do SDK.
 Copia uma máquina com o disco dela. A mãe é pausada antes, para o disco estar consistente; a filha nasce com o que a mãe
 tinha gravado e segue independente.
 
-```go
+```go title="Go"
 c.WriteFile(ctx, "mae", "/root/estado.txt", []byte("feito antes do branch"), 0o644)
 c.Pause(ctx, "mae")
 c.Branch(ctx, "mae", "filha")
@@ -238,7 +238,7 @@ c.Start(ctx, "filha")
 data, _ := c.ReadFile(ctx, "filha", "/root/estado.txt")
 ```
 
-```python
+```python title="Python"
 c.write_file("mae", "/root/estado.txt", b"feito antes do branch")
 c.pause("mae")
 c.branch("mae", "filha")
@@ -252,7 +252,7 @@ Saída: `feito antes do branch`.
 
 A recusa da API chega tipada, com o status HTTP e um código estável. Compare pelo código, nunca pelo texto da mensagem.
 
-```go
+```go title="Go"
 _, err := c.Machine(ctx, "nao-existe")
 var apiErr *client.Error
 if errors.As(err, &apiErr) && apiErr.Code == "NOT_FOUND" {
@@ -260,7 +260,7 @@ if errors.As(err, &apiErr) && apiErr.Code == "NOT_FOUND" {
 }
 ```
 
-```python
+```python title="Python"
 try:
     c.machine("nao-existe")
 except RunnerCodeError as e:

@@ -45,7 +45,7 @@ pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=
 
 一个一次性 job：代码在一台全新的 microVM 中运行，没有网络，结束后即被销毁。
 
-```go
+```go title="Go"
 package main
 
 import (
@@ -66,7 +66,7 @@ func main() {
 }
 ```
 
-```python
+```python title="Python"
 from runner_code import Client, Job
 
 c = Client("http://127.0.0.1:8080")
@@ -88,7 +88,7 @@ PYTHONPATH=sdk/python python3 examples/sdk-python-recipes/main.py http://127.0.0
 
 `status: "success"` 只表示 API 执行了这个请求。程序是否成功要看 `exception`（成功时为空）和 `stderr`。
 
-```go
+```go title="Go"
 code := "import sys\nprint(sum(range(10)))\nprint('aviso', file=sys.stderr)"
 r, err := c.Execute(ctx, client.Job{Language: "python", Code: code, Timeout: 10})
 if err != nil {
@@ -101,7 +101,7 @@ fmt.Printf("stdout=%s stderr=%s tempo=%dms\n",
 	strings.TrimSpace(r.Stdout), strings.TrimSpace(r.Stderr), r.ExecutionTime)
 ```
 
-```python
+```python title="Python"
 code = "import sys\nprint(sum(range(10)))\nprint('aviso', file=sys.stderr)"
 r = c.execute(Job(language="python", code=code, timeout=10))
 if r.exception:
@@ -115,7 +115,7 @@ print(f"stdout={r.stdout.strip()} stderr={r.stderr.strip()} tempo={r.execution_t
 
 第一个文件是入口；其他文件位于同一目录，可以被导入。
 
-```go
+```go title="Go"
 r, err := c.Execute(ctx, client.Job{
 	Language: "python",
 	Files: []client.File{
@@ -126,7 +126,7 @@ r, err := c.Execute(ctx, client.Job{
 })
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(
     language="python",
     files=[
@@ -143,12 +143,12 @@ r = c.execute(Job(
 
 超过 `Timeout`（秒）后，整台 VM 都会被终止。结果照常返回，带有 `exception: "Timeout"`，而不是作为 SDK 错误。
 
-```go
+```go title="Go"
 r, _ := c.Execute(ctx, client.Job{Language: "python", Code: "while True: pass", Timeout: 2})
 fmt.Println(r.Exception) // Timeout
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(language="python", code="while True: pass", timeout=2))
 print(r.exception)  # Timeout
 ```
@@ -158,12 +158,12 @@ print(r.exception)  # Timeout
 在编译型语言（C、C++、Rust、Java、Kotlin...）中，编译失败会返回 `exception: "Compilation failed"`，编译器的消息在
 `stderr` 中。
 
-```go
+```go title="Go"
 r, _ := c.Execute(ctx, client.Job{Language: "c", Code: "int main(void) { return x; }"})
 fmt.Println(r.Exception, r.Stderr != "") // Compilation failed true
 ```
 
-```python
+```python title="Python"
 r = c.execute(Job(language="c", code="int main(void) { return x; }"))
 print(r.exception, bool(r.stderr))  # Compilation failed True
 ```
@@ -175,7 +175,7 @@ print(r.exception, bool(r.stderr))  # Compilation failed True
 machine 在一条命令与下一条命令之间保持运行。这里对外网的访问只允许 `pypi.org`：同一个程序可以访问它，访问
 `example.com` 则被拒绝。
 
-```go
+```go title="Go"
 name := "minha-maquina"
 _, err := c.CreateMachine(ctx, client.MachineSpec{
 	Name:   name,
@@ -198,7 +198,7 @@ if err == nil && out.ExitCode != 0 {
 data, _ := c.ReadFile(ctx, name, "/work/saida.txt")
 ```
 
-```python
+```python title="Python"
 name = "minha-maquina"
 c.create_machine(name, stack="python", net=True, egress={"allow_hosts": ["pypi.org"]})
 try:
@@ -222,7 +222,7 @@ finally:
 连同磁盘复制一台 machine。父 machine 会先被暂停，以保证磁盘一致；子 machine 带着父 machine 已写入的内容诞生，之后
 各自独立运行。
 
-```go
+```go title="Go"
 c.WriteFile(ctx, "mae", "/root/estado.txt", []byte("feito antes do branch"), 0o644)
 c.Pause(ctx, "mae")
 c.Branch(ctx, "mae", "filha")
@@ -230,7 +230,7 @@ c.Start(ctx, "filha")
 data, _ := c.ReadFile(ctx, "filha", "/root/estado.txt")
 ```
 
-```python
+```python title="Python"
 c.write_file("mae", "/root/estado.txt", b"feito antes do branch")
 c.pause("mae")
 c.branch("mae", "filha")
@@ -244,7 +244,7 @@ print(c.read_file("filha", "/root/estado.txt").decode())
 
 API 的拒绝以有类型的形式返回，包含 HTTP 状态码和一个稳定的错误码。请按错误码比较，永远不要按消息文本比较。
 
-```go
+```go title="Go"
 _, err := c.Machine(ctx, "nao-existe")
 var apiErr *client.Error
 if errors.As(err, &apiErr) && apiErr.Code == "NOT_FOUND" {
@@ -252,7 +252,7 @@ if errors.As(err, &apiErr) && apiErr.Code == "NOT_FOUND" {
 }
 ```
 
-```python
+```python title="Python"
 try:
     c.machine("nao-existe")
 except RunnerCodeError as e:
