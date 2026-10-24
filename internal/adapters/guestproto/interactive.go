@@ -8,8 +8,8 @@ import (
 	"net"
 	"sync"
 
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // eot é o Ctrl+D: quando a entrada do host acaba (stdin por pipe), vai para o terminal do

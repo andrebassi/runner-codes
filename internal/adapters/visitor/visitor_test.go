@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/ports"
 )
 
 // TestRules: o DNS do Fly é liberado ANTES do bloqueio da rede privada, e todo bloqueio é só de abertura (SYN) ou UDP

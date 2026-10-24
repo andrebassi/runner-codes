@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // exitAfter é um PTY falso que escreve msg e sai com code quando lê qualquer coisa.

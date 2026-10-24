@@ -28,7 +28,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // guestStack é uma segunda pilha gVisor no papel do kernel do guest, do outro lado do

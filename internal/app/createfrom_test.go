@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // TestCreateFrom: o disco dado (o de um pack de máquina) vira o modelo do clone, no create e

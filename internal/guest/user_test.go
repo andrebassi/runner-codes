@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // usersFixture aponta passwd e group para arquivos de teste.

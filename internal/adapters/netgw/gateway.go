@@ -30,7 +30,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // Endereços do enlace guest↔gateway: um /30 em 100.96.0.0/10 (CGNAT),

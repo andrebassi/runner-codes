@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // controlSocket devolve um caminho curto: socket Unix no macOS tem teto de 104 bytes.

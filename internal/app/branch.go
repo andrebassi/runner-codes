@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // StatePaused é a máquina ligada com as vCPUs congeladas (machine pause).

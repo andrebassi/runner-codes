@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/credca"
-	"runner.code/internal/domain"
+	"runner.codes/internal/credca"
+	"runner.codes/internal/domain"
 )
 
 // Placeholders das bindings de teste (o formato que o create emite).

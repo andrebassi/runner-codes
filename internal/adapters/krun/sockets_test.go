@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // TestSocketBridges: quem conecta no socket do host fala com o socket do guest (o dial

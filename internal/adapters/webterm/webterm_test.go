@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 const tok = "segredo123"

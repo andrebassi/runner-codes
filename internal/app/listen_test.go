@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // TestListeningPortsAndDial: com a máquina parada, os dois recusam; ligada, a porta em LISTEN do guest aparece e o

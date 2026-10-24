@@ -16,7 +16,7 @@ import (
 	gicmp "gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/waiter"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // ping manda um echo do guest a dst pela pilha dele e diz se a resposta voltou em wait.

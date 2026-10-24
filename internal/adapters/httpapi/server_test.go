@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // runner falso: guarda os jobs e devolve o que respond decidir.

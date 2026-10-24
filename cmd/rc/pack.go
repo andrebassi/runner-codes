@@ -15,9 +15,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
-	"runner.code/internal/pack"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/pack"
 )
 
 // packRef é a referência de imagem de uma máquina que veio de um pack: o BuildImage a

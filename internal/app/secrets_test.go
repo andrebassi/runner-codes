@@ -6,13 +6,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 	"strings"
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // TestSSHAgentAtStart: com ssh_agent, a spec leva o SSH_AUTH_SOCK de quem dá o start, o guest

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/protocol"
-	"runner.code/internal/s3fs"
+	"runner.codes/internal/protocol"
+	"runner.codes/internal/s3fs"
 )
 
 // fakeMount registra o que foi montado e quantas vezes foi desmontado.

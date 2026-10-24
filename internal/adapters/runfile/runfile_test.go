@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // full é um runner.code com tudo o que é suportado, inclusive o perfil [dev].

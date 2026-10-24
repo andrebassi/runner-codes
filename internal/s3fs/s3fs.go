@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"runner.code/internal/objectstore"
+	"runner.codes/internal/objectstore"
 )
 
 // Remote é o que o FS usa do bucket (o *objectstore.Store, ou um falso nos testes).

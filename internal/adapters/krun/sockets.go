@@ -7,8 +7,8 @@ import (
 	"os"
 	"sync"
 
-	"runner.code/internal/adapters/guestproto"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/ports"
 )
 
 // dialUnix abre a conexão até o socket do guest; trocado nos testes (sem guest de verdade).

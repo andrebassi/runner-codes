@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // ErrPlaygroundFull é a recusa quando o teto de máquinas de visitante ligadas ao mesmo tempo já foi atingido.

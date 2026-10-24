@@ -22,8 +22,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
 )
 
 // fakeVM executa o comportamento escolhido na hora do Start e guarda o código.

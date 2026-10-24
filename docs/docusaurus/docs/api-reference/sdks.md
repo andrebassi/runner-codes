@@ -10,7 +10,7 @@ Eles cobrem o job efêmero e o ciclo de vida inteiro das máquinas.
 
 | SDK | Onde | Dependências | Cobertura (linha / branch) |
 |-----|------|--------------|----------------------------|
-| Go | `runner.code/pkg/client` | nenhuma | 100% (statement; Go não mede branch) |
+| Go | `runner.codes/pkg/client` | nenhuma | 100% (statement; Go não mede branch) |
 | Python 3.9+ | `sdk/python/runner_code` | nenhuma | 100% / 100% |
 
 **Node fica de fora.** Pela regra do projeto, código novo não nasce em JavaScript/TypeScript fora do navegador. Quem
@@ -19,7 +19,18 @@ e cada corpo.
 
 ## Go
 
+Num projeto seu, fora deste repositório:
+
+```bash
+go get runner.codes/pkg/client@latest
+```
+
+O `runner.codes` responde ao `go get` apontando para o repositório no GitHub, então não há clone nem `replace`. O pacote
+importa só a biblioteca padrão; o `go.mod` do módulo pede Go 1.27.2, e um toolchain mais antigo baixa esse sozinho.
+
 ```go
+import "runner.codes/pkg/client"
+
 c := client.New("http://127.0.0.1:8080")
 ctx := context.Background()
 

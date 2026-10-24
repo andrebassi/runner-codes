@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // syncBuf é um buffer seguro entre a goroutine de cópia e o teste.

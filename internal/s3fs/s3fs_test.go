@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/objectstore"
+	"runner.codes/internal/objectstore"
 )
 
 // memBucket é um bucket em memória; fail[op] faz a operação falhar (EIO no FS).

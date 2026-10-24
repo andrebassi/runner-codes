@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // syncBuffer é um bytes.Buffer seguro para o teste ler enquanto o servidor escreve a URL.

@@ -15,10 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 
-	"runner.code/internal/adapters/runfile"
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/runfile"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // MachineService é o que as rotas de máquina usam; o app.Machines implementa.

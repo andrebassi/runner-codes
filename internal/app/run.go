@@ -8,9 +8,9 @@ import (
 	"io"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // RunRequest é um `machine run`: a máquina declarada (flags e/ou runner.code), o comando

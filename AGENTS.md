@@ -178,7 +178,7 @@ A API **não tem autenticação**: escuta em `127.0.0.1` por padrão.
 
 ## Trabalhar neste repositório
 
-- **Módulo Go `runner.code`**, hexagonal: `internal/domain` (regras puras) ← `internal/app` → `internal/ports` ←
+- **Módulo Go `runner.codes`**, hexagonal: `internal/domain` (regras puras) ← `internal/app` → `internal/ports` ←
   adapters (`krun`, `guestproto`, `oci`, `catalog`, `httpapi`...). `cmd/rc/main.go` só liga as peças.
 - **Dois binários, nunca juntar**: `cmd/rc` (host, link dinâmico por causa do purego) e `cmd/runner-guest` (estático,
   roda dentro da VM). O `scripts/build.sh` reprova se o guest sair dinâmico.

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
 )
 
 // fakeMachines responde conforme err (se houver) e grava o que recebeu.

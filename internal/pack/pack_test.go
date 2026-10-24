@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // sparseFile cria um arquivo de size bytes com dado só em alguns pontos (o resto é buraco).

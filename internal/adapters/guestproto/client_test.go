@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // fakeGuest escuta num socket Unix e responde conforme handle; devolve o caminho.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // procEnv é o PATH mínimo dos testes: o processo do container só vê o Env da spec.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // fakeDialGuest serve um socket Unix que responde ao OpDial com o status dado e, no

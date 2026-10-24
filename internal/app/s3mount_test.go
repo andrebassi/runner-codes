@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // TestDiskVolumesAndDockerSocket: volume de disco vira bind de /workspace/.disk/<caminho> no

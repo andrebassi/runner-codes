@@ -7,7 +7,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // fakeAPI registra cada chamada e devolve erro na chamada nomeada em failOn.

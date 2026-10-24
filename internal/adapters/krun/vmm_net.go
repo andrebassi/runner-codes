@@ -10,13 +10,13 @@ import (
 	"strings"
 	"syscall"
 
-	"runner.code/internal/adapters/guestproto"
-	"runner.code/internal/adapters/netgw"
-	"runner.code/internal/adapters/podnet"
-	"runner.code/internal/credca"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/adapters/netgw"
+	"runner.codes/internal/adapters/podnet"
+	"runner.codes/internal/credca"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // guestMAC é o MAC da eth0 do guest, o mesmo que o gateway espera do outro lado.

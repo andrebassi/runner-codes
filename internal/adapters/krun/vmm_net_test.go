@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/adapters/netgw"
-	"runner.code/internal/credca"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/netgw"
+	"runner.codes/internal/credca"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // shortDir devolve um diretório curto: socket Unix no macOS tem teto de 104 bytes no

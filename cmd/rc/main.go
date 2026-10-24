@@ -22,15 +22,15 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"runner.code/internal/adapters/catalog"
-	"runner.code/internal/adapters/guestproto"
-	"runner.code/internal/adapters/httpapi"
-	"runner.code/internal/adapters/krun"
-	"runner.code/internal/adapters/oci"
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/catalog"
+	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/adapters/httpapi"
+	"runner.codes/internal/adapters/krun"
+	"runner.codes/internal/adapters/oci"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // Version é preenchida no release por -ldflags "-X main.Version=<tag>".

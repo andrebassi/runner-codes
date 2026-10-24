@@ -17,15 +17,15 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"runner.code/internal/adapters/guestproto"
-	"runner.code/internal/adapters/hostfs"
-	"runner.code/internal/adapters/machinestore"
-	"runner.code/internal/adapters/netgw"
-	"runner.code/internal/app"
-	"runner.code/internal/credca"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/adapters/hostfs"
+	"runner.codes/internal/adapters/machinestore"
+	"runner.codes/internal/adapters/netgw"
+	"runner.codes/internal/app"
+	"runner.codes/internal/credca"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // newMachines monta o serviço de máquinas persistentes sobre o cache do host.

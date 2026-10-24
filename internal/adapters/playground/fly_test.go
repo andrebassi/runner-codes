@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/adapters/flymachines"
-	"runner.code/internal/domain"
+	"runner.codes/internal/adapters/flymachines"
+	"runner.codes/internal/domain"
 )
 
 // fakeFly é a API de Machines em memória: guarda as máquinas e as chamadas, e falha na operação pedida.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // DialPort abre uma conexão TCP até 127.0.0.1:port dentro do guest, pelo vsock: manda o

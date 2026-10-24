@@ -1,4 +1,4 @@
-module runner.code
+module runner.codes
 
 go 1.27.2
 

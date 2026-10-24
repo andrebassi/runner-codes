@@ -9,7 +9,7 @@ import (
 
 	"github.com/ebitengine/purego"
 
-	"runner.code/internal/adapters/screen"
+	"runner.codes/internal/adapters/screen"
 )
 
 // Constantes de libkrun_display.h.

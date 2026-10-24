@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"sync"
 
-	"runner.code/internal/adapters/webterm"
+	"runner.codes/internal/adapters/webterm"
 )
 
 // HubFactory abre o hub de terminal de uma máquina (sessão principal, aba shell, portas) com o token dado.

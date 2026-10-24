@@ -15,9 +15,9 @@ import (
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 
-	"runner.code/internal/guest"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/guest"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // vmProc é o processo vmm falso: só registra o Kill.

@@ -6,9 +6,9 @@ import (
 	"time"
 	"unsafe"
 
-	"runner.code/internal/adapters/screen"
-	"runner.code/internal/adapters/viewer"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/screen"
+	"runner.codes/internal/adapters/viewer"
+	"runner.codes/internal/ports"
 )
 
 // TestDisplayBackend: o ciclo que a libkrun faz (configure, alloc, o guest escreve, present)

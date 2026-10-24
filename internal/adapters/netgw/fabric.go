@@ -15,7 +15,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // Fabric liga o gateway a uma rede nomeada. Dir guarda, por máquina ligada, o socket

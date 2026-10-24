@@ -10,7 +10,7 @@ library. They cover the ephemeral job and the full machine lifecycle.
 
 | SDK | Where | Dependencies | Coverage (line / branch) |
 |-----|-------|--------------|--------------------------|
-| Go | `runner.code/pkg/client` | none | 100% (statement; Go does not measure branches) |
+| Go | `runner.codes/pkg/client` | none | 100% (statement; Go does not measure branches) |
 | Python 3.9+ | `sdk/python/runner_code` | none | 100% / 100% |
 
 **Node is left out.** By project rule, new code is not written in JavaScript/TypeScript outside the browser. Node users
@@ -19,7 +19,18 @@ and every body.
 
 ## Go
 
+In your own project, outside this repository:
+
+```bash
+go get runner.codes/pkg/client@latest
+```
+
+`runner.codes` answers `go get` by pointing to the GitHub repository, so there is no clone and no `replace`. The package
+imports only the standard library; the module's `go.mod` asks for Go 1.27.2, and an older toolchain downloads it on its own.
+
 ```go
+import "runner.codes/pkg/client"
+
 c := client.New("http://127.0.0.1:8080")
 ctx := context.Background()
 

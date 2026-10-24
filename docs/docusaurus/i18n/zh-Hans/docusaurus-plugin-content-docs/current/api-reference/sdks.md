@@ -10,7 +10,7 @@ title: Go 与 Python SDK
 
 | SDK | 位置 | 依赖 | 覆盖率（行 / 分支） |
 |-----|------|--------------|----------------------------|
-| Go | `runner.code/pkg/client` | 无 | 100%（语句；Go 不统计分支） |
+| Go | `runner.codes/pkg/client` | 无 | 100%（语句；Go 不统计分支） |
 | Python 3.9+ | `sdk/python/runner_code` | 无 | 100% / 100% |
 
 **没有 Node SDK。** 按照项目规则，浏览器之外的新代码不使用 JavaScript/TypeScript 编写。使用 Node 的人可以直接用
@@ -18,7 +18,18 @@ title: Go 与 Python SDK
 
 ## Go {#go}
 
+在你自己的项目中(本仓库之外):
+
+```bash
+go get runner.codes/pkg/client@latest
+```
+
+`runner.codes` 会把 `go get` 指向 GitHub 上的仓库,因此无需克隆,也无需 `replace`。该包只导入标准库;模块的 `go.mod`
+要求 Go 1.27.2,较旧的 toolchain 会自动下载它。
+
 ```go
+import "runner.codes/pkg/client"
+
 c := client.New("http://127.0.0.1:8080")
 ctx := context.Background()
 

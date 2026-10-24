@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // streamGuest responde ao job mandando os eventos dados, na ordem; registra se o job

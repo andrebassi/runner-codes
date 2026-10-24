@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"runner.code/internal/adapters/oci"
-	"runner.code/internal/adapters/runfile"
-	"runner.code/internal/domain"
-	"runner.code/internal/pack"
+	"runner.codes/internal/adapters/oci"
+	"runner.codes/internal/adapters/runfile"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/pack"
 )
 
 // errCUDA é a recusa do --cuda: o rc não faz remoting de CUDA (que exige GPU

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // Nomes dos arquivos de runtime no diretório de uma máquina (o store cuida do registro,

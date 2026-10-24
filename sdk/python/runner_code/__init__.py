@@ -2,7 +2,7 @@
 
 Só biblioteca padrão: o SDK roda em qualquer Python 3.9+ sem instalar dependência, que é o
 caso típico de quem só quer mandar código para uma microVM. Os métodos espelham o SDK Go
-(`runner.code/pkg/client`) e as rotas da API.
+(`runner.codes/pkg/client`) e as rotas da API.
 """
 
 from __future__ import annotations

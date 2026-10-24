@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"runner.code/internal/adapters/screen"
+	"runner.codes/internal/adapters/screen"
 )
 
 // fakeInput guarda os eventos recebidos.

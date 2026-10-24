@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // template grava um "disco" com dados no começo e no fim e um buraco no meio.

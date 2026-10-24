@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"unsafe"
 
-	"runner.code/internal/adapters/screen"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/screen"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // diskFormatRaw é KRUN_DISK_FORMAT_RAW em libkrun.h: o ext4 é imagem crua, sem qcow2.

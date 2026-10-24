@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"runner.code/pkg/client"
+	"runner.codes/pkg/client"
 )
 
 // main imprime uma linha por etapa e sai com 1 na primeira que falhar.

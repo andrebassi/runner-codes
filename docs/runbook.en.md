@@ -641,6 +641,24 @@ Expected, in both:
 - `error: NOT_FOUND`: the API refusal arrives as a typed error, with the stable code;
 - no `sdk-*` machine is left in `./bin/rc machine ls`.
 
+## 10c. Go SDK in an outside project (go get)
+
+The Go module is named `runner.codes`, and `https://runner.codes` answers `go get` with a `go-import` meta tag pointing
+to GitHub. In a directory outside the repository, with `serve` still up:
+
+```bash
+curl -s 'https://runner.codes/pkg/client?go-get=1'
+mkdir /tmp/sdkcheck && cp examples/sdk-go/main.go /tmp/sdkcheck/ && cd /tmp/sdkcheck
+go mod init sdkcheck
+go get runner.codes/pkg/client@latest
+go run . http://127.0.0.1:8080
+```
+
+Expected:
+- `curl` returns `<meta name="go-import" content="runner.codes git https://github.com/andrebassi/runner-codes">`;
+- `go get` downloads `runner.codes v1.1.0` (or newer);
+- the `go run` output is the same as in 10b: `job: 42`, `exec: ola do sdk go` and `error: NOT_FOUND`.
+
 ## 11. Clean up
 
 ```bash

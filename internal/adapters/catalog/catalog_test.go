@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/guest"
+	"runner.codes/internal/guest"
 )
 
 // TestDefaultLoads trava o catálogo embutido: carrega, e o Python está nele.

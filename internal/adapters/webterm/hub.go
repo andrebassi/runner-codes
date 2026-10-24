@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // maxSessions limita as abas de terminal de uma página: cada uma é um PTY e um processo no guest, e uma página não

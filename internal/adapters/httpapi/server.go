@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // Runner executa um job; o app.Executor implementa.

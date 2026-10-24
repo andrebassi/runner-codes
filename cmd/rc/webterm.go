@@ -18,9 +18,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/app"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/app"
+	"runner.codes/internal/ports"
 )
 
 // webTerminalSize é o tamanho do PTY até a página mandar o da janela: 120×32 cabe num notebook sem quebrar a tela

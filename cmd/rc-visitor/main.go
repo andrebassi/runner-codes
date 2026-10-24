@@ -24,11 +24,11 @@ import (
 	"syscall"
 	"time"
 
-	"runner.code/internal/adapters/localpty"
-	"runner.code/internal/adapters/playground"
-	"runner.code/internal/adapters/visitor"
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/localpty"
+	"runner.codes/internal/adapters/playground"
+	"runner.codes/internal/adapters/visitor"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/ports"
 )
 
 // terminalSize é o tamanho do PTY até a página mandar o da janela (o mesmo do rc machine web-terminal).

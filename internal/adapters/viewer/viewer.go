@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	"runner.code/internal/adapters/screen"
+	"runner.codes/internal/adapters/screen"
 )
 
 //go:embed page/index.html

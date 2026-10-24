@@ -10,7 +10,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // defaultShell é o comando quando a sessão não diz qual: bash se a imagem tiver (em

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // lastJob devolve o último job de exec/pty que o guest falso recebeu.

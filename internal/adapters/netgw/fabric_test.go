@@ -14,7 +14,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // fabricMachine sobe um gateway com guest falso numa rede nomeada.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // ptyClient abre uma sessão pelo fio e devolve a conexão do lado do host.

@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"runner.code/internal/adapters/flymachines"
-	"runner.code/internal/adapters/playground"
+	"runner.codes/internal/adapters/flymachines"
+	"runner.codes/internal/adapters/playground"
 )
 
 // reapEvery é de quanto em quanto tempo o front desliga e apaga as máquinas ociosas: 1 min basta para 30 min e 24 h.

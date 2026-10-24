@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // ReadyTimeout é quanto o boot pode levar até o guest responder. O boot medido é

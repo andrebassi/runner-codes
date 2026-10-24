@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"runner.code/internal/app"
-	"runner.code/internal/ports"
+	"runner.codes/internal/app"
+	"runner.codes/internal/ports"
 )
 
 // machineRunCmd cria, liga e usa uma máquina de uma vez (o `machine run`). Sem

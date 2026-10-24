@@ -11,8 +11,8 @@ import (
 	"net"
 	"strings"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // VMSocket liga um socket Unix do host (Host, no diretório da máquina) a um socket Unix de

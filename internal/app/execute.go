@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // timeoutGrace é a folga do host sobre o timeout do job. O executor do guest mata o

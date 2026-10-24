@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // diskOK simula a VM de build do mkdisk: grava o "ext4" pedido e a linha RESULT.

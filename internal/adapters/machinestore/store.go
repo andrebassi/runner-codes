@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // Nomes dos arquivos dentro do diretório de uma máquina.

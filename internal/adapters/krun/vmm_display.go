@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 
-	"runner.code/internal/adapters/screen"
-	"runner.code/internal/adapters/viewer"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/screen"
+	"runner.codes/internal/adapters/viewer"
+	"runner.codes/internal/ports"
 )
 
 // startDisplay cria a tela e sobe o visualizador no endereço pedido, neste mesmo processo

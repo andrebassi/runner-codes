@@ -5,7 +5,7 @@ package guest
 import (
 	"errors"
 
-	"runner.code/internal/s3fs"
+	"runner.codes/internal/s3fs"
 )
 
 // mountFUSEOS fora do Linux só recusa: o guest real é sempre Linux, e os testes no host

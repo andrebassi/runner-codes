@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // TestNamedNetwork: o create dá a cada máquina da rede o primeiro IP livre dela (redes

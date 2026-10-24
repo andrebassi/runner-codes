@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // echoGuest é o "guest": um servidor de eco em 127.0.0.1 numa porta livre, que o dialer falso disca.

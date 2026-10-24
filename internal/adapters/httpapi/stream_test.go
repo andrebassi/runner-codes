@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // sseEvent é um evento lido da resposta: nome e o JSON cru do data.

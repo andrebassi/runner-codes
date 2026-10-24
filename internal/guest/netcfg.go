@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // NetConfig é a rede que o host mandou o guest montar.

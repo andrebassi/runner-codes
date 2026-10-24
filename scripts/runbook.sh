@@ -493,6 +493,17 @@ for lang in go python; do
 done
 expect "nenhuma máquina dos SDKs sobrou" sh -c "! $rc machine ls | grep -q '^sdk-'"
 
+step "10c. SDK Go num projeto de fora (go get)"
+# Módulo novo fora do repositório: o SDK chega pelo `go get` público (meta go-import em runner.codes, tag no GitHub),
+# não pelo código local. Prova que quem não clonou o repositório consegue usar o pacote.
+ext=$(mktemp -d)
+cp examples/sdk-go/main.go "$ext/"
+expect "meta go-import em runner.codes" sh -c "curl -s 'https://runner.codes/pkg/client?go-get=1' | grep -q 'content=\"runner.codes git https://github.com/andrebassi/runner-codes\"'"
+expect "go get runner.codes/pkg/client@latest" sh -c "cd '$ext' && go mod init sdkcheck >/dev/null 2>&1 && go get runner.codes/pkg/client@latest"
+out=$(cd "$ext" && go run . "http://127.0.0.1:$port" 2>&1)
+expect "sdk go de fora: job, máquina, exec e erro tipado" sh -c "grep -q '^job: 42' <<<'$out' && grep -q '^exec: ola do sdk' <<<'$out' && grep -q '^error: NOT_FOUND' <<<'$out'"
+rm -rf "$ext"
+
 step "11. Limpar"
 expect "stop" $rc machine stop --name "$name"
 expect "delete" $rc machine delete --name "$name"

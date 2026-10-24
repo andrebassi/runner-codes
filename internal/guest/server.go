@@ -14,7 +14,7 @@ import (
 
 	"github.com/mdlayher/vsock"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 const (

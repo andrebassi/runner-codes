@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // envOf devolve um get sobre um mapa.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/ebitengine/purego"
 
-	"runner.code/internal/adapters/viewer"
+	"runner.codes/internal/adapters/viewer"
 )
 
 // Códigos do evdev (linux/input-event-codes.h) que os dispositivos declaram.

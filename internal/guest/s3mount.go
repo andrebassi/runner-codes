@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"runner.code/internal/objectstore"
-	"runner.code/internal/s3fs"
+	"runner.codes/internal/objectstore"
+	"runner.codes/internal/s3fs"
 )
 
 // unmounter é um volume montado que o shutdown desmonta (o servidor FUSE).

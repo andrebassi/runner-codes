@@ -11,7 +11,7 @@ import (
 	"log"
 	"os"
 
-	"runner.code/internal/guest"
+	"runner.codes/internal/guest"
 )
 
 // main lê a porta e entrega o processo ao servidor do guest.

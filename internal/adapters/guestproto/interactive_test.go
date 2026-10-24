@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // ptyGuest simula o guest de uma sessão: confere o job, devolve um eco da entrada e o

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // TestExecArgv cobre o exec das máquinas: argv sem shell, env e cwd do pedido, stdin,

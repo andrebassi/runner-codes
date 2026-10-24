@@ -12,7 +12,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"runner.code/internal/ports"
+	"runner.codes/internal/ports"
 )
 
 // Command descreve o processo: argv, ambiente, diretório e, opcionalmente, o usuário sem privilégio que o roda.

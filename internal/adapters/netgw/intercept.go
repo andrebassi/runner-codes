@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"runner.code/internal/credca"
-	"runner.code/internal/domain"
+	"runner.codes/internal/credca"
+	"runner.codes/internal/domain"
 )
 
 // Interceptor troca placeholders de credencial pelo valor real nas requisições HTTPS aos

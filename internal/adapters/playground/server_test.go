@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/adapters/runfile"
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/runfile"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
 )
 
 // errFull é o "lotado" do teste.

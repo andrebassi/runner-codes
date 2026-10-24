@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // gpuFixtures é o pool falso com a stack llama declarando GPU e VRAM no catálogo.

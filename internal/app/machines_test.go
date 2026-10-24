@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // memStore é um MachineStore em memória, com diretório de verdade para os arquivos.

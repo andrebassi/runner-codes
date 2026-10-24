@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // newPlayground monta um playground sobre o dublê de máquinas, com relógio controlado pelo teste.

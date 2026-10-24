@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // chunk é um pedaço recebido pelo sink, com a hora de chegada.

@@ -14,7 +14,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // procDrain é quanto se espera, depois de o processo sair, pela saída que ainda está nos pipes;

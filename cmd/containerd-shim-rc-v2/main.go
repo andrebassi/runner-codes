@@ -18,7 +18,7 @@ import (
 
 	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
 
-	"runner.code/internal/adapters/k8sshim"
+	"runner.codes/internal/adapters/k8sshim"
 )
 
 // configPath é onde o instalador grava onde estão o rc, a libkrun e a imagem do pod.

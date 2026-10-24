@@ -14,12 +14,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"runner.code/internal/adapters/playground"
-	"runner.code/internal/adapters/runfile"
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
-	"runner.code/internal/ports"
+	"runner.codes/internal/adapters/playground"
+	"runner.codes/internal/adapters/runfile"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/ports"
 )
 
 // reapEvery é de quanto em quanto tempo o playground desliga e apaga as máquinas ociosas: 1 min basta para os prazos

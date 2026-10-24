@@ -16,10 +16,10 @@ import (
 
 	"github.com/containerd/containerd/v2/pkg/sys/reaper"
 
-	"runner.code/internal/adapters/guestproto"
-	"runner.code/internal/adapters/krun"
-	"runner.code/internal/ports"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/adapters/krun"
+	"runner.codes/internal/ports"
+	"runner.codes/internal/protocol"
 )
 
 // Config diz onde estão as peças do rc no nó. O instalador grava em /etc/rc/shim.json.

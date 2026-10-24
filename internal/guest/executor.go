@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 var (

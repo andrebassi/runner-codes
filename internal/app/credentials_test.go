@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // fakeCA devolve um par fixo e guarda os hosts pedidos.

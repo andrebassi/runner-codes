@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 //go:embed languages.yaml

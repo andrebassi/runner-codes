@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // partialSuffix marca o arquivo em cópia: ele só vira o destino no último pedaço, então

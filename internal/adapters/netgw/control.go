@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // maxControlMsg limita a política recebida pelo socket de controle: 1 MiB comporta

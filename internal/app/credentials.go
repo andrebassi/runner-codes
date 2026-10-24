@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // Arquivos da CA de credenciais no diretório da máquina (só no host): o certificado vai ao

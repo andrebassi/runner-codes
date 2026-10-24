@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"runner.code/internal/app"
-	"runner.code/internal/domain"
+	"runner.codes/internal/app"
+	"runner.codes/internal/domain"
 )
 
 // egressFlags registra as flags de política de saída sobre e.

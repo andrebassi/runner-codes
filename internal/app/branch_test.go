@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/domain"
-	"runner.code/internal/protocol"
+	"runner.codes/internal/domain"
+	"runner.codes/internal/protocol"
 )
 
 // TestPauseResume: pause congela a máquina ligada e o status diz paused; exec, cp, update e

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // Magic abre todo payload.

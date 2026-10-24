@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"runner.code/internal/app"
+	"runner.codes/internal/app"
 )
 
 // machineBranchCmd cria uma máquina nova como cópia copy-on-write do disco de outra.

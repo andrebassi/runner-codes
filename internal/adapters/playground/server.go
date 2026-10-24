@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 //go:embed page/index.html

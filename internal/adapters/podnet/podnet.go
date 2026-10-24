@@ -12,7 +12,7 @@ import (
 	"net/netip"
 	"sync"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // Info é o que o CNI configurou na eth0 do pod, lido do netns.

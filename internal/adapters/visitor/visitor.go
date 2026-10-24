@@ -16,8 +16,8 @@ import (
 	"strings"
 	"sync"
 
-	"runner.code/internal/adapters/webterm"
-	"runner.code/internal/domain"
+	"runner.codes/internal/adapters/webterm"
+	"runner.codes/internal/domain"
 )
 
 // Rules são as regras do firewall da máquina do visitante, medidas no Fly em 20/10/2026

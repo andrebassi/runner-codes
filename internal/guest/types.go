@@ -1,6 +1,6 @@
 package guest
 
-import "runner.code/internal/protocol"
+import "runner.codes/internal/protocol"
 
 // File, Job e Result são os tipos do protocolo host↔guest; o alias mantém o executor
 // intacto enquanto a definição vive num lugar só (internal/protocol).

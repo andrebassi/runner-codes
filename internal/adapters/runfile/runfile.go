@@ -14,7 +14,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"runner.code/internal/domain"
+	"runner.codes/internal/domain"
 )
 
 // DefaultName é o arquivo que `rc machine create` procura quando não recebe -f.

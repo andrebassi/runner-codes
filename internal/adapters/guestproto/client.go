@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // pollInterval é o intervalo entre tentativas de prontidão: 1 ms no

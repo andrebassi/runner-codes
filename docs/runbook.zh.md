@@ -638,6 +638,24 @@ PYTHONPATH=sdk/python python3 examples/sdk-python/main.py http://127.0.0.1:8080
 - `error: NOT_FOUND`:API 的拒绝以带类型的错误返回,带有稳定的错误码;
 - `./bin/rc machine ls` 中没有残留的 `sdk-*` 机器。
 
+## 10c. 在外部项目中使用 Go SDK(go get)
+
+Go 模块名为 `runner.codes`,`https://runner.codes` 会以指向 GitHub 的 `go-import` meta 响应 `go get`。在仓库之外的目录中,
+`serve` 仍在运行时:
+
+```bash
+curl -s 'https://runner.codes/pkg/client?go-get=1'
+mkdir /tmp/sdkcheck && cp examples/sdk-go/main.go /tmp/sdkcheck/ && cd /tmp/sdkcheck
+go mod init sdkcheck
+go get runner.codes/pkg/client@latest
+go run . http://127.0.0.1:8080
+```
+
+预期:
+- `curl` 返回 `<meta name="go-import" content="runner.codes git https://github.com/andrebassi/runner-codes">`;
+- `go get` 下载 `runner.codes v1.1.0`(或更新版本);
+- `go run` 的输出与 10b 相同:`job: 42`、`exec: ola do sdk go` 和 `error: NOT_FOUND`。
+
 ## 11. 清理
 
 ```bash

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"runner.code/internal/protocol"
+	"runner.codes/internal/protocol"
 )
 
 // connPair devolve as duas pontas de uma conexão TCP local: a do "host" e a do "guest".
