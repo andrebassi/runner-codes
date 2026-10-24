@@ -1,0 +1,239 @@
+# Desktop Linux com Claude Code, numa microVM do rc: XFCE no Xorg, área de trabalho preta com quatro atalhos
+# (Arquivos, Claude, Navegador, Terminal), Firefox como navegador padrão e o `claude` no PATH de um terminal bash.
+# A tela abre no navegador do host e acompanha o tamanho da janela.
+#
+#   rc machine create --name desk     # lê este arquivo (runner.code no diretório atual)
+#   rc machine start  --name desk     # 1ª vez: o init instala tudo (~1 min com cache, ~4 sem)
+#   open http://127.0.0.1:6080
+#
+# O mesmo arquivo vai pela API: o examples/desktop-claude/main.go o manda inteiro no campo runner_code.
+
+image = "node:22"          # Debian 12 com Node 22: o npm instala o Claude Code
+cpus = 4
+memory = 4096              # MiB; o Firefox é o que mais pesa
+storage = 12               # GiB; desktop + Firefox ocupam ~1 GB
+net = true                 # apt, npm e navegação
+gpu = true                 # a tela exige GPU (virtio-gpu)
+display = "1280x800"       # tamanho no boot; depois acompanha a janela do navegador
+display_port = 6080
+display_title = "superbot.computer"   # nome na barra e na aba da página da tela
+# O login do `claude` abre o navegador: dentro da VM, o Firefox.
+env = ["BROWSER=firefox-esr"]
+
+init = [
+  # Pacotes: Xorg com libinput, XFCE enxuto, Firefox ESR e as ferramentas de tela (xrandr, gtf, xwininfo).
+  '''
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+  xserver-xorg-core xserver-xorg-input-libinput xinit xfce4-session xfwm4 xfce4-panel xfdesktop4 \
+  xfce4-terminal thunar exo-utils xdg-utils firefox-esr wmctrl xdotool dbus-x11 udev x11-xserver-utils x11-utils \
+  fonts-dejavu-core adwaita-icon-theme >/tmp/apt.log 2>&1
+''',
+  "npm install -g @anthropic-ai/claude-code >/tmp/npm.log 2>&1",
+
+  # Xorg: desenho e cursor por CPU. A tela do rc é virtio-gpu 2D (sem GL): sem AccelMethod "none" o Xorg
+  # tenta o glamor e cai; com cursor por hardware o Xorg trava no primeiro movimento de mouse, preso em
+  # modeset_lock esperando a fila de cursor, que o backend 2D do rc não atende.
+  '''
+mkdir -p /etc/X11/xorg.conf.d && cat > /etc/X11/xorg.conf.d/10-rc.conf <<'EOF'
+Section "Device"
+    Identifier "virtio"
+    Driver     "modesetting"
+    Option     "AccelMethod" "none"
+    Option     "SWcursor" "true"
+EndSection
+EOF
+''',
+
+  # Partida da tela (o workload, mais abaixo). Supervisiona a sessão: logout, crash ou `kill` no XFCE
+  # derrubam o xinit, e o laço sobe tudo de novo em 1 s, em vez de deixar a VM sem tela.
+  '''
+cat > /usr/local/bin/start-desktop <<'EOF'
+#!/bin/sh
+# O libinput só enxerga teclado e mouse ("runner.code keyboard/tablet") anunciados pelo udev. A imagem roda
+# num chroot dentro da VM, e o udevadm do systemd ignora o trigger nesse caso; SYSTEMD_IGNORE_CHROOT=1 libera.
+export SYSTEMD_IGNORE_CHROOT=1 HOME=/root
+/lib/systemd/systemd-udevd --daemon
+udevadm trigger --action=add
+udevadm settle --timeout=10
+cd /root
+while true; do
+  # vt1 e -keeptty: o kernel da VM tem /dev/tty0, e o Xorg sem VT própria recusa subir.
+  xinit /usr/local/bin/desktop-session -- /usr/bin/Xorg :0 vt1 -keeptty -nolisten tcp
+  echo "sessão gráfica saiu (rc=$?); subindo de novo"
+  sleep 1
+done
+EOF
+chmod 755 /usr/local/bin/start-desktop
+''',
+
+  # Sessão: XFCE com um terminal bash maximizado já aberto (onde se roda `claude`).
+  '''
+cat > /usr/local/bin/desktop-session <<'EOF'
+#!/bin/sh
+# Xorg novo nasce no tamanho do boot: volta ao último que a janela do navegador pediu.
+[ -f /run/rc-display-size ] && /etc/rc/display-resize $(cat /run/rc-display-size) &
+# Toda janela de aplicativo nasce maximizada; o XFCE não tem essa opção.
+/usr/local/bin/maximize-windows &
+(sleep 4; xfce4-terminal --maximize --working-directory=/root --title="bash · claude" -x bash -l) &
+exec dbus-launch --exit-with-session xfce4-session
+EOF
+chmod 755 /usr/local/bin/desktop-session
+''',
+
+  # Gancho de tamanho: o rc o chama com LARGURA ALTURA quando a janela do visualizador muda. A largura vai
+  # para múltiplo de 8 (o gtf arredonda o modo assim, e o nome tem de bater com o modo criado).
+  '''
+mkdir -p /etc/rc && cat > /etc/rc/display-resize <<'EOF'
+#!/bin/sh
+w=$(( $1 / 8 * 8 )); h=$2; name="${w}x${h}"
+# Guarda o pedido: a sessão o reaplica sempre que o Xorg sobe de novo (boot, logout, crash).
+echo "$1 $2" > /run/rc-display-size
+export DISPLAY=:0
+# A página pede o tamanho assim que abre, e o Xorg pode ainda estar subindo: espera até 30 s.
+i=0; until xrandr >/dev/null 2>&1; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 0.5; done
+out=$(xrandr | awk '/ connected/ {print $1; exit}')
+if ! xrandr | grep -q "^   $name "; then
+  xrandr --newmode "$name" $(gtf "$w" "$h" 60 | sed -n 's/^ *Modeline "[^"]*" *//p')
+  xrandr --addmode "$out" "$name"
+fi
+xrandr --output "$out" --mode "$name"
+EOF
+chmod 755 /etc/rc/display-resize
+''',
+
+  # XFCE: uma barra só, em cima, só com as janelas abertas e o relógio (sem menu nem botão de sair); fundo preto liso; área de
+  # trabalho só com os três lançadores, abertos com um clique (o clique duplo pelo visualizador chega lento
+  # demais para o xfdesktop reconhecer); compositor desligado (sem GL ele desenharia por CPU à toa).
+  '''
+d=/root/.config/xfce4/xfconf/xfce-perchannel-xml && mkdir -p $d
+cat > $d/xfce4-panel.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-panel" version="1.0">
+  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=6;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="size" type="uint" value="28"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="2"/><value type="int" value="3"/><value type="int" value="4"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+        <property name="plugin-2" type="string" value="tasklist"/>
+    <property name="plugin-3" type="string" value="separator">
+      <property name="expand" type="bool" value="true"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+    <property name="plugin-4" type="string" value="clock"/>
+  </property>
+</channel>
+EOF
+cat > $d/xfce4-desktop.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="screen0" type="empty">
+      <property name="monitorVirtual-1" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="image-style" type="int" value="0"/>
+          <property name="rgba1" type="array">
+            <value type="double" value="0"/><value type="double" value="0"/>
+            <value type="double" value="0"/><value type="double" value="1"/>
+          </property>
+        </property>
+      </property>
+    </property>
+  </property>
+  <property name="desktop-icons" type="empty">
+    <property name="style" type="int" value="2"/>
+    <property name="single-click" type="bool" value="true"/>
+    <property name="file-icons" type="empty">
+      <property name="show-filesystem" type="bool" value="false"/>
+      <property name="show-home" type="bool" value="false"/>
+      <property name="show-trash" type="bool" value="false"/>
+      <property name="show-removable" type="bool" value="false"/>
+    </property>
+  </property>
+</channel>
+EOF
+cat > $d/xfwm4.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+''',
+
+  # Lançadores na área de trabalho (executáveis: sem isso o xfdesktop os trata como não confiáveis), o maximizador de
+  # janelas, o Firefox como navegador padrão do XFCE e do x-www-browser, e o "Sair" fora do menu de aplicativos.
+  '''
+mkdir -p /root/Desktop /root/.local/share/applications
+# Lançadores com nome próprio; o comando e o ícone vêm do .desktop original de cada aplicativo.
+for app in firefox-esr:Navegador xfce4-terminal:Terminal thunar:Arquivos; do
+  src=/usr/share/applications/${app%%:*}.desktop name=${app#*:}
+  { echo "[Desktop Entry]"; echo "Type=Application"; echo "Name=$name"
+    grep -m1 '^Exec=' "$src"; grep -m1 '^Icon=' "$src"; } > "/root/Desktop/$name.desktop"
+done
+# Atalho do Claude Code sem pedir permissão a cada ação: a VM é a caixa de areia. Como root, o claude só
+# aceita --dangerously-skip-permissions com IS_SANDBOX=1. Ao sair do claude, o terminal fica num bash.
+# O ícone é o do app (claude.ai); sem rede no init, cai no ícone de terminal.
+curl -fsSL -m 20 -o /usr/share/pixmaps/claude.png https://claude.ai/images/claude_app_icon.png \
+  && icon=/usr/share/pixmaps/claude.png || icon=utilities-terminal
+cat > /root/Desktop/Claude.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=Claude
+Comment=Claude Code sem pedir permissão: a VM é a caixa de areia
+Exec=xfce4-terminal --maximize --working-directory=/root --title=Claude -x bash -lc "IS_SANDBOX=1 claude --dangerously-skip-permissions; exec bash -l"
+Icon=$icon
+EOF
+chmod 755 /root/Desktop/*.desktop
+printf 'WebBrowser=debian-sensible-browser\n' > /root/.config/xfce4/helpers.rc
+cat > /usr/local/bin/maximize-windows <<'EOF'
+#!/bin/sh
+# Toda janela normal nova nasce maximizada. Escuta a lista de janelas do X (_NET_CLIENT_LIST) e maximiza
+# cada id que entrou desde a lista anterior, se o tipo for NORMAL: diálogo, menu, dica, painel e área de
+# trabalho ficam como estão. A comparação é com a lista ANTERIOR, não com um histórico: o Thunar reaproveita
+# o id de uma janela que fechou, e um "já visto" deixava a segunda janela dele sem maximizar.
+# Quando a sessão sobe, o xfwm4 ainda não criou a lista: o xprop -spy diria "no such atom" e nunca mais avisaria
+# nada (medido). Espera a lista existir antes de escutar.
+until xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -q "window id"; do sleep 0.5; done
+prev=" "
+# stdbuf -oL: num pipe a libc só despeja a saída do xprop a cada 4 KB, e as janelas novas não chegariam ao laço.
+stdbuf -oL xprop -root -spy _NET_CLIENT_LIST | while read -r line; do
+  cur=" $(echo "$line" | grep -o '0x[0-9a-f]*' | tr '\n' ' ')"
+  for w in $cur; do
+    case "$prev" in *" $w "*) continue ;; esac
+    xprop -id "$w" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -q _NET_WM_WINDOW_TYPE_NORMAL || continue
+    # A janela entra na lista antes de o xfwm4 terminar de posicioná-la, e um pedido nesse instante se
+    # perde (medido: o Thunar ficava do tamanho salvo). Pede depois de 0,3 s e de novo depois de 1,5 s.
+    (for t in 0.3 1.2; do sleep $t; wmctrl -i -r "$w" -b add,maximized_vert,maximized_horz; done) &
+  done
+  prev=$cur
+done
+EOF
+chmod 755 /usr/local/bin/maximize-windows
+update-alternatives --set x-www-browser /usr/bin/firefox-esr
+printf '[Desktop Entry]\nType=Application\nName=Log Out\nNoDisplay=true\n' > /root/.local/share/applications/xfce4-session-logout.desktop
+''',
+]
+
+# O workload: udev, Xorg e XFCE, religando a sessão se ela sair.
+entrypoint = ["/usr/local/bin/start-desktop"]
+
+# Login do Claude Code sem o token entrar na VM: o guest vê só um placeholder em CLAUDE_CODE_OAUTH_TOKEN, e o
+# gateway do rc põe o valor real no cabeçalho das chamadas HTTPS a api.anthropic.com. O valor vem do ambiente de
+# quem dá o start (rc machine start ou rc serve), por exemplo:
+#   CLAUDE_CODE_OAUTH_TOKEN=$(pass show bassi/anthropic/claude-code-token) rc machine start --name desk
+[[network.credentials]]
+name = "claude"
+environment_variable = "CLAUDE_CODE_OAUTH_TOKEN"
+allowed_hosts = ["api.anthropic.com"]
