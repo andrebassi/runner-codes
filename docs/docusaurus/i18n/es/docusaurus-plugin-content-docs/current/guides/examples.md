@@ -13,6 +13,8 @@ mira el formato del [`runner.code`](/cli/runner-code).
 |---------|--------------|--------|
 | [`sdk-go`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-go) | el [SDK de Go](/api-reference/sdks): job y ciclo de vida de máquina contra un `rc serve` | funciona |
 | [`sdk-python`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-python) | lo mismo con el [SDK de Python](/api-reference/sdks) | funciona |
+| [`desktop-claude`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude) | escritorio XFCE con Claude Code y Firefox en un `runner.code`, creado y verificado por el SDK de Go | funciona |
+| [`desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent) | tareas al Claude de esa VM de tres formas: `claude -p`, escrita en la ventana, por la [API de pantalla](/cli/screen) | funciona |
 
 ## Guías
 

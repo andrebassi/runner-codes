@@ -114,3 +114,23 @@ volumen. Detalles en [GPU](/advanced/gpu).
 
 La pantalla del navegador (`--display`), con teclado y ratón, en `http://127.0.0.1:6080`: para probar una app gráfica o
 dejar que un agente use una pantalla. Detalles en [Pantalla en el navegador](/cli/display).
+
+## Escritorio con Claude Code, operado por un agente
+
+El [`examples/desktop-claude/runner.code`](https://github.com/andrebassi/runner-codes/blob/main/examples/desktop-claude/runner.code)
+monta un escritorio XFCE en la microVM: fondo negro, los accesos directos Arquivos, Claude, Navegador y Terminal, Firefox
+como navegador predeterminado y Claude Code instalado. La pantalla acompaña la ventana del navegador, toda aplicación
+abre maximizada, y un logout vuelve a levantar la sesión sola.
+
+```bash
+cd examples/desktop-claude
+rc machine create --name desk
+CLAUDE_CODE_OAUTH_TOKEN=... rc machine start --name desk    # el guest solo ve un placeholder del token
+open http://127.0.0.1:6080
+```
+
+A partir de ahí, tres formas de enviar trabajo al Claude de esa VM, todas por el SDK de Go
+([`examples/desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent)):
+`claude -p` por exec (respuesta en JSON), la tarea escrita en su ventana, o escrita por la API de pantalla. Y, con el
+[`rc mcp`](/cli/screen#para-un-agente-rc-mcp), el Claude Code de tu máquina opera la pantalla de la VM como opera un
+navegador: captura, clic, teclado.

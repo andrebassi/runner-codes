@@ -21,6 +21,7 @@ En el `runner.code`:
 gpu = true
 display = "1280x800"
 display_port = 6080      # por defecto
+display_title = "mi app"   # nombre en la barra y la pestaña de la página (por defecto runner.codes; en la CLI, --display-title)
 ```
 
 ## Cómo funciona
@@ -62,6 +63,36 @@ En macOS, virtio-gpu con Venus (Vulkan) no atiende recursos 2D.
   - Un compositor que exige GLES (Hyprland, GNOME Shell) cae en `llvmpipe`, que es lento.
 - **VM sin pantalla:** sigue con Venus, para `llama.cpp` y lo demás.
 
+## Pantalla que acompaña la ventana
+
+La página del visor le pide al host el tamaño del área libre, al abrirse y 400 ms después de que la ventana deja de
+cambiar (`POST /resize`). El proceso de la VM agrupa los pedidos (solo vale el último, nunca dos al mismo tiempo) y
+ejecuta dentro de la máquina:
+
+```bash
+/etc/rc/display-resize LARGURA ALTURA
+```
+
+`rc` no sabe si el guest usa Xorg, Wayland o nada: quien cambia la resolución es la imagen, mediante el hook. Sin el
+archivo, no pasa nada y la pantalla se queda en el tamaño del boot. En un escritorio Xorg, el hook es un `gtf` +
+`xrandr` (el del [ejemplo](/cli/screen#ejemplo-escritorio-con-claude-code)):
+
+```bash
+#!/bin/sh
+w=$(( $1 / 8 * 8 )); h=$2; name="${w}x${h}"
+echo "$1 $2" > /run/rc-display-size          # la sesión lo vuelve a aplicar después de un logout o un crash
+export DISPLAY=:0
+until xrandr >/dev/null 2>&1; do sleep 0.5; done   # la página puede pedirlo antes de que Xorg arranque
+out=$(xrandr | awk '/ connected/ {print $1; exit}')
+xrandr | grep -q "^   $name " || { xrandr --newmode "$name" $(gtf "$w" "$h" 60 | sed -n 's/^ *Modeline "[^"]*" *//p'); xrandr --addmode "$out" "$name"; }
+xrandr --output "$out" --mode "$name"
+```
+
+Durante un cambio, algunos cuadros tomados a mitad de camino se descartan (aparecen en el `vmm.log` como
+`read_2d_resource`); el siguiente cuadro ya sale en el tamaño nuevo. La libkrun de `rc` trae dos correcciones para esto:
+sin ellas, el primer cuadro descartado tumbaba el thread de la GPU, o dejaba la pantalla congelada para siempre con el
+guest sano (medido con 30 cambios seguidos).
+
 ## Requisitos en el guest
 
 | Para | Necesita |
@@ -69,6 +100,8 @@ En macOS, virtio-gpu con Venus (Vulkan) no atiende recursos 2D.
 | la pantalla | `gpu = true`; el kernel de libkrunfw ya trae `virtio_gpu` (DRM/KMS, sin fbdev: no hay `/dev/fb0`) |
 | teclado y mouse en un compositor | `udev` en ejecución (libinput enumera a través de él); en Alpine, `eudev` + `udevadm trigger` |
 | compositor sin logind | `seatd` |
+| Xorg | driver `modesetting` con `Option "AccelMethod" "none"` (sin GL en la pantalla 2D: glamor tumba Xorg) y `Option "SWcursor" "true"` (el cursor por hardware congelaba Xorg en el primer movimiento del mouse) |
+| udev en una imagen Debian/systemd | `SYSTEMD_IGNORE_CHROOT=1` antes del `udevadm trigger`: la imagen corre en un chroot dentro de la VM, y `udevadm` ignora el pedido sin esa variable (teclado y mouse no aparecen en Xorg) |
 
 ## Seguridad
 
@@ -80,13 +113,17 @@ En macOS, virtio-gpu con Venus (Vulkan) no atiende recursos 2D.
 
 | Medida | Valor |
 |--------|-------|
-| `machine run -d` del ejemplo desktop (init ya hecho) | 5 s hasta Weston |
-| primera vez (init instala Weston, eudev, seatd) | 12 s |
+| escritorio XFCE de `examples/desktop-claude`, primera vez (init instala Xorg, XFCE, Firefox y Claude Code, con caché) | 28–35 s de start |
+| el mismo escritorio a partir de un `rc pack` | 5,6 s de start; terminal en pantalla ~20 s después |
+| 30 cambios de tamaño seguidos por `POST /resize` | pantalla en pie, 0 panics, imagen en el tamaño final |
 | texto de 50 caracteres con Shift y símbolos desde el navegador | llegan todos los caracteres |
 
 ## Límites
 
-- Una pantalla por máquina; el tamaño se fija en la creación.
+- Una pantalla por máquina. El tamaño del boot es el de la creación; después, quien cambia la resolución es el hook del
+  guest.
 - Sin audio.
 - El cursor lo dibuja el guest, dentro del cuadro: sin plano de cursor separado en el navegador.
 - Probado solo en macOS. En Linux, Venus atiende el 2D mediante virgl, pero no se ha medido.
+
+Para operar la pantalla por programa (captura, clic, teclado), vea [Control de pantalla](/cli/screen).

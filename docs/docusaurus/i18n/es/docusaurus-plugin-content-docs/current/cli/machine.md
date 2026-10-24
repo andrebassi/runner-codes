@@ -145,6 +145,7 @@ rc machine branch --from dev --name try-1       # copia copy-on-write del disco 
 | `logs` | `--name`, `--tail N`, `--source all\|workload` | consola de la VM: lo que escriben el guest, `machine.sh` y el workload; `workload` filtra solo este último |
 | `sync` | `--name` | devuelve al host las copias de los volúmenes staged (ver [Red y volúmenes](/cli/network#volumen-staged--v-hostgueststaged)) |
 | `data-dir` | `--name` | el directorio de la máquina en el host (registro, disco, sockets publicados, logs) |
+| `screen` | `--name`; `screenshot`, `click X Y`, `move`, `drag`, `type TEXTO`, `key ATALHO`, `scroll`, `do -f ações.json` | opera la pantalla de una máquina con display, como lo haría una persona: vea [Control de pantalla](/cli/screen) |
 | `prune` | `--all` | lo mismo que `rc image prune`: libera builds antiguos de imágenes; con `--all`, también las imágenes de referencia que ninguna máquina usa |
 
 ## Terminal web

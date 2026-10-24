@@ -177,6 +177,8 @@ data: {"status":"success","exitCode":0,"exception":null,"executionTime":1534,"ti
 | POST | `/api/v1/machines/:name/resume` | — | 204；machine 已在运行不算错误 |
 | POST | `/api/v1/machines/:name/sync` | — | 204；把 staged 卷的副本写回 host（停止状态下返回 `INVALID_STATE`） |
 | POST | `/api/v1/machines/:name/branch` | `{"name":"filha"}` | 201 + 子 machine（`state: stopped`），磁盘的 copy-on-write 副本；运行中的父 machine 只在克隆期间被冻结 |
+| GET | `/api/v1/machines/:name/screen` | — | 200，屏幕为 JPEG；尺寸在 `X-Screen-Width` 和 `X-Screen-Height` 中（带 display 的 machine） |
+| POST | `/api/v1/machines/:name/screen/actions` | `{"actions":[{"action":"click","x":10,"y":20}]}` | 204；[屏幕控制](/cli/screen)的动作（click、move、drag、type、key、scroll、wait），最多 500 个 |
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'

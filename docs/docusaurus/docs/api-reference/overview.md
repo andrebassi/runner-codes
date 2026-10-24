@@ -177,6 +177,8 @@ Ciclo de vida das [máquinas persistentes](/cli/machine).
 | POST | `/api/v1/machines/:name/resume` | — | 204; máquina já rodando não é erro |
 | POST | `/api/v1/machines/:name/sync` | — | 204; devolve ao host as cópias dos volumes staged (`INVALID_STATE` se parada) |
 | POST | `/api/v1/machines/:name/branch` | `{"name":"filha"}` | 201 + filha (`state: stopped`), cópia copy-on-write do disco; a mãe ligada congela só durante o clone |
+| GET | `/api/v1/machines/:name/screen` | — | 200 com a tela em JPEG; tamanho em `X-Screen-Width` e `X-Screen-Height` (máquina com display) |
+| POST | `/api/v1/machines/:name/screen/actions` | `{"actions":[{"action":"click","x":10,"y":20}]}` | 204; ações de [Controle de tela](/cli/screen) (click, move, drag, type, key, scroll, wait), até 500 |
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'

@@ -13,6 +13,8 @@ against a local `rc serve` on macOS 27 (Apple M1 Pro). To declare a machine in a
 |---------|---------------|--------|
 | [`sdk-go`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-go) | the [Go SDK](/api-reference/sdks): job and machine lifecycle against an `rc serve` | works |
 | [`sdk-python`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-python) | the same with the [Python SDK](/api-reference/sdks) | works |
+| [`desktop-claude`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude) | XFCE desktop with Claude Code and Firefox in a `runner.code`, created and checked by the Go SDK | works |
+| [`desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent) | tasks for that VM's Claude in three ways: `claude -p`, typed into the window, through the [screen API](/cli/screen) | works |
 
 ## Guides
 

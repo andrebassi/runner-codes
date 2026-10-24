@@ -21,6 +21,7 @@ rc machine create --name ui --image alpine:latest --gpu --display 1920x1080 --di
 gpu = true
 display = "1280x800"
 display_port = 6080      # 默认值
+display_title = "my app"   # 页面标题栏和标签页上的名称（默认 runner.codes；命令行用 --display-title）
 ```
 
 ## 工作原理 {#como-funciona}
@@ -60,6 +61,34 @@ guest                                    机器的 `rc vmm` 进程（host）
   - 需要 GLES 的合成器（Hyprland、GNOME Shell）会退回到 `llvmpipe`，很慢。
 - **不带屏幕的 VM：** 继续使用 Venus，供 `llama.cpp` 等使用。
 
+## 屏幕随窗口调整 {#tela-que-acompanha-a-janela}
+
+查看器页面在打开时以及窗口停止变化 400 ms 后，向 host 请求空闲区域的尺寸（`POST /resize`）。VM 进程会合并这些请求
+（只有最后一个生效，绝不会同时执行两个），并在机器内运行：
+
+```bash
+/etc/rc/display-resize LARGURA ALTURA
+```
+
+`rc` 不知道 guest 用的是 Xorg、Wayland 还是什么都没有：切换分辨率的是镜像，通过这个 hook。没有该文件时，什么也不会
+发生，屏幕保持启动时的尺寸。在 Xorg 桌面上，hook 是 `gtf` + `xrandr`（即[示例](/cli/screen#exemplo-desktop-com-claude-code)
+中的那个）：
+
+```bash
+#!/bin/sh
+w=$(( $1 / 8 * 8 )); h=$2; name="${w}x${h}"
+echo "$1 $2" > /run/rc-display-size          # 注销或崩溃后，会话会重新应用该尺寸
+export DISPLAY=:0
+until xrandr >/dev/null 2>&1; do sleep 0.5; done   # 页面可能在 Xorg 启动之前就发出请求
+out=$(xrandr | awk '/ connected/ {print $1; exit}')
+xrandr | grep -q "^   $name " || { xrandr --newmode "$name" $(gtf "$w" "$h" 60 | sed -n 's/^ *Modeline "[^"]*" *//p'); xrandr --addmode "$out" "$name"; }
+xrandr --output "$out" --mode "$name"
+```
+
+切换期间，一些在中途抓取的帧会被丢弃（在 `vmm.log` 中显示为 `read_2d_resource`）；下一帧就已经是新尺寸。`rc` 的
+libkrun 为此带了两个修复：没有它们时，第一个被丢弃的帧会让 GPU 线程崩溃，或者让屏幕永远停住而 guest 依然正常
+（连续切换 30 次实测）。
+
 ## guest 中的要求 {#requisitos-no-guest}
 
 | 用途 | 需要 |
@@ -67,6 +96,8 @@ guest                                    机器的 `rc vmm` 进程（host）
 | 屏幕 | `gpu = true`；libkrunfw 的内核已自带 `virtio_gpu`（DRM/KMS，没有 fbdev：不存在 `/dev/fb0`） |
 | 合成器中的键盘和鼠标 | 运行 `udev`（libinput 通过它枚举设备）；在 Alpine 上为 `eudev` + `udevadm trigger` |
 | 没有 logind 的合成器 | `seatd` |
+| Xorg | `modesetting` 驱动，带 `Option "AccelMethod" "none"`（2D 屏幕上没有 GL：glamor 会让 Xorg 崩溃）和 `Option "SWcursor" "true"`（硬件光标会在第一次移动鼠标时让 Xorg 卡死） |
+| Debian/systemd 镜像中的 udev | 在 `udevadm trigger` 之前设置 `SYSTEMD_IGNORE_CHROOT=1`：镜像在 VM 内的 chroot 中运行，没有这个变量时 `udevadm` 会忽略请求（键盘和鼠标不会出现在 Xorg 中） |
 
 ## 安全 {#segurança}
 
@@ -78,13 +109,16 @@ guest                                    机器的 `rc vmm` 进程（host）
 
 | 指标 | 值 |
 |--------|-------|
-| desktop 示例的 `machine run -d`（init 已完成） | 5 s 到 Weston 启动 |
-| 第一次（init 安装 Weston、eudev、seatd） | 12 s |
+| `examples/desktop-claude` 的 XFCE 桌面，第一次（init 安装 Xorg、XFCE、Firefox 和 Claude Code，有缓存） | start 耗时 28–35 s |
+| 同一个桌面，从 `rc pack` 启动 | start 耗时 5.6 s；约 20 s 后终端出现在屏幕上 |
+| 通过 `POST /resize` 连续切换尺寸 30 次 | 屏幕正常，0 次 panic，图像为最终尺寸 |
 | 通过浏览器输入 50 个字符的文本，含 Shift 和符号 | 所有字符都能到达 |
 
 ## 限制 {#limites}
 
-- 每台机器一块屏幕；尺寸在创建时固定。
+- 每台机器一块屏幕。启动时的尺寸是创建时的尺寸；之后由 guest 的 hook 切换分辨率。
 - 没有音频。
 - 光标由 guest 在帧内绘制：浏览器中没有独立的光标平面。
 - 只在 macOS 上测试过。在 Linux 上 Venus 通过 virgl 处理 2D，但尚未测量。
+
+要通过程序操作屏幕（截图、点击、键盘），参见[屏幕控制](/cli/screen)。

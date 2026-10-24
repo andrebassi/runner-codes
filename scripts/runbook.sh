@@ -212,6 +212,42 @@ sleep 6
 expect "tecla do navegador chega ao guest (KEY_A desce e sobe)" sh -c "grep -q 'KEY_A), value 1' '$tmp/keys.txt' && grep -q 'KEY_A), value 0' '$tmp/keys.txt'"
 expect "stop" $rc machine stop --name "$name-disp"
 
+step "8h. Tela responsiva e controle de tela (rc machine screen, API e MCP)"
+expect "start da máquina com tela" $rc machine start --name "$name-disp"
+# Gancho de tamanho de mentira: grava o que o rc pediu, para conferir que o pedido da página chega ao guest.
+$rc machine exec --name "$name-disp" -- sh -c 'apk add -q --no-cache libdrm-tests evtest >/dev/null 2>&1; mkdir -p /etc/rc; printf "#!/bin/sh\necho \"\$1 \$2\" > /tmp/resize.txt\n" > /etc/rc/display-resize; chmod 755 /etc/rc/display-resize' >/dev/null
+curl -s -X POST "http://127.0.0.1:$dport/resize" -d '{"width":900,"height":600}' >/dev/null
+sleep 2
+expect "POST /resize chama /etc/rc/display-resize 900 600 no guest" sh -c "$rc machine exec --name '$name-disp' -- cat /tmp/resize.txt | grep -qx '900 600'"
+$rc machine exec --name "$name-disp" -- sh -c 'c=$(modetest -M virtio_gpu -c | awk "/connected/ {print \$1; exit}"); (sleep 90 | modetest -M virtio_gpu -s $c:1024x768 >/dev/null 2>&1 &); sleep 2' >/dev/null
+out=$($rc machine screen --name "$name-disp" screenshot -o "$tmp/screen.jpg" 2>&1)
+expect "rc machine screen screenshot: 1024x768 em JPEG" sh -c "grep -q 'screen 1024x768' <<<'$out' && file '$tmp/screen.jpg' | grep -q JPEG"
+($rc machine exec --name "$name-disp" -- sh -c '(timeout 6 evtest /dev/input/event0 > /tmp/k2.log 2>&1 &); (timeout 6 evtest /dev/input/event1 > /tmp/t2.log 2>&1 &); sleep 7; cat /tmp/k2.log /tmp/t2.log' > "$tmp/screen-ev.txt" 2>&1 &)
+sleep 2
+$rc machine screen --name "$name-disp" key ctrl+c
+$rc machine screen --name "$name-disp" click 1023 767
+sleep 6
+expect "atalho ctrl+c chega como KEY_LEFTCTRL e KEY_C" sh -c "grep -q 'KEY_LEFTCTRL), value 1' '$tmp/screen-ev.txt' && grep -q 'KEY_C), value 1' '$tmp/screen-ev.txt'"
+expect "click no canto leva o tablet a 32767 e aperta BTN_LEFT" sh -c "grep -q 'ABS_X), value 32767' '$tmp/screen-ev.txt' && grep -q 'BTN_LEFT), value 1' '$tmp/screen-ev.txt'"
+expect "seta do agente: o /pointer do visualizador recebeu o clique" sh -c "curl -s --max-time 5 'http://127.0.0.1:$dport/pointer?after=0' | grep -q '\"kind\":\"click\"'"
+expect "página da tela leva o título padrão runner.codes na barra" sh -c "curl -s --max-time 5 'http://127.0.0.1:$dport/' | grep -q '<b>runner.codes</b>'"
+expect "tecla desconhecida é recusada (rc != 0)" sh -c "! $rc machine screen --name '$name-disp' key hyper 2>/dev/null"
+out=$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"exec","arguments":{"command":"echo mcp-ok"}}}' | $rc mcp --name "$name-disp" 2>&1)
+expect "rc mcp: as 9 ferramentas" sh -c "grep -o '\"name\":\"[a-z]*\",\"description\"' <<<'$out' | wc -l | grep -q '^ *9$'"
+expect "rc mcp: exec responde na máquina" grep -q 'mcp-ok' <<<"$out"
+sport=$((19000 + RANDOM % 200))
+$rc serve --listen "127.0.0.1:$sport" >/dev/null 2>&1 &
+spid=$!
+for _ in $(seq 30); do curl -s -o /dev/null "127.0.0.1:$sport/health" && break; sleep 0.5; done
+expect "GET /screen: JPEG com X-Screen-Width 1024" sh -c "curl -s -D - -o /dev/null 'http://127.0.0.1:$sport/api/v1/machines/$name-disp/screen' | grep -qi 'x-screen-width: 1024'"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$sport/api/v1/machines/$name-disp/screen/actions" -d '{"actions":[{"action":"fly"}]}')
+expect "POST /screen/actions com ação inválida: 400" test "$code" = 400
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$sport/api/v1/machines/$name-disp/screen/actions" -d '{"actions":[{"action":"key","keys":"Return"}]}')
+expect "POST /screen/actions válido: 204" test "$code" = 204
+kill "$spid" 2>/dev/null
+$rc machine delete --name "$name-disp" -f >/dev/null
+
 step "8i. Branch e pausa"
 $rc machine create --name "$name-mom" --stack python >/dev/null && $rc machine start --name "$name-mom" >/dev/null
 $rc machine exec --name "$name-mom" -- sh -c 'echo antes > /root/marca'
@@ -524,6 +560,30 @@ for lang in go python; do
   expect "receitas $lang: erro tipado" grep -qx 'errors: 404 NOT_FOUND' <<<"$out"
 done
 expect "nenhuma máquina das receitas sobrou" sh -c "! $rc machine ls | grep -q '^recipe-'"
+
+step "10e. Desktop com Claude Code pelo SDK Go (examples/desktop-claude)"
+# Nome e porta de tela próprios: o exemplo apaga a máquina de mesmo nome, e a porta padrão (6080) pode estar em uso.
+dport2=$((19300 + RANDOM % 100))
+out=$(go run ./examples/desktop-claude -server "http://127.0.0.1:$port" -name "$name-desk" -display-port "$dport2" 2>&1)
+expect "desktop: Claude Code instalado" grep -q 'claude .*(Claude Code)' <<<"$out"
+expect "desktop: Firefox é o navegador padrão" grep -q 'navegador padrão .*/usr/lib/firefox-esr/firefox-esr' <<<"$out"
+expect "desktop: os quatro atalhos" grep -q 'atalhos .*Arquivos.desktop Claude.desktop Navegador.desktop Terminal.desktop' <<<"$out"
+expect "desktop: a tela acompanha o tamanho pedido (1200x700)" grep -q 'tela responde .*current 1200 x 700' <<<"$out"
+expect "desktop: terminal maximizado" grep -q 'terminal maximizado .*_NET_WM_STATE_MAXIMIZED_HORZ' <<<"$out"
+expect "desktop: a sessão volta depois de um logout" grep -q 'sessão de volta em 1200x700' <<<"$out"
+
+step "10f. Tarefas ao Claude Code da máquina (examples/desktop-claude-agent)"
+# Usa a assinatura do Claude de quem roda (o token do start): só com RB_CLAUDE=1 e CLAUDE_CODE_OAUTH_TOKEN no
+# ambiente do runbook, que o rc serve do passo 10 herdou.
+if [ "${RB_CLAUDE:-}" = 1 ] && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  out=$(go run ./examples/desktop-claude-agent -server "http://127.0.0.1:$port" -name "$name-desk" -shots "$tmp" 2>&1)
+  for mode in headless gui keys; do
+    expect "agente $mode: o Claude criou o arquivo pedido" grep -q "✓ /root/agent/$mode.txt = \"feito pelo modo $mode\"" <<<"$out"
+  done
+else
+  echo "   pula  RB_CLAUDE=1 e CLAUDE_CODE_OAUTH_TOKEN no ambiente ligam este passo (usa a assinatura do Claude)"
+fi
+$rc machine delete --name "$name-desk" -f >/dev/null 2>&1
 
 step "11. Limpar"
 expect "stop" $rc machine stop --name "$name"

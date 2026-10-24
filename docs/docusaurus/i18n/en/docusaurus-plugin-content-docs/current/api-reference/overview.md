@@ -177,6 +177,8 @@ Lifecycle of [persistent machines](/cli/machine).
 | POST | `/api/v1/machines/:name/resume` | — | 204; a machine that is already running is not an error |
 | POST | `/api/v1/machines/:name/sync` | — | 204; returns the copies of the staged volumes to the host (`INVALID_STATE` if stopped) |
 | POST | `/api/v1/machines/:name/branch` | `{"name":"filha"}` | 201 + child (`state: stopped`), a copy-on-write copy of the disk; a running parent freezes only during the clone |
+| GET | `/api/v1/machines/:name/screen` | — | 200 with the screen as JPEG; size in `X-Screen-Width` and `X-Screen-Height` (machine with a display) |
+| POST | `/api/v1/machines/:name/screen/actions` | `{"actions":[{"action":"click","x":10,"y":20}]}` | 204; [Screen control](/cli/screen) actions (click, move, drag, type, key, scroll, wait), up to 500 |
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/machines -d '{"name":"dev","stack":"python"}'

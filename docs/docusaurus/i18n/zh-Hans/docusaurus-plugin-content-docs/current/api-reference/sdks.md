@@ -276,6 +276,8 @@ machine 路由的错误码有 `NOT_FOUND`、`INVALID_STATE`、`CONFLICT`、`CONF
 | `Logs` | `logs` | `GET .../logs` |
 | `UpdateEgress` | `update_egress` | `PUT .../egress` |
 | `Pause` / `Resume` / `Branch` | `pause` / `resume` / `branch` | `POST .../pause`、`.../resume`、`.../branch` |
+| `Screenshot` | `screenshot` | `GET .../screen`（JPEG 和尺寸） |
+| `ScreenActions` / `Click` / `Type` / `Key` | `screen_actions` / `click` / `type` / `key` | `POST .../screen/actions`（[屏幕控制](/cli/screen)） |
 | `DeleteMachine` | `delete_machine` | `DELETE /api/v1/machines/:name[?force=true]` |
 
 ## 值得了解的细节 {#o-que-vale-saber}

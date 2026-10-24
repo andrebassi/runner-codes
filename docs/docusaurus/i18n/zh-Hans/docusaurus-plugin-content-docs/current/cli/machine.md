@@ -131,6 +131,7 @@ rc machine branch --from dev --name try-1       # 磁盘的 copy-on-write 副本
 | `logs` | `--name`、`--tail N`、`--source all\|workload` | VM 控制台：guest、`machine.sh` 和 workload 写出的内容；`workload` 只过滤出它的输出 |
 | `sync` | `--name` | 把 staged 卷的副本写回 host（参见[网络与卷](/cli/network#volume-staged--v-hostgueststaged)） |
 | `data-dir` | `--name` | 机器在 host 上的目录（注册信息、磁盘、发布的 socket、日志） |
+| `screen` | `--name`；`screenshot`、`click X Y`、`move`、`drag`、`type TEXTO`、`key ATALHO`、`scroll`、`do -f ações.json` | 像人一样操作带 display 的机器的屏幕：参见[屏幕控制](/cli/screen) |
 | `prune` | `--all` | 与 `rc image prune` 相同：释放旧的镜像构建；加 `--all` 时，还会释放没有任何机器使用的引用镜像 |
 
 ## Web 终端 {#terminal-web}

@@ -112,3 +112,21 @@ CPU 上 10.3（Qwen2.5 0.5B）。除非你声明了卷，否则不会挂载任�
 
 浏览器里的屏幕（`--display`），支持键盘和鼠标，地址 `http://127.0.0.1:6080`：适合测试图形应用，或让 agent 使用一块屏幕。
 详见[浏览器中的显示](/cli/display)。
+
+## 带 Claude Code 的桌面，由 agent 操作 {#desktop-com-claude-code-operado-por-um-agente}
+
+[`examples/desktop-claude/runner.code`](https://github.com/andrebassi/runner-codes/blob/main/examples/desktop-claude/runner.code)
+在 microVM 中搭建一个 XFCE 桌面：黑色背景，Arquivos、Claude、Navegador 和 Terminal 四个快捷方式，Firefox 为默认浏览器，
+并已安装 Claude Code。屏幕随浏览器窗口调整，所有应用都以最大化打开，注销后会话会自行恢复。
+
+```bash
+cd examples/desktop-claude
+rc machine create --name desk
+CLAUDE_CODE_OAUTH_TOKEN=... rc machine start --name desk    # guest 只能看到 token 的 placeholder
+open http://127.0.0.1:6080
+```
+
+之后，有三种方式把工作交给这台 VM 中的 Claude，都通过 Go SDK
+（[`examples/desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent)）：
+通过 exec 运行 `claude -p`（以 JSON 返回结果）、在它的窗口中输入任务，或通过屏幕 API 输入。此外，借助
+[`rc mcp`](/cli/screen#para-um-agente-rc-mcp)，你机器上的 Claude Code 可以像操作浏览器一样操作 VM 的屏幕：截图、点击、键盘。

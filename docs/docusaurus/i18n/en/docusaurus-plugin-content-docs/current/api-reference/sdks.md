@@ -285,6 +285,8 @@ API error.
 | `Logs` | `logs` | `GET .../logs` |
 | `UpdateEgress` | `update_egress` | `PUT .../egress` |
 | `Pause` / `Resume` / `Branch` | `pause` / `resume` / `branch` | `POST .../pause`, `.../resume`, `.../branch` |
+| `Screenshot` | `screenshot` | `GET .../screen` (JPEG and size) |
+| `ScreenActions` / `Click` / `Type` / `Key` | `screen_actions` / `click` / `type` / `key` | `POST .../screen/actions` ([Screen control](/cli/screen)) |
 | `DeleteMachine` | `delete_machine` | `DELETE /api/v1/machines/:name[?force=true]` |
 
 ## Good to know

@@ -278,6 +278,41 @@ Esperado:
 O `task runbook` confere o mesmo caminho sem precisar de olho humano: o quadro de 1024x768 chega ao visualizador e
 um `KEY_A` mandado por `POST /input` aparece no `evtest`.
 
+## 8h. Tela responsiva e controle de tela
+
+A mesma máquina com tela do 8g, agora controlada pela CLI, pela API e pelo MCP, e com a resolução pedida pela página:
+
+```bash
+./bin/rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+./bin/rc machine start --name tela
+./bin/rc machine exec --name tela -- sh -c 'apk add -q --no-cache libdrm-tests evtest; mkdir -p /etc/rc; printf "#!/bin/sh\necho \"\$1 \$2\" > /tmp/resize.txt\n" > /etc/rc/display-resize; chmod 755 /etc/rc/display-resize'
+curl -s -X POST localhost:6080/resize -d '{"width":900,"height":600}'
+./bin/rc machine exec --name tela -- cat /tmp/resize.txt
+./bin/rc machine exec --name tela -- sh -c 'c=$(modetest -M virtio_gpu -c | awk "/connected/ {print \$1; exit}"); (sleep 90 | modetest -M virtio_gpu -s $c:1024x768 >/dev/null 2>&1 &)'
+./bin/rc machine screen --name tela screenshot -o tela.jpg
+./bin/rc machine exec --name tela -- sh -c '(timeout 8 evtest /dev/input/event0 > /tmp/k.log &); (timeout 8 evtest /dev/input/event1 > /tmp/t.log &)'
+./bin/rc machine screen --name tela key ctrl+c
+./bin/rc machine screen --name tela click 1023 767
+./bin/rc machine exec --name tela -- sh -c 'sleep 8; grep -h "value 1" /tmp/k.log /tmp/t.log | head'
+./bin/rc machine screen --name tela key hyper
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/rc mcp --name tela
+./bin/rc machine delete --name tela -f
+```
+
+Esperado:
+- `900 600` no `/tmp/resize.txt`: o tamanho que a página pede chega ao gancho `/etc/rc/display-resize` do guest (no
+  desktop, ele roda `xrandr`; sem o gancho, nada acontece);
+- `screen 1024x768 -> tela.jpg`, um JPEG da tela;
+- no `evtest`: `KEY_LEFTCTRL` e `KEY_C` apertados, `ABS_X` em `32767` (o canto direito) e `BTN_LEFT`;
+- a página do visualizador desenha uma seta laranja onde a CLI clicou (o `GET /pointer` registra o `click`);
+- a página da tela traz `runner.codes` na barra (o `display_title` do `runner.code` troca o nome);
+- `key hyper` sai com erro (`unknown key "hyper"`), sem mandar nada à máquina;
+- o `rc mcp` responde ao `initialize` e lista 9 ferramentas: `screenshot`, `click`, `move`, `drag`, `type`, `key`,
+  `scroll`, `actions` e `exec`.
+
+O `task runbook` faz o mesmo e confere também a API: `GET /api/v1/machines/:name/screen` com `X-Screen-Width: 1024`,
+400 para ação inválida e 204 para válida em `POST .../screen/actions`.
+
 ## 8i. Branch e pausa
 
 ```bash
@@ -693,6 +728,42 @@ errors: 404 NOT_FOUND
 
 Na linha `machine`, `sdk-python` no lugar de `sdk-go` no segundo programa. Nenhuma máquina `recipe-*` sobra em
 `./bin/rc machine ls`.
+
+## 10e. Desktop com Claude Code pelo SDK Go
+
+Com o `serve` ainda no ar, a máquina do `examples/desktop-claude/runner.code` (XFCE, Firefox, Claude Code), criada e
+conferida pelo SDK Go:
+
+```bash
+go run ./examples/desktop-claude -server http://127.0.0.1:8080 -name desk -display-port 6081
+open http://127.0.0.1:6081
+```
+
+Esperado, na saída:
+- `claude  2.1.x (Claude Code)` e `navegador padrão  /usr/lib/firefox-esr/firefox-esr`;
+- `atalhos  Arquivos.desktop Claude.desktop Navegador.desktop Terminal.desktop`;
+- `tela responde  ... current 1200 x 700`: depois de 200 movimentos de mouse, a tela segue de pé e no tamanho pedido;
+- `terminal maximizado  _NET_WM_STATE_MAXIMIZED_HORZ`;
+- `sessão de volta em 1200x700`: o programa encerra a sessão XFCE (como um logout) e ela volta sozinha.
+
+No navegador: fundo preto, os quatro atalhos, e a tela no tamanho da janela.
+
+## 10f. Tarefas ao Claude Code da máquina
+
+Precisa do Claude logado na máquina: o token entra pela credencial do `runner.code` (o guest só vê um placeholder), a
+partir do ambiente de quem deu o start. Com o `serve` iniciado com o token no ambiente:
+
+```bash
+CLAUDE_CODE_OAUTH_TOKEN="$(pass show bassi/anthropic/claude-code-token)" ./bin/rc serve --listen 127.0.0.1:8080 &
+go run ./examples/desktop-claude -server http://127.0.0.1:8080 -name desk -display-port 6081
+go run ./examples/desktop-claude-agent -server http://127.0.0.1:8080 -name desk
+```
+
+Esperado: `✓ /root/agent/headless.txt`, `✓ /root/agent/gui.txt` e `✓ /root/agent/keys.txt`, cada um com
+`feito pelo modo <modo>`. São três jeitos de mandar a tarefa: `claude -p` por exec, digitada na janela com `xdotool`, e
+digitada pela API de tela. As telas dos dois últimos ficam em `agent-gui.jpg` e `agent-keys.jpg`.
+
+O `task runbook` só roda este passo com `RB_CLAUDE=1` e o token no ambiente, porque ele usa a assinatura do Claude.
 
 ## 11. Limpar
 

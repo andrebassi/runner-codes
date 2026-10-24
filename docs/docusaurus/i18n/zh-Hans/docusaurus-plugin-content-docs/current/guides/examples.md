@@ -13,6 +13,8 @@ description: 'SDK 示例，以及在真实 VM 中验证 rc 每个流程的指南
 |---------|--------------|--------|
 | [`sdk-go`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-go) | [Go SDK](/api-reference/sdks)：针对 `rc serve` 运行作业和 machine 生命周期 | 可用 |
 | [`sdk-python`](https://github.com/andrebassi/runner-codes/tree/main/examples/sdk-python) | 同上，使用 [Python SDK](/api-reference/sdks) | 可用 |
+| [`desktop-claude`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude) | `runner.code` 中带 Claude Code 和 Firefox 的 XFCE 桌面，由 Go SDK 创建并核对 | 可用 |
+| [`desktop-claude-agent`](https://github.com/andrebassi/runner-codes/tree/main/examples/desktop-claude-agent) | 用三种方式向这台 VM 的 Claude 派发任务：`claude -p`、在窗口中输入、通过[屏幕 API](/cli/screen) | 可用 |
 
 ## 指南 {#guias}
 

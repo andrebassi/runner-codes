@@ -23,7 +23,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'CLI',
-      items: ['cli/overview', 'cli/run', 'cli/machine', 'cli/runner-code', 'cli/network', 'cli/credentials', 'cli/display', 'cli/pack', 'cli/image', 'cli/http-api'],
+      items: ['cli/overview', 'cli/run', 'cli/machine', 'cli/runner-code', 'cli/network', 'cli/credentials', 'cli/display', 'cli/screen', 'cli/pack', 'cli/image', 'cli/http-api'],
     },
     {
       type: 'category',

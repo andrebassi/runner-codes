@@ -278,6 +278,41 @@ open http://localhost:6080
 `task runbook` 无需人眼即可核对同一路径:1024x768 的画面到达查看器,通过 `POST /input` 发送的 `KEY_A` 出现在
 `evtest` 中。
 
+## 8h. 自适应屏幕与屏幕控制
+
+与 8g 相同的带屏幕机器,这次通过 CLI、API 和 MCP 控制,分辨率由页面请求:
+
+```bash
+./bin/rc machine create --name tela --image alpine:latest --gpu --net --display 1024x768
+./bin/rc machine start --name tela
+./bin/rc machine exec --name tela -- sh -c 'apk add -q --no-cache libdrm-tests evtest; mkdir -p /etc/rc; printf "#!/bin/sh\necho \"\$1 \$2\" > /tmp/resize.txt\n" > /etc/rc/display-resize; chmod 755 /etc/rc/display-resize'
+curl -s -X POST localhost:6080/resize -d '{"width":900,"height":600}'
+./bin/rc machine exec --name tela -- cat /tmp/resize.txt
+./bin/rc machine exec --name tela -- sh -c 'c=$(modetest -M virtio_gpu -c | awk "/connected/ {print \$1; exit}"); (sleep 90 | modetest -M virtio_gpu -s $c:1024x768 >/dev/null 2>&1 &)'
+./bin/rc machine screen --name tela screenshot -o tela.jpg
+./bin/rc machine exec --name tela -- sh -c '(timeout 8 evtest /dev/input/event0 > /tmp/k.log &); (timeout 8 evtest /dev/input/event1 > /tmp/t.log &)'
+./bin/rc machine screen --name tela key ctrl+c
+./bin/rc machine screen --name tela click 1023 767
+./bin/rc machine exec --name tela -- sh -c 'sleep 8; grep -h "value 1" /tmp/k.log /tmp/t.log | head'
+./bin/rc machine screen --name tela key hyper
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/rc mcp --name tela
+./bin/rc machine delete --name tela -f
+```
+
+预期:
+- `/tmp/resize.txt` 中是 `900 600`:页面请求的尺寸到达 guest 的 hook `/etc/rc/display-resize`(在桌面上它运行
+  `xrandr`;没有该 hook 时什么也不会发生);
+- `screen 1024x768 -> tela.jpg`,一张屏幕的 JPEG;
+- `evtest` 中:按下了 `KEY_LEFTCTRL` 和 `KEY_C`,`ABS_X` 为 `32767`(右边缘),以及 `BTN_LEFT`;
+- 查看器页面在 CLI 点击的位置画出橙色箭头（`GET /pointer` 记录到 `click`）；
+- 屏幕页面的标题栏显示 `runner.codes`（`runner.code` 里的 `display_title` 可以改名）；
+- `key hyper` 以错误退出(`unknown key "hyper"`),不向机器发送任何内容;
+- `rc mcp` 响应 `initialize` 并列出 9 个工具:`screenshot`、`click`、`move`、`drag`、`type`、`key`、`scroll`、
+  `actions` 和 `exec`。
+
+`task runbook` 执行同样的步骤,并额外核对 API:`GET /api/v1/machines/:name/screen` 返回 `X-Screen-Width: 1024`,
+`POST .../screen/actions` 对无效动作返回 400,对有效动作返回 204。
+
 ## 8i. Branch 与暂停
 
 ```bash
@@ -689,6 +724,41 @@ errors: 404 NOT_FOUND
 ```
 
 第二个程序的 `machine` 行中是 `sdk-python` 而不是 `sdk-go`。`./bin/rc machine ls` 中没有残留的 `recipe-*` 机器。
+
+## 10e. 通过 Go SDK 运行带 Claude Code 的桌面
+
+`serve` 仍在运行时,由 Go SDK 创建并核对 `examples/desktop-claude/runner.code` 的机器(XFCE、Firefox、Claude Code):
+
+```bash
+go run ./examples/desktop-claude -server http://127.0.0.1:8080 -name desk -display-port 6081
+open http://127.0.0.1:6081
+```
+
+预期输出:
+- `claude  2.1.x (Claude Code)` 和 `navegador padrão  /usr/lib/firefox-esr/firefox-esr`;
+- `atalhos  Arquivos.desktop Claude.desktop Navegador.desktop Terminal.desktop`;
+- `tela responde  ... current 1200 x 700`:经过 200 次鼠标移动后,屏幕依然正常,且保持请求的尺寸;
+- `terminal maximizado  _NET_WM_STATE_MAXIMIZED_HORZ`;
+- `sessão de volta em 1200x700`:程序结束 XFCE 会话(相当于注销),会话会自行恢复。
+
+在浏览器中:黑色背景、四个快捷方式,屏幕与窗口同尺寸。
+
+## 10f. 向机器中的 Claude Code 派发任务
+
+需要机器上的 Claude 已登录:token 通过 `runner.code` 的凭据进入(guest 只看到 placeholder),来自执行 start 者的
+环境。在环境中带着 token 启动 `serve`:
+
+```bash
+CLAUDE_CODE_OAUTH_TOKEN="$(pass show bassi/anthropic/claude-code-token)" ./bin/rc serve --listen 127.0.0.1:8080 &
+go run ./examples/desktop-claude -server http://127.0.0.1:8080 -name desk -display-port 6081
+go run ./examples/desktop-claude-agent -server http://127.0.0.1:8080 -name desk
+```
+
+预期:`✓ /root/agent/headless.txt`、`✓ /root/agent/gui.txt` 和 `✓ /root/agent/keys.txt`,每个文件内容为
+`feito pelo modo <modo>`。这是派发任务的三种方式:通过 exec 运行 `claude -p`、用 `xdotool` 在窗口中输入,以及通过
+屏幕 API 输入。后两种方式的屏幕截图保存在 `agent-gui.jpg` 和 `agent-keys.jpg`。
+
+`task runbook` 只有在设置 `RB_CLAUDE=1` 且环境中有 token 时才运行此步骤,因为它使用 Claude 的订阅。
 
 ## 11. 清理
 

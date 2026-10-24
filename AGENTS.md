@@ -57,6 +57,8 @@ a libkrunfw dá o kernel. Há dois modos:
 | criar, ligar, usar e apagar numa tacada | `rc machine run [-d] ... -- CMD` (sem `-d`, a máquina some no fim) |
 | muitos jobs com latência baixa | `rc serve`: o pool tira o boot do caminho (26–78 ms por job) |
 | um terminal da máquina no navegador | `rc machine web-terminal --name N [-- CMD]` (127.0.0.1, token na URL) |
+| operar a tela de uma máquina como uma pessoa | `rc machine screen --name N screenshot\|click X Y\|type T\|key ctrl+c\|scroll X Y` |
+| deixar um agente operar a VM (print, clique, teclado, exec) | `claude mcp add rc -- rc mcp --name N` |
 | levar uma imagem ou máquina para outro host | `rc pack create` (artefato executável) |
 | GPU do host (Vulkan) | `--gpu`, só em stack com `gpu: true` (a `llama`) |
 | conferir se o host está pronto | `rc doctor` |
@@ -82,6 +84,8 @@ rc machine shell|web-terminal [--name N] [-- CMD]
 rc machine cp SRC DST                 # um dos lados é nome:/caminho
 rc machine logs [--name N] [--tail N] [--source workload]
 rc machine ls | branch | sync | update | data-dir | prune
+rc machine screen [--name N] screenshot | click X Y | move X Y | drag X Y TX TY | type T | key K | scroll X Y | do -f F
+rc mcp --name N                       # servidor MCP (stdio): screenshot, click, type, key, scroll, actions, exec
 rc pack create|inspect|prune
 rc image build (--stack S ... | --all)
 rc serve [--listen 127.0.0.1:8080] [--pool-size 2]
