@@ -12,8 +12,10 @@ import (
 )
 
 // startDisplay cria a tela e sobe o visualizador no endereço pedido, neste mesmo processo
-// (vive e morre com a VM). Sem display devolve nil, e a VM sobe sem saída de vídeo.
-func startDisplay(d *ports.VMDisplay) (*screen.Screen, error) {
+// (vive e morre com a VM). Sem display devolve nil, e a VM sobe sem saída de vídeo. O
+// vsockSocket é o caminho até o guest: por ele o pedido de tamanho da página vira o gancho
+// DisplayResizeHook dentro da VM.
+func startDisplay(d *ports.VMDisplay, vsockSocket string) (*screen.Screen, error) {
 	if d == nil {
 		return nil, nil
 	}
@@ -31,7 +33,7 @@ func startDisplay(d *ports.VMDisplay) (*screen.Screen, error) {
 	if err != nil {
 		return nil, fmt.Errorf("display input: %w", err)
 	}
-	srv := &http.Server{Handler: viewer.Handler(scr, in, int(d.Width), int(d.Height))}
+	srv := &http.Server{Handler: viewer.TitledHandler(d.Title, scr, in, newGuestResizer(vsockSocket), int(d.Width), int(d.Height))}
 	go srv.Serve(l)
 	return scr, nil
 }

@@ -177,19 +177,29 @@ func (f *framebuffer) alloc(id uint32, buffer *uintptr, size *uintptr) int32 {
 	if !ok {
 		return displayErrInvalidScanout
 	}
-	for i, busy := range so.busy {
+	i := -1
+	for j, busy := range so.busy {
 		if !busy {
-			so.busy[i] = true
-			if buffer != nil {
-				*buffer = uintptr(unsafe.Pointer(&so.frames[i][0]))
-			}
-			if size != nil {
-				*size = uintptr(len(so.frames[i]))
-			}
-			return int32(i)
+			i = j
+			break
 		}
 	}
-	return displayErrOutOfBuffers
+	// Todos ocupados só acontece com quadro abandonado: a libkrun reserva e apresenta na mesma
+	// thread, um quadro por vez, e quando a cópia do recurso falha (troca de modo no guest) o
+	// flush desiste sem apresentar. Recusar aqui faria toda reserva seguinte falhar e a tela
+	// congelar; o abandonado volta para o anel.
+	if i < 0 {
+		so.busy = [framesPerScanout]bool{}
+		i = 0
+	}
+	so.busy[i] = true
+	if buffer != nil {
+		*buffer = uintptr(unsafe.Pointer(&so.frames[i][0]))
+	}
+	if size != nil {
+		*size = uintptr(len(so.frames[i]))
+	}
+	return int32(i)
 }
 
 // present copia o frame para a tela e libera o buffer.

@@ -41,8 +41,10 @@ func TestDisplayBackend(t *testing.T) {
 	if id2 := displayAlloc(0, 0, nil, nil); id2 != 1 {
 		t.Fatalf("second buffer: %d", id2)
 	}
-	if displayAlloc(0, 0, nil, nil) != displayErrOutOfBuffers {
-		t.Fatal("both busy")
+	// Os dois ocupados = quadros abandonados por flush que falhou (troca de modo no guest): a
+	// reserva seguinte os recicla em vez de recusar, senão a tela congelava para sempre.
+	if id3 := displayAlloc(0, 0, nil, nil); id3 != 0 || !fbState.scanouts[0].busy[0] || fbState.scanouts[0].busy[1] {
+		t.Fatalf("both busy must recycle: %d %v", id3, fbState.scanouts[0].busy)
 	}
 	if displayPresent(0, 0, 0, nil) != 0 {
 		t.Fatal("present")
@@ -160,13 +162,13 @@ func TestConfigureDisplay(t *testing.T) {
 	if nogpu.Validate() == nil {
 		t.Fatal("display without gpu must be refused")
 	}
-	if scr, err := startDisplay(nil); scr != nil || err != nil {
+	if scr, err := startDisplay(nil, ""); scr != nil || err != nil {
 		t.Fatal("no display, no screen")
 	}
-	if _, err := startDisplay(&ports.VMDisplay{Width: 1, Height: 1, Listen: "256.0.0.1:1"}); err == nil {
+	if _, err := startDisplay(&ports.VMDisplay{Width: 1, Height: 1, Listen: "256.0.0.1:1"}, ""); err == nil {
 		t.Fatal("bad listen must fail")
 	}
-	scr, err := startDisplay(&ports.VMDisplay{Width: 1, Height: 1, Listen: "127.0.0.1:0"})
+	scr, err := startDisplay(&ports.VMDisplay{Width: 1, Height: 1, Listen: "127.0.0.1:0"}, "")
 	if err != nil || scr == nil {
 		t.Fatal(err)
 	}

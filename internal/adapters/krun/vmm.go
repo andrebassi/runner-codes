@@ -66,7 +66,7 @@ func RunVMM(api API, s Spec, watchdog io.Reader) error {
 		}
 		defer sb.Close()
 	}
-	scr, err := startDisplay(s.Display)
+	scr, err := startDisplay(s.Display, s.VsockSocket)
 	if err != nil {
 		return err
 	}

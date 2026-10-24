@@ -69,6 +69,31 @@ stdenv.mkDerivation (finalAttrs: {
     sed -i '/rutabaga_gfx::RutabagaComponentType::VirglRenderer,$/{N;s/rutabaga_gfx::RutabagaComponentType::VirglRenderer,\(\n *virgl_flags,\)/if env::var("KRUN_GPU_BACKEND").as_deref() == Ok("2d") { rutabaga_gfx::RutabagaComponentType::Rutabaga2D } else { rutabaga_gfx::RutabagaComponentType::VirglRenderer },\1/}' \
       src/devices/src/virtio/gpu/virtio_gpu.rs
     test "$(grep -c 'KRUN_GPU_BACKEND' src/devices/src/virtio/gpu/virtio_gpu.rs)" = 1
+    # read_2d_resource fazia unwrap() no erro do transfer_read: um quadro pego no meio de uma troca
+    # de modo (xrandr) pede mais bytes do que a memória que o guest associou ao recurso ("an iovec is
+    # outside of guest memory's range"), o unwrap derruba a thread 'gpu worker', ninguém mais atende
+    # a fila de controle e o Xorg do guest fica preso para sempre (medido: 30 trocas de tamanho
+    # reproduzem). Com o erro devolvido, o flush_resource já loga e responde ERR_UNSPEC ao guest: o
+    # quadro se perde e a tela segue. O grep derruba o build se o trecho mudar de forma.
+    # sed com N (junta a linha do unwrap): string multilinha do Nix perde a indentação, e um
+    # substituteInPlace com o trecho literal não casava.
+    sed -i '/\.map_err(|e| format!("{e}"))$/{N;s/\.map_err(|e| format!("{e}"))\n *\.unwrap();/.map_err(|e| { log::error!("read_2d_resource {}: {e}", resource.id); ErrUnspec })?;/}' \
+      src/devices/src/virtio/gpu/virtio_gpu.rs
+    test "$(grep -c 'read_2d_resource {}: {e}' src/devices/src/virtio/gpu/virtio_gpu.rs)" = 1
+    # Rutabaga2D: transfer_read e transfer_write tiram o info_2d (e as iovecs) do recurso com take()
+    # e só devolvem no caminho feliz; um erro no transfer_2d sai pelo `?` com o recurso sem info_2d,
+    # e TODO quadro seguinte daquele recurso falha com "invalid 2D info" (medido: depois de uma troca
+    # de modo, a tela ficava parada para sempre, com o guest saudável). O patch devolve o que foi
+    # tirado antes de propagar o erro; sed -z trata o arquivo inteiro como uma linha.
+    sed -z -i \
+      -e 's/        transfer_2d(\n/        let result = transfer_2d(\n/g' \
+      -e 's/        )?;\n\n        resource.info_2d = Some(info_2d);\n        resource.backing_iovecs = Some(iovecs);\n        Ok(())/        );\n\n        resource.info_2d = Some(info_2d);\n        resource.backing_iovecs = Some(iovecs);\n        result/' \
+      -e 's/        )?;\n\n        resource.info_2d = Some(info_2d);\n        Ok(())/        );\n\n        resource.info_2d = Some(info_2d);\n        result/' \
+      -e 's/        let iovecs = resource\n            .backing_iovecs\n            .take()\n            .ok_or(RutabagaError::InvalidIovec)?;/        let iovecs = match resource.backing_iovecs.take() {\n            Some(v) => v,\n            None => {\n                resource.info_2d = Some(info_2d);\n                return Err(RutabagaError::InvalidIovec);\n            }\n        };/' \
+      src/rutabaga_gfx/src/rutabaga_2d.rs
+    test "$(grep -c 'let result = transfer_2d(' src/rutabaga_gfx/src/rutabaga_2d.rs)" = 2
+    test "$(grep -c '^        result$' src/rutabaga_gfx/src/rutabaga_2d.rs)" = 2
+    test "$(grep -c 'return Err(RutabagaError::InvalidIovec)' src/rutabaga_gfx/src/rutabaga_2d.rs)" = 1
   '';
 
   preBuild = ''
