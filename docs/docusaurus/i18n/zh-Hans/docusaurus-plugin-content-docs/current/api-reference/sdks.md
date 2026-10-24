@@ -36,7 +36,7 @@ Go 1.27.2：`go get` 会把你的 `go.mod` 中的 `go` 行提升到该版本，�
 ### Python {#python}
 
 ```bash
-pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 ```
 
 安装 `runner_code` 包，没有任何依赖。不安装的话，在仓库的克隆中设置 `PYTHONPATH=sdk/python` 即可。

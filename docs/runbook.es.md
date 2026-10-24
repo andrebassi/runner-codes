@@ -699,7 +699,7 @@ Lo mismo para Python, en un venv limpio, instalando desde GitHub:
 
 ```bash
 python3 -m venv /tmp/sdkcheck/venv
-/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 /tmp/sdkcheck/venv/bin/python -I <repositorio>/examples/sdk-python/main.py http://127.0.0.1:8080
 ```
 

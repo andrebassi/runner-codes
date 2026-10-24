@@ -695,7 +695,7 @@ Python 同理,在干净的 venv 中从 GitHub 安装:
 
 ```bash
 python3 -m venv /tmp/sdkcheck/venv
-/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 /tmp/sdkcheck/venv/bin/python -I <仓库>/examples/sdk-python/main.py http://127.0.0.1:8080
 ```
 

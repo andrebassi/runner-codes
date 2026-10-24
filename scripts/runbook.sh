@@ -539,7 +539,7 @@ expect "go get runner.codes/pkg/client@latest" sh -c "cd '$ext' && go mod init s
 out=$(cd "$ext" && go run . "http://127.0.0.1:$port" 2>&1)
 expect "sdk go de fora: job, máquina, exec e erro tipado" sh -c "grep -q '^job: 42' <<<'$out' && grep -q '^exec: ola do sdk' <<<'$out' && grep -q '^error: NOT_FOUND' <<<'$out'"
 # O mesmo para o Python: venv limpo, pip direto do GitHub pela tag, sem PYTHONPATH apontando para o repositório.
-expect "pip install do SDK Python pelo GitHub" sh -c "python3 -m venv '$ext/venv' && '$ext/venv/bin/pip' install -q 'git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python'"
+expect "pip install do SDK Python pelo GitHub" sh -c "python3 -m venv '$ext/venv' && '$ext/venv/bin/pip' install -q 'git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python'"
 example="$PWD/examples/sdk-python/main.py"
 out=$(cd "$ext" && "$ext/venv/bin/python" -I "$example" "http://127.0.0.1:$port" 2>&1)
 expect "sdk python de fora: job, máquina, exec e erro tipado" sh -c "grep -q '^job: 42' <<<'$out' && grep -q '^exec: ola do sdk' <<<'$out' && grep -q '^error: NOT_FOUND' <<<'$out'"

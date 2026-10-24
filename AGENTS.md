@@ -163,7 +163,7 @@ SDKs (só biblioteca padrão, mesmos métodos; receitas em https://docs.runner.c
 
 ```bash
 go get runner.codes/pkg/client@latest
-pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"   # import runner_code
+pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"   # import runner_code
 ```
 
 ## Padrões e comportamentos que importam

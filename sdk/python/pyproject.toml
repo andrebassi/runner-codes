@@ -1,5 +1,5 @@
 # Empacotamento do SDK Python: permite `pip install` direto do GitHub, sem PyPI.
-#   pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+#   pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 # Sem dependência nenhuma: o pacote só usa a biblioteca padrão (Python 3.9+).
 [build-system]
 requires = ["setuptools>=61"]
@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runner-code"
-version = "1.1.1"
+version = "1.2.0"
 description = "Cliente da API HTTP do runner.codes (rc serve): jobs efêmeros e máquinas em microVM."
 requires-python = ">=3.9"
 license = { text = "MPL-2.0" }

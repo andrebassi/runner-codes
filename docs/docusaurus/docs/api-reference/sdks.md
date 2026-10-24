@@ -38,7 +38,7 @@ versão, e um toolchain mais antigo baixa a nova sozinho.
 ### Python
 
 ```bash
-pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 ```
 
 Instala o pacote `runner_code`, sem dependência nenhuma. Sem instalar, de um clone do repositório, basta

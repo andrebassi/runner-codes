@@ -38,7 +38,7 @@ package imports only the standard library. The module asks for Go 1.27.2: `go ge
 ### Python
 
 ```bash
-pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+pip install "git+https://github.com/andrebassi/runner-codes@v1.2.0#subdirectory=sdk/python"
 ```
 
 Installs the `runner_code` package, with no dependencies at all. To use it without installing, from a clone of the
