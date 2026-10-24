@@ -155,6 +155,13 @@ Cuidado do TOML: chave escrita depois de uma tabela (`[secrets]`, `[dev]`) perte
 como `exception: "Timeout"`. Erros com código estável (`E005` stdin longo, `E006` stack desconhecida, `E007` sem GPU).
 A API **não tem autenticação**: escuta em `127.0.0.1` por padrão.
 
+SDKs (só biblioteca padrão, mesmos métodos; receitas em https://docs.runner.codes/api-reference/sdks):
+
+```bash
+go get runner.codes/pkg/client@latest
+pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"   # import runner_code
+```
+
 ## Padrões e comportamentos que importam
 
 - **Timeout é `SIGKILL` no grupo do processo da VM**; não sobra processo. Se o `rc` morre, as VMs morrem junto.

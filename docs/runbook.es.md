@@ -659,6 +659,41 @@ Esperado:
 - el `go get` descarga `runner.codes v1.1.0` (o más nueva);
 - la salida del `go run` es la misma del 10b: `job: 42`, `exec: ola do sdk go` y `error: NOT_FOUND`.
 
+Lo mismo para Python, en un venv limpio, instalando desde GitHub:
+
+```bash
+python3 -m venv /tmp/sdkcheck/venv
+/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+/tmp/sdkcheck/venv/bin/python -I <repositorio>/examples/sdk-python/main.py http://127.0.0.1:8080
+```
+
+Esperado: el `pip` instala `runner-code 1.1.1`, y la salida es la misma del 10b (`job: 42`, `exec: ola do sdk python`,
+`error: NOT_FOUND`). El `-I` garantiza que el paquete viene del venv, no del repositorio.
+
+## 10d. Recetas de los SDKs
+
+Las siete recetas de la [página de SDKs](docusaurus/docs/api-reference/sdks.md), en Go y en Python, con el `serve` todavía en marcha:
+
+```bash
+go run ./examples/sdk-go-recipes http://127.0.0.1:8080
+PYTHONPATH=sdk/python python3 examples/sdk-python-recipes/main.py http://127.0.0.1:8080
+```
+
+Esperado, en ambos (el tiempo varía):
+
+```
+untrusted: stdout=45 stderr=aviso tempo=58ms
+files: 42
+timeout: exception=Timeout
+compile: exception=Compilation failed stderr_tem_erro=true
+machine: sdk-go pypi=200 example=bloqueado
+branch: feito antes do branch
+errors: 404 NOT_FOUND
+```
+
+En la línea `machine`, `sdk-python` en lugar de `sdk-go` en el segundo programa. No queda ninguna máquina `recipe-*` en
+`./bin/rc machine ls`.
+
 ## 11. Limpiar
 
 ```bash

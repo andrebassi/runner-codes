@@ -43,6 +43,9 @@ The `executionTime` value is illustrative.
 | compilation failure | success | `"Compilation failed"` | compiler output | — |
 | timeout exceeded | success | `"Timeout"` | whatever there is | — |
 
+Go is the exception on the compilation row: it runs through `go run`, which compiles and executes in one step, so a
+compilation error arrives only in `stderr`, with `exception` null.
+
 ## What the API does with the result
 
 In `/api/v1/run` and `/api/v1/execute`, the API passes through `status`, `stdout`, `stderr`, `exception`, `executionTime` and `error`; `exit_code` does not appear. It appears as `exitCode` in the `result` event of `/api/v1/execute/stream` and in the machine exec response. The CLI shows it on the summary line of `rc run` and exits with rc 1 when it is non-zero; `rc machine exec` exits with the command's own code.

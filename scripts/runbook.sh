@@ -502,7 +502,28 @@ expect "meta go-import em runner.codes" sh -c "curl -s 'https://runner.codes/pkg
 expect "go get runner.codes/pkg/client@latest" sh -c "cd '$ext' && go mod init sdkcheck >/dev/null 2>&1 && go get runner.codes/pkg/client@latest"
 out=$(cd "$ext" && go run . "http://127.0.0.1:$port" 2>&1)
 expect "sdk go de fora: job, máquina, exec e erro tipado" sh -c "grep -q '^job: 42' <<<'$out' && grep -q '^exec: ola do sdk' <<<'$out' && grep -q '^error: NOT_FOUND' <<<'$out'"
+# O mesmo para o Python: venv limpo, pip direto do GitHub pela tag, sem PYTHONPATH apontando para o repositório.
+expect "pip install do SDK Python pelo GitHub" sh -c "python3 -m venv '$ext/venv' && '$ext/venv/bin/pip' install -q 'git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python'"
+example="$PWD/examples/sdk-python/main.py"
+out=$(cd "$ext" && "$ext/venv/bin/python" -I "$example" "http://127.0.0.1:$port" 2>&1)
+expect "sdk python de fora: job, máquina, exec e erro tipado" sh -c "grep -q '^job: 42' <<<'$out' && grep -q '^exec: ola do sdk' <<<'$out' && grep -q '^error: NOT_FOUND' <<<'$out'"
 rm -rf "$ext"
+
+step "10d. Receitas dos SDKs"
+# As sete receitas da página de SDKs, em Go e em Python, com a saída que a página mostra. O tempo do job varia e fica
+# de fora; o resto é literal.
+for lang in go python; do
+  if [ "$lang" = go ]; then out=$(go run ./examples/sdk-go-recipes "http://127.0.0.1:$port" 2>&1)
+  else out=$(PYTHONPATH=sdk/python python3 examples/sdk-python-recipes/main.py "http://127.0.0.1:$port" 2>&1); fi
+  expect "receitas $lang: código de fora (stdout, stderr)" grep -q '^untrusted: stdout=45 stderr=aviso tempo=' <<<"$out"
+  expect "receitas $lang: vários arquivos e stdin" grep -qx 'files: 42' <<<"$out"
+  expect "receitas $lang: prazo" grep -qx 'timeout: exception=Timeout' <<<"$out"
+  expect "receitas $lang: erro de compilação" grep -qx 'compile: exception=Compilation failed stderr_tem_erro=true' <<<"$out"
+  expect "receitas $lang: máquina com saída só para pypi.org" grep -qx "machine: sdk-$lang pypi=200 example=bloqueado" <<<"$out"
+  expect "receitas $lang: branch" grep -qx 'branch: feito antes do branch' <<<"$out"
+  expect "receitas $lang: erro tipado" grep -qx 'errors: 404 NOT_FOUND' <<<"$out"
+done
+expect "nenhuma máquina das receitas sobrou" sh -c "! $rc machine ls | grep -q '^recipe-'"
 
 step "11. Limpar"
 expect "stop" $rc machine stop --name "$name"

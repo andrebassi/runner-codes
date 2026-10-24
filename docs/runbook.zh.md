@@ -656,6 +656,40 @@ go run . http://127.0.0.1:8080
 - `go get` 下载 `runner.codes v1.1.0`(或更新版本);
 - `go run` 的输出与 10b 相同:`job: 42`、`exec: ola do sdk go` 和 `error: NOT_FOUND`。
 
+Python 同理,在干净的 venv 中从 GitHub 安装:
+
+```bash
+python3 -m venv /tmp/sdkcheck/venv
+/tmp/sdkcheck/venv/bin/pip install "git+https://github.com/andrebassi/runner-codes@v1.1.1#subdirectory=sdk/python"
+/tmp/sdkcheck/venv/bin/python -I <仓库>/examples/sdk-python/main.py http://127.0.0.1:8080
+```
+
+预期:`pip` 安装 `runner-code 1.1.1`,输出与 10b 相同(`job: 42`、`exec: ola do sdk python`、`error: NOT_FOUND`)。
+`-I` 确保包来自 venv,而不是仓库。
+
+## 10d. SDK 示例
+
+[SDK 页面](docusaurus/docs/api-reference/sdks.md)中的七个示例,分别用 Go 和 Python,`serve` 仍在运行时:
+
+```bash
+go run ./examples/sdk-go-recipes http://127.0.0.1:8080
+PYTHONPATH=sdk/python python3 examples/sdk-python-recipes/main.py http://127.0.0.1:8080
+```
+
+预期(两者;时间会变化):
+
+```
+untrusted: stdout=45 stderr=aviso tempo=58ms
+files: 42
+timeout: exception=Timeout
+compile: exception=Compilation failed stderr_tem_erro=true
+machine: sdk-go pypi=200 example=bloqueado
+branch: feito antes do branch
+errors: 404 NOT_FOUND
+```
+
+第二个程序的 `machine` 行中是 `sdk-python` 而不是 `sdk-go`。`./bin/rc machine ls` 中没有残留的 `recipe-*` 机器。
+
 ## 11. 清理
 
 ```bash

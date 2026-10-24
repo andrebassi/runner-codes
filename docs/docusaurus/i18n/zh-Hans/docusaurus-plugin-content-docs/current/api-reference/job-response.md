@@ -43,6 +43,8 @@ description: 'guest 通过 vsock 返回给 host 的结果'
 | 编译失败 | success | `"Compilation failed"` | 编译器输出 | — |
 | 超时 | success | `"Timeout"` | 已有的输出 | — |
 
+Go 是编译那一行的例外:它通过 `go run` 运行,编译和执行一步完成,因此编译错误只出现在 `stderr` 中,`exception` 为 null。
+
 ## API 如何处理结果 {#o-que-a-api-faz-com-o-resultado}
 
 在 `/api/v1/run` 和 `/api/v1/execute` 中，API 转发 `status`、`stdout`、`stderr`、`exception`、`executionTime` 和 `error`；`exit_code` 不出现。它以 `exitCode` 的形式出现在 `/api/v1/execute/stream` 的 `result` 事件中，以及 machine exec 的响应中。CLI 在 `rc run` 的摘要行中显示它，且当它不为零时以 rc 1 退出；`rc machine exec` 则以命令本身的退出码退出。

@@ -70,3 +70,7 @@ __pycache__/
 # Tags das imagens do playground (scripts/playground-image.sh)
 .playground/
 .k8s/
+
+# artefatos do pip install local do SDK Python
+*.egg-info/
+sdk/python/build/
