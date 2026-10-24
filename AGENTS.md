@@ -59,6 +59,7 @@ a libkrunfw dá o kernel. Há dois modos:
 | um terminal da máquina no navegador | `rc machine web-terminal --name N [-- CMD]` (127.0.0.1, token na URL) |
 | operar a tela de uma máquina como uma pessoa | `rc machine screen --name N screenshot\|click X Y\|type T\|key ctrl+c\|scroll X Y` |
 | deixar um agente operar a VM (print, clique, teclado, exec) | `claude mcp add rc -- rc mcp --name N` |
+| dar nome à página da tela (barra e aba) | `display_title = "minha app"` no `runner.code`, ou `--display-title` |
 | levar uma imagem ou máquina para outro host | `rc pack create` (artefato executável) |
 | GPU do host (Vulkan) | `--gpu`, só em stack com `gpu: true` (a `llama`) |
 | conferir se o host está pronto | `rc doctor` |
