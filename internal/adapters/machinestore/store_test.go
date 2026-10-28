@@ -59,6 +59,16 @@ func TestStoreLifecycle(t *testing.T) {
 	if err := s.Create(domain.Machine{Name: "alpha", Stack: "go"}, tpl); code(err) != domain.CodeConflict {
 		t.Fatalf("duplicate: %v", err)
 	}
+	// Diretório que já existe sem registro é o ponto de montagem do disco próprio recém-criado (só o lost+found do
+	// ext4 dentro): a máquina nasce ali, em vez de CONFLICT.
+	os.MkdirAll(filepath.Join(s.Dir("mounted"), "lost+found"), 0o700)
+	if err := s.Create(domain.Machine{Name: "mounted", Stack: "python", DiskGiB: 1}, tpl); err != nil {
+		t.Fatalf("ponto de montagem: %v", err)
+	}
+	if _, err := s.Load("mounted"); err != nil {
+		t.Fatalf("registro no ponto de montagem: %v", err)
+	}
+	s.Delete("mounted")
 	ms, _ := s.List()
 	if len(ms) != 2 || ms[0].Name != "alpha" || ms[1].Name != "zeta" || ms[0].Stack != "python" {
 		t.Fatalf("list: %+v", ms)

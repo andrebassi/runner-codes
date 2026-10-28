@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runner.codes/internal/adapters/krun"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -34,6 +35,10 @@ func (d *deps) newMachines() *app.Machines {
 		Store: machinestore.New(filepath.Join(d.builder.CacheDir, "machines")), Disks: d.builder,
 		Images: d.builder, Catalog: d.catalog, Launcher: d.launcher, Procs: machinestore.Processes{},
 		Guest: guestproto.Client{},
+		// Suspender exige a libkrun com snapshot (o fork do superbot). RC_SUSPEND=off desliga sem recompilar: o host
+		// volta a só desligar, se o snapshot der problema em campo.
+		CanSuspend: os.Getenv("RC_SUSPEND") != "off" && canSuspend(d.launcher.LibPath),
+		Log:        os.Stderr,
 		// `image` do runner.code: o ext4 sai do mesmo build das stacks.
 		BuildImage: func(ctx context.Context, l domain.Language) error {
 			return buildImage(ctx, d, l)
@@ -46,7 +51,22 @@ func (d *deps) newMachines() *app.Machines {
 			return credca.New(hosts, time.Now())
 		},
 		ApplyGuestModes: hostfs.ApplyGuestModes,
+		// Proxy de saída do host (o edge-egress do superbot no worker): toda máquina ligada aqui sai por ele. A unit
+		// do NixOS do worker define as duas; num Mac de desenvolvimento ficam vazias e nada muda.
+		EgressProxy: os.Getenv("RC_EGRESS_PROXY"),
+		EgressCA:    os.Getenv("RC_EGRESS_CA"),
 	}
+}
+
+// canSuspend diz se a libkrun deste host sabe suspender e restaurar: abre a biblioteca e confere o símbolo, sem ligar
+// VM nenhuma. Falha ao abrir (outra máquina, outro caminho) é "não sabe" — o host só desliga, como antes.
+func canSuspend(lib string) bool {
+	api, err := krun.Load(lib)
+	if err != nil {
+		return false
+	}
+	s, ok := api.(interface{ HasSnapshot() bool })
+	return ok && s.HasSnapshot()
 }
 
 // defaultMachineName é o nome quando --name falta: $RC_MACHINE_NAME (para fixar uma máquina
@@ -56,7 +76,7 @@ func defaultMachineName() string { return env("RC_MACHINE_NAME", "default") }
 // machineCmd agrupa o ciclo de vida das máquinas persistentes.
 func machineCmd() *cobra.Command {
 	c := &cobra.Command{Use: "machine", Short: "Persistent machines: create, start, exec, cp, logs, stop, delete"}
-	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineStatusCmd(), machineListCmd(),
+	c.AddCommand(machineCreateCmd(), machineStartCmd(), machineStopCmd(), machineSuspendCmd(), machineStatusCmd(), machineListCmd(),
 		machineDeleteCmd(), machineExecCmd(), machineShellCmd(), machineWebTerminalCmd(), machineCopyCmd(), machineLogsCmd(), machineUpdateCmd(),
 		machineRunCmd(), machineBranchCmd(), machinePauseCmd(), machineResumeCmd(), machineSyncCmd(), machineDataDirCmd(),
 		machineScreenCmd(),
@@ -149,6 +169,25 @@ func machineStopCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
 	c.Flags().DurationVar(&timeout, "timeout", -1, "wait for a clean shutdown before killing (0 kills at once; default: the machine's stop_timeout, or 10s)")
+	return c
+}
+
+// machineSuspendCmd suspende a máquina: o estado inteiro vai para o disco dela e o próximo start volta no mesmo ponto.
+func machineSuspendCmd() *cobra.Command {
+	var name string
+	var timeout time.Duration
+	c := &cobra.Command{
+		Use: "suspend", Short: "Suspend a machine (save RAM and devices to its disk, then exit; start resumes it)",
+		RunE: withMachines(func(m *app.Machines, cmd *cobra.Command, _ []string) error {
+			if err := m.Suspend(cmd.Context(), name, timeout); err != nil {
+				return err
+			}
+			fmt.Printf("suspended %s\n", name)
+			return nil
+		}),
+	}
+	c.Flags().StringVar(&name, "name", defaultMachineName(), "machine name")
+	c.Flags().DurationVar(&timeout, "timeout", 0, "wait this long for the snapshot (default 20s)")
 	return c
 }
 

@@ -124,11 +124,22 @@ type Egress struct {
 	// faixas dentro delas e implica BlockPrivate.
 	BlockPrivate bool     `json:"block_private,omitempty"`
 	AllowPrivate []string `json:"allow_private,omitempty"`
+	// BlockPage troca o "host não encontrado" de um nome negado por uma página que diz que o acesso não está
+	// autorizado: o DNS responde o IP do sinkhole e o proxy de saída do host (rc serve com RC_EGRESS_PROXY) serve a
+	// página. Sem o proxy no host, não muda nada (o nome negado segue em NXDOMAIN).
+	BlockPage bool `json:"block_page,omitempty"`
+	// AllowPaths libera só um caminho de um host, no formato "host/prefixo" ("cdnjs.cloudflare.com/polyfill/"): o nome
+	// segue negado no DNS (vai ao sinkhole), e o proxy de saída, que abre o HTTP e o HTTPS, deixa passar só os requests
+	// cujo caminho cai no prefixo. Prefixo terminado em "/" libera tudo abaixo dele; sem a barra, o caminho exato e o
+	// que estiver abaixo dele como pasta ("/a/b" libera "/a/b" e "/a/b/c", nunca "/a/bc"). Exige BlockPage: sem o
+	// proxy no meio, ninguém aplicaria o caminho, e a regra pareceria valer sem valer.
+	AllowPaths []string `json:"allow_paths,omitempty"`
 }
 
-// Restricted diz se há lista de permissão: aí o padrão é negar.
+// Restricted diz se há lista de permissão: aí o padrão é negar. Uma regra de caminho também restringe: quem liberou só
+// um caminho não espera o resto da internet aberto.
 func (e Egress) Restricted() bool {
-	return len(e.AllowHosts) > 0 || len(e.AllowHostPatterns) > 0 || len(e.AllowCIDRs) > 0
+	return len(e.AllowHosts) > 0 || len(e.AllowHostPatterns) > 0 || len(e.AllowCIDRs) > 0 || len(e.AllowPaths) > 0
 }
 
 // Empty diz se nenhuma regra foi declarada.
@@ -211,11 +222,60 @@ type Policy struct {
 	blockPrivate bool
 	// suffix casa nome e subdomínios; exact só o nome; sub só os subdomínios.
 	suffix, exact, sub []string
+	// blockPage é o Egress.BlockPage; allowedHosts é a lista declarada, como veio, para a página mostrar o que vale.
+	blockPage    bool
+	allowedHosts []string
+	// allowedPaths são as regras de caminho normalizadas ("host/prefixo", host minúsculo), que vão ao proxy de saída
+	// na conexão ao sinkhole.
+	allowedPaths []string
 }
+
+// AllowedPaths são as regras de caminho ("host/prefixo") que o proxy de saída aplica request a request.
+func (p *Policy) AllowedPaths() []string { return p.allowedPaths }
+
+// pathChars são os caracteres aceitos num prefixo de caminho, fora a barra: os não reservados e os sub-delims da RFC
+// 3986, menos a vírgula (separa as regras no header do proxy). "%" fica de fora de propósito: com escape, o mesmo
+// caminho tem várias grafias ("/a%2Fb", "/%61"), e a comparação no proxy seria contornável.
+const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~!$&'()*+;=:@"
+
+// parsePathRule valida "host/prefixo" e devolve a forma normalizada (host minúsculo, sem o ponto final). Recusa o que o
+// proxy não conseguiria comparar com segurança: padrão de host ("=x", "*.x"), segmento "." ou "..", barra dupla,
+// escape, query e fragmento.
+func parsePathRule(s string) (string, error) {
+	host, path, ok := strings.Cut(strings.TrimSpace(s), "/")
+	bad := func(why string) (string, error) {
+		return "", fmt.Errorf("allow_paths: %q %s (want host/path, e.g. cdn.example.com/lib/)", s, why)
+	}
+	if !ok || host == "" {
+		return bad("has no path")
+	}
+	if strings.HasPrefix(host, "=") || strings.HasPrefix(host, "*.") || validHostPattern(host) != nil {
+		return bad("must start with a bare host name")
+	}
+	if path == "" {
+		return bad("has an empty path (allow the host instead)")
+	}
+	for seg := range strings.SplitSeq(strings.TrimSuffix(path, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return bad("has an empty, . or .. segment")
+		}
+		if strings.Trim(seg, pathChars) != "" {
+			return bad("has a character outside the plain path set (no %, ?, #, comma or spaces)")
+		}
+	}
+	return normalizeHost(host) + "/" + path, nil
+}
+
+// BlockPage diz se o nome negado ganha a página de bloqueio (em vez de NXDOMAIN).
+func (p *Policy) BlockPage() bool { return p.blockPage }
+
+// AllowedHosts é a lista de hosts liberados como foi declarada (nomes e padrões), para a página de bloqueio.
+func (p *Policy) AllowedHosts() []string { return p.allowedHosts }
 
 // Compile valida a política e devolve a forma de decidir.
 func (e Egress) Compile() (*Policy, error) {
-	p := &Policy{restricted: e.Restricted(), blockPrivate: e.BlockPrivate || len(e.AllowPrivate) > 0}
+	p := &Policy{restricted: e.Restricted(), blockPrivate: e.BlockPrivate || len(e.AllowPrivate) > 0,
+		blockPage: e.BlockPage, allowedHosts: append(append([]string{}, e.AllowHosts...), e.AllowHostPatterns...)}
 	var err error
 	if p.allow, err = parsePrefixes(e.AllowCIDRs); err != nil {
 		return nil, fmt.Errorf("allow_cidrs: %w", err)
@@ -251,12 +311,24 @@ func (e Egress) Compile() (*Policy, error) {
 			p.exact = append(p.exact, h)
 		}
 	}
+	if len(e.AllowPaths) > 0 && !e.BlockPage {
+		return nil, fmt.Errorf("allow_paths needs block_page: only the egress proxy can enforce a path")
+	}
+	for _, r := range e.AllowPaths {
+		n, err := parsePathRule(r)
+		if err != nil {
+			return nil, err
+		}
+		p.allowedPaths = append(p.allowedPaths, n)
+	}
 	return p, nil
 }
 
-// FiltersNames diz se o DNS filtra por nome (há lista de hosts). Só com CIDRs o nome
-// resolve livre e a conexão é que decide.
-func (p *Policy) FiltersNames() bool { return len(p.suffix)+len(p.exact)+len(p.sub) > 0 }
+// FiltersNames diz se o DNS filtra por nome (há lista de hosts, ou regra de caminho: o nome dela tem de cair no
+// sinkhole, não resolver livre). Só com CIDRs o nome resolve livre e a conexão é que decide.
+func (p *Policy) FiltersNames() bool {
+	return len(p.suffix)+len(p.exact)+len(p.sub)+len(p.allowedPaths) > 0
+}
 
 // NameAllowed decide se o DNS responde por um nome. Sem lista de hosts, todo nome resolve.
 func (p *Policy) NameAllowed(name string) bool {

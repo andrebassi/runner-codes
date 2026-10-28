@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"runner.codes/internal/domain"
@@ -50,11 +51,24 @@ type Machines struct {
 	Launcher ports.DetachedLauncher
 	Procs    ports.Processes
 	Guest    ports.GuestClient
+	// CanSuspend diz que a libkrun deste host sabe suspender e restaurar (o fork do superbot): o Start passa a
+	// restaurar o snapshot que a máquina tiver, e o Suspend fica disponível. Falso: só boot e desligamento.
+	CanSuspend bool
+	// Log recebe as decisões de suspend e restore (restaurou, caiu no boot do zero, apagou snapshot velho), uma por
+	// linha — no worker spot elas são a única pista do que aconteceu numa preempção, porque o host some junto. O rc
+	// serve aponta para o stderr (journal); nil não escreve.
+	Log io.Writer
 	// ReadyTimeout limita a espera do guest no start; 0 usa o ReadyTimeout do pool.
 	ReadyTimeout time.Duration
 	// BuildImage constrói o ext4 de uma imagem OCI qualquer (`image` no runner.code); nil
 	// recusa máquina por imagem. Recebe a linguagem sintética com o nome do ext4.
 	BuildImage func(ctx context.Context, l domain.Language) error
+	// buildMu deixa um build de imagem (e um preparo de modelo de disco) por vez. O builder usa um diretório de trabalho só (o mesmo inject/ e o mesmo
+	// .tar) e sobe uma VM de build por chamada: dois builds juntos sobrescrevem os arquivos um do outro ("build VM
+	// exited with code 1") e seis VMs de build juntas num host de 8 GB derrubaram o próprio rc (medido no teste de 25
+	// desktops do superbot, 25/10/2026, num host novo sem a imagem em cache). Quem espera encontra a imagem pronta:
+	// o build seguinte é só a conferência do cache.
+	buildMu sync.Mutex
 	// UpdateEgress manda a política nova ao gateway de uma máquina ligada (o socket de
 	// controle do processo vmm); nil recusa a troca com a máquina ligada.
 	UpdateEgress func(socket string, e domain.Egress) error
@@ -66,6 +80,14 @@ type Machines struct {
 	// ApplyGuestModes acerta no host o modo dos arquivos que o guest criou num volume (a
 	// libkrun no macOS os cria 0600 e guarda o modo do guest em xattr); nil não mexe.
 	ApplyGuestModes func(dir string) error
+	// Persist põe o diretório de cada máquina nova num disco de rede só dela (persistent.go); nil mantém tudo no
+	// disco do host, como sempre foi (Mac, casa do superbot).
+	Persist PersistentDisks
+	// EgressProxy e EgressCA são o proxy de saída do host e a CA dele (ports.VMNet); vazios, a máquina sai direto.
+	EgressProxy string
+	EgressCA    string
+	// drain é o estado da preempção do host (Drain).
+	drain drainState
 }
 
 // fabricDir é o diretório de uma rede nomeada: o hash do nome, e não o nome, porque o
@@ -130,6 +152,8 @@ type MachineStatus struct {
 	domain.Machine
 	State string `json:"state"`
 	PID   int    `json:"pid,omitempty"`
+	// Suspended: parada com um snapshot completo no disco — o próximo start volta no ponto em que ela parou.
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 // Estados de uma máquina.
@@ -157,7 +181,11 @@ func (m *Machines) Create(ctx context.Context, mc domain.Machine) (domain.Machin
 
 // CreateFrom é o Create com o disco de partida dado (o de um pack feito de uma máquina, com
 // o que foi instalado nela): clonado como o modelo vazio seria. Vazio usa o modelo novo.
-func (m *Machines) CreateFrom(ctx context.Context, mc domain.Machine, disk string) (domain.Machine, error) {
+func (m *Machines) CreateFrom(ctx context.Context, mc domain.Machine, disk string) (out domain.Machine, err error) {
+	if m.isDraining() {
+		// Host em preempção: a máquina nasceria num disco que vai ser solto em segundos.
+		return mc, domain.MachineError{Code: domain.CodeInvalidState, Msg: "host is being preempted; create the machine on another host"}
+	}
 	if mc.Image != "" {
 		if mc.Stack != "" {
 			return mc, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "set stack or image, not both"}}
@@ -184,6 +212,38 @@ func (m *Machines) CreateFrom(ctx context.Context, mc domain.Machine, disk strin
 	if _, err := m.Store.Load(mc.Name); err == nil {
 		return mc, domain.ErrMachineExists(mc.Name)
 	}
+	if m.Persist != nil {
+		// O disco próprio vem antes de tudo: se ele já existe (a máquina morava num host que sumiu, ou foi solta para
+		// mudar de host), adotar é o create inteiro — o registro e o disco gravável já estão lá dentro. É o pod do
+		// StatefulSet renascendo em outro node com o mesmo PersistentVolume.
+		dir := m.Store.Dir(mc.Name)
+		created, perr := m.Persist.Ensure(ctx, mc.Name, dir, persistentGiB(mc.DiskGiB))
+		if perr != nil {
+			// O disco nasceu nesta chamada e um passo seguinte falhou (anexar, mkfs): apaga, senão ele fica cobrando
+			// sem dono e cru, e a próxima tentativa o adota como se estivesse pronto.
+			if created {
+				m.Persist.Destroy(context.WithoutCancel(ctx), mc.Name, dir)
+			}
+			return mc, fmt.Errorf("persistent disk: %w", perr)
+		}
+		if adopted, lerr := m.Store.Load(mc.Name); lerr == nil {
+			// A imagem é do host, não do disco: o host novo pode nunca ter rodado essa imagem. Sem isto a máquina
+			// adotada não ligava ("image … not built", medido em 25/10/2026 no desktop que mudou de worker depois da
+			// preempção do spot).
+			if err := m.ensureImage(ctx, adopted); err != nil {
+				return adopted, err
+			}
+			return adopted, nil
+		}
+		if created {
+			// Disco novo e o create falhou no meio: apaga o disco, senão ele fica cobrando sem dono.
+			defer func() {
+				if err != nil {
+					m.Persist.Destroy(context.WithoutCancel(ctx), mc.Name, dir)
+				}
+			}()
+		}
+	}
 	if mc.Network.Name != "" {
 		if m.NetworksDir == "" {
 			return mc, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "named networks are not available here"}}
@@ -205,31 +265,19 @@ func (m *Machines) CreateFrom(ctx context.Context, mc domain.Machine, disk strin
 		}
 		mc.Network.Address = a.String()
 	}
-	if mc.Image != "" {
-		// Imagem qualquer: a GPU é responsabilidade de quem escolheu a imagem (precisa do
-		// Mesa com Venus); o ext4 sai do mesmo build das stacks, sem warmup.
-		if m.BuildImage == nil {
-			return mc, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "machines from an image are not available here"}}
-		}
-		if err := m.BuildImage(ctx, domain.Language{Name: mc.Stack, Image: mc.Image, CPUs: mc.CPUs, MemoryMiB: mc.MemoryMiB}); err != nil {
-			return mc, fmt.Errorf("build image %s: %w", mc.Image, err)
-		}
-	} else {
-		l, ok := m.Catalog.Get(mc.Stack)
-		if !ok {
-			return mc, domain.ValidationError{Err: domain.ErrUnsupportedLanguage{Name: mc.Stack}}
-		}
-		if _, ok := m.Images.ImagePath(mc.Stack); !ok {
-			return mc, domain.ValidationError{Err: domain.ErrUnsupportedLanguage{Name: mc.Stack}}
-		}
-		if err := (domain.Job{GPU: mc.GPU}).CheckGPU(l); err != nil {
-			return mc, err
-		}
+	if err := m.ensureImage(ctx, mc); err != nil {
+		return mc, err
 	}
 	tpl := disk
 	if tpl == "" {
+		// O modelo de disco usa o mesmo diretório de trabalho e a mesma VM de build das imagens: mesma trava. Seis
+		// criações juntas num host novo disputavam o rename do mesmo arquivo ("move disk template: rename … no such
+		// file", medido no 2º teste de 25 desktops, 25/10/2026).
+		m.buildMu.Lock()
 		var err error
-		if tpl, err = m.Disks.DiskTemplate(ctx, mc.DiskGiB); err != nil {
+		tpl, err = m.Disks.DiskTemplate(ctx, mc.DiskGiB)
+		m.buildMu.Unlock()
+		if err != nil {
 			return mc, fmt.Errorf("disk template: %w", err)
 		}
 	}
@@ -270,6 +318,7 @@ func (m *Machines) Status(name string) (MachineStatus, error) {
 	} else {
 		// Pausa de uma VM que morreu (kill, reboot do host) não vale mais.
 		os.Remove(filepath.Join(m.Store.Dir(name), machinePaused))
+		st.Suspended = m.hasSnapshot(name)
 	}
 	return st, nil
 }
@@ -368,6 +417,15 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		return st, domain.ErrMachineState(name, "is already running")
 	}
 	image, ok := m.Images.ImagePath(st.Stack)
+	if !ok && st.Image != "" {
+		// Máquina de imagem cujo ext4 não está neste host: chegou de outro host pelo disco próprio (adotada antes de
+		// o create construir a imagem) ou o cache foi podado. A imagem é reconstruível, então constrói em vez de
+		// recusar; só stack sem imagem continua pedindo o `rc image build`.
+		if err := m.ensureImage(ctx, st.Machine); err != nil {
+			return st, err
+		}
+		image, ok = m.Images.ImagePath(st.Stack)
+	}
 	if !ok {
 		return st, fmt.Errorf("image for %s not built (run `rc image build --stack %s`)", st.Stack, st.Stack)
 	}
@@ -400,7 +458,8 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		netw := st.Network
 		netw.Credentials, _ = bindingSources(st.Machine)
 		spec.Net = &ports.VMNet{Network: netw, DenialsLog: filepath.Join(dir, machineDenials),
-			ControlSocket: filepath.Join(dir, machineEgressSocket), Machine: name}
+			ControlSocket: filepath.Join(dir, machineEgressSocket), Machine: name,
+			EgressProxy: m.EgressProxy, EgressCA: m.EgressCA}
 		if st.Network.Name != "" {
 			spec.Net.FabricDir = m.fabricDir(st.Network.Name)
 		}
@@ -446,6 +505,33 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		}
 	}
 	spec.Nested = st.Nested
+	// Com suporte a snapshot, todo start arma o suspender; com snapshot no disco, a VM volta por ele em vez do boot.
+	restore := false
+	if m.CanSuspend {
+		spec.SnapshotDir = m.snapshotPath(name)
+		if m.hasSnapshot(name) {
+			if ok, why := m.snapshotMatchesImage(name, image); ok {
+				spec.RestoreFrom, restore = spec.SnapshotDir, true
+				m.logf(name, "restoring from snapshot")
+			} else {
+				// Outra imagem base: restaurar entregaria um convidado com o cache de outro disco. Boot do zero.
+				m.logf(name, "not restoring: %s; booting from scratch", why)
+				os.RemoveAll(m.snapshotPath(name))
+			}
+		} else {
+			// Digest em cache desde já: o Suspend da preempção só lê o arquivo do lado.
+			imageDigest(image)
+		}
+	} else {
+		// Host que não sabe restaurar liga do zero, e o disco muda a partir daqui: o snapshot que veio com ele (a
+		// máquina suspensa num host com o fork e adotada aqui) fica velho na hora. Deixado no disco, o próximo start
+		// num host que restaura carregaria aquela RAM por cima de um sistema de arquivos que já mudou — páginas de
+		// cache e journal de outro tempo, e o ext4 corrompido. Fora antes do boot.
+		if m.hasSnapshot(name) {
+			m.logf(name, "this host cannot restore; dropping its snapshot and booting from scratch")
+		}
+		os.RemoveAll(m.snapshotPath(name))
+	}
 	// O log do vmm é aberto em append: guarda onde ele termina agora, para o erro deste start
 	// citar o que este vmm escreveu, e não a linha de um start anterior.
 	vmmLog := filepath.Join(dir, machineVMMLog)
@@ -465,6 +551,16 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 	readyCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := m.Guest.WaitReady(m.watchVMM(readyCtx, pid), sock); err != nil {
+		if restore {
+			// Snapshot que não voltou (outra forma de VM, libkrun recusou, convidado travado): fora com ele, e boot do
+			// zero — a máquina liga sem o estado da RAM, mas com o disco inteiro. Melhor que não ligar.
+			m.logf(name, "restore did not come up (%v; vmm: %s); booting from scratch", err,
+				lastLine(readFrom(vmmLog, logFrom)))
+			m.Procs.Kill(pid)
+			m.Store.SetPID(name, 0)
+			os.RemoveAll(m.snapshotPath(name))
+			return m.Start(ctx, name)
+		}
 		if !m.Procs.Alive(pid) {
 			// O vmm saiu antes de o guest responder: a configuração foi recusada (nested sem
 			// suporte, libkrun sem um recurso, disco faltando). O motivo é a última linha
@@ -476,6 +572,17 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		m.Store.SetPID(name, 0)
 		return st, fmt.Errorf("machine %s did not become ready: %w; console: %s; vmm: %s", name, err,
 			tailFile(filepath.Join(dir, machineConsole), 400), lastLine(readFrom(vmmLog, logFrom)))
+	}
+	if restore {
+		// A RAM já foi carregada: o snapshot não serve mais (voltar a ele de novo seria voltar no tempo). E nada de
+		// provision — montagens, segredos e o workload voltaram com o convidado; rodar de novo duplicaria o workload.
+		// A RAM do arquivo fica: a libkrun a restaura sob demanda (mapeada), e o próximo suspend grava nela só o que
+		// mudou (invalidateSnapshot).
+		m.invalidateSnapshot(name)
+		m.syncGuestClock(ctx, sock)
+		m.reseedGuest(ctx, sock)
+		m.logf(name, "restored from snapshot")
+		return m.Status(name)
 	}
 	if err := m.provision(ctx, st.Machine, sock); err != nil {
 		// A VM fica ligada: dá para entrar com `rc machine shell` e ver o que falhou. O init
@@ -630,6 +737,7 @@ func (m *Machines) Stop(ctx context.Context, name string, timeout time.Duration)
 		if err := m.Sync(ctx, name); err != nil {
 			return err
 		}
+		m.preStop(ctx, name, timeout)
 		sig, _ := domain.SignalNumber(st.StopSignal) // validado no create
 		wait := timeout
 		if len(st.Workload) > 0 {
@@ -652,6 +760,56 @@ func (m *Machines) Stop(ctx context.Context, name string, timeout time.Duration)
 	}
 	m.leaveFabric(st.Machine)
 	return m.Store.SetPID(name, 0)
+}
+
+// ensureImage deixa a imagem da máquina pronta NESTE host: com imagem (OCI ou pack), constrói (o build tem cache, e
+// no host que já a tem é instantâneo); com stack, confere que ela existe no catálogo, tem ext4 e aceita o pedido de
+// GPU. Vale para o create e para a adoção de um disco vindo de outro host.
+func (m *Machines) ensureImage(ctx context.Context, mc domain.Machine) error {
+	if mc.Image != "" {
+		// Imagem qualquer: a GPU é responsabilidade de quem escolheu a imagem (precisa do
+		// Mesa com Venus); o ext4 sai do mesmo build das stacks, sem warmup.
+		if m.BuildImage == nil {
+			return domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "machines from an image are not available here"}}
+		}
+		m.buildMu.Lock()
+		err := m.BuildImage(ctx, domain.Language{Name: mc.Stack, Image: mc.Image, CPUs: mc.CPUs, MemoryMiB: mc.MemoryMiB})
+		m.buildMu.Unlock()
+		if err != nil {
+			return fmt.Errorf("build image %s: %w", mc.Image, err)
+		}
+		return nil
+	}
+	l, ok := m.Catalog.Get(mc.Stack)
+	if !ok {
+		return domain.ValidationError{Err: domain.ErrUnsupportedLanguage{Name: mc.Stack}}
+	}
+	if _, ok := m.Images.ImagePath(mc.Stack); !ok {
+		return domain.ValidationError{Err: domain.ErrUnsupportedLanguage{Name: mc.Stack}}
+	}
+	return (domain.Job{GPU: mc.GPU}).CheckGPU(l)
+}
+
+// PreStopHook é o caminho, dentro da máquina, do gancho que roda antes de todo desligamento gracioso — o preStop do
+// Kubernetes. É onde a máquina anota o que estava aberto para reabrir na volta (o desktop do superbot guarda as
+// sessões do Claude Code e os apps), seja a volta depois de dormir, de mudar de host ou de uma preempção do spot.
+const PreStopHook = "/etc/rc/pre-stop"
+
+// preStopMax é o teto do gancho: ele rouba tempo do desligamento, e no aviso de preempção o desligamento inteiro tem
+// 8 s (drainStopTimeout). Metade do prazo do stop, até 5 s.
+const preStopMax = 5 * time.Second
+
+// preStop roda o gancho da máquina, se ela tiver um. Erro, ausência ou prazo estourado não impedem o stop: o gancho é
+// para lembrar o que estava aberto, e um desligamento que espera por ele pode perder o prazo da preempção.
+func (m *Machines) preStop(ctx context.Context, name string, timeout time.Duration) {
+	limit := min(timeout/2, preStopMax)
+	if limit < time.Second {
+		return
+	}
+	hctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	m.Exec(hctx, name, ExecRequest{Argv: []string{"sh", "-c", "[ -x " + PreStopHook + " ] && exec " + PreStopHook + " || true"},
+		Timeout: limit}, nil)
 }
 
 // leaveFabric tira a máquina da rede nomeada: o gateway já faz isso ao fechar, mas um
@@ -678,9 +836,36 @@ func (m *Machines) Delete(ctx context.Context, name string, force bool) error {
 			return domain.ErrMachineState(name, "is running; stop it first or use force")
 		}
 		m.Procs.Kill(st.PID) // SIGKILL vale também para processo parado por SIGSTOP
+		m.waitExit(st.PID, killWait)
 	}
 	m.leaveFabric(st.Machine)
+	if m.Persist != nil && m.Persist.Mounted(m.Store.Dir(name)) {
+		// O diretório é o ponto de montagem: apagar os arquivos deixaria o disco cobrando vazio. Destroy desmonta,
+		// solta e apaga o disco inteiro.
+		return m.Persist.Destroy(ctx, name, m.Store.Dir(name))
+	}
 	return m.Store.Delete(name)
+}
+
+// killWait é quanto o Delete com force espera o grupo do vmm sair depois do SIGKILL. O sinal só pede a morte: a VM
+// devolve gigas de memória e fecha os arquivos do diretório da máquina antes de sumir, e soltar o disco antes disso
+// dá EBUSY no desmonte. Medido em 25/10/2026 numa n1-standard-1 (1 vCPU): o fim do trial apagou a VM ligada, o
+// desmonte falhou com "device or resource busy" e a máquina ficou registrada como ligada, segurando a única vaga do
+// servidor por 5 min. 30 s cobre a saída mais lenta medida com folga; passou disso, o desmonte reporta o erro.
+var killWait = 30 * time.Second
+
+// waitExit espera o processo sair, até o prazo.
+func (m *Machines) waitExit(pid int, limit time.Duration) {
+	for end := time.Now().Add(limit); time.Now().Before(end) && m.Procs.Alive(pid); {
+		time.Sleep(vmmPoll)
+	}
+}
+
+// isDraining diz se o host recebeu o aviso de preempção.
+func (m *Machines) isDraining() bool {
+	m.drain.mu.Lock()
+	defer m.drain.mu.Unlock()
+	return m.drain.active
 }
 
 // running devolve o socket do guest de uma máquina ligada, ou INVALID_STATE.

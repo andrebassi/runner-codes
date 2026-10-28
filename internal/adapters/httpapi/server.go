@@ -8,11 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"runner.codes/internal/adapters/screenctl"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"runner.codes/internal/app"
 	"runner.codes/internal/domain"
 )
 
@@ -58,6 +62,21 @@ type Server struct {
 	// ScreenFor monta o controle da tela pela porta do visualizador; nil usa o visualizador no 127.0.0.1 do host
 	// (os testes apontam para um visualizador falso).
 	ScreenFor func(port uint16) screenctl.Screen
+	// DisplayBase é a raiz do visualizador pela porta (rotas /display); nil usa o 127.0.0.1 do host.
+	DisplayBase func(port uint16) string
+	// Token exige `Authorization: Bearer <Token>` em /api/v1/*; vazio deixa a API aberta (só serve no
+	// loopback: o cmd recusa escutar fora dele sem token).
+	Token string
+	// Host mede o host (CPU, memória, disco, KVM) para o GET /api/v1/host; nil não liga a rota.
+	Host func() (domain.Host, error)
+	// Proc mede o processo de uma máquina ligada (CPU acumulada, RSS); nil deixa o /host sem consumo
+	// por máquina.
+	Proc func(pid int) (cpuNanos, rssBytes int64, err error)
+	// EgressAPI é a raiz da API de leitura do proxy de saída do host (http://127.0.0.1:15081, RC_EGRESS_API): o
+	// GET /api/v1/egress/events a repassa, com o token do rc na frente. Vazio responde 501.
+	EgressAPI string
+	// EgressClient fala com a EgressAPI; nil usa um cliente com prazo curto (o proxy está no mesmo host).
+	EgressClient *http.Client
 }
 
 // FileRequest é um arquivo no corpo da requisição.
@@ -109,12 +128,91 @@ func (s *Server) Handler() http.Handler {
 		c.JSON(http.StatusOK, body)
 	})
 	v1 := r.Group("/api/v1")
+	if s.Token != "" {
+		v1.Use(requireToken(s.Token))
+	}
 	v1.GET("/languages", func(c *gin.Context) { c.JSON(http.StatusOK, s.Languages()) })
 	v1.POST("/run", s.run)
 	v1.POST("/execute", s.execute)
 	v1.POST("/execute/stream", s.executeStream)
+	if s.Host != nil {
+		v1.GET("/host", s.host)
+	}
+	v1.GET("/egress/events", s.egressEvents)
 	s.machineRoutes(v1)
 	return r
+}
+
+// egressEvents atende GET /api/v1/egress/events: repassa o cursor (after) e o tamanho (limit) à API do proxy de
+// saída do host e devolve a resposta dela como veio (JSON do registro). Só esses dois parâmetros passam, já
+// validados como inteiros: a query do chamador não vira URL do proxy.
+func (s *Server) egressEvents(c *gin.Context) {
+	if s.EgressAPI == "" {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "this host has no egress proxy (RC_EGRESS_API)"})
+		return
+	}
+	q := url.Values{}
+	for _, k := range []string{"after", "limit"} {
+		if v := c.Query(k); v != "" {
+			if _, err := strconv.ParseUint(v, 10, 64); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": k + " must be a non-negative integer"})
+				return
+			}
+			q.Set(k, v)
+		}
+	}
+	client := s.EgressClient
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, strings.TrimRight(s.EgressAPI, "/")+"/events?"+q.Encode(), nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "egress proxy: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	c.DataFromReader(resp.StatusCode, resp.ContentLength, resp.Header.Get("Content-Type"), resp.Body, nil)
+}
+
+// host atende GET /api/v1/host: o que o host tem livre e quantas máquinas tem (ligadas e no total).
+// Quem distribui máquinas entre vários rc escolhe por aqui.
+func (s *Server) host(c *gin.Context) {
+	h, err := s.Host()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if s.Machines != nil {
+		ms, err := s.Machines.List()
+		if err != nil {
+			machineError(c, err)
+			return
+		}
+		h.Machines = len(ms)
+		for _, m := range ms {
+			if m.State != app.StateRunning {
+				continue
+			}
+			h.Running++
+			if s.Proc == nil || m.PID == 0 {
+				continue
+			}
+			// Processo que sumiu entre a lista e a leitura (a máquina acabou de desligar) fica de fora.
+			if cpu, rss, err := s.Proc(m.PID); err == nil {
+				h.Procs = append(h.Procs, domain.MachineProc{Name: m.Name, PID: m.PID, CPUNanos: cpu, RSSBytes: rss})
+			}
+		}
+		if p, ok := s.Machines.(PersistentService); ok {
+			h.PersistentDisks = p.HasPersistentDisks()
+			h.Preempting, h.Drained = p.Preemption()
+		}
+	}
+	c.JSON(http.StatusOK, h)
 }
 
 // executeStream atende POST /api/v1/execute/stream: mesmo corpo do /execute, resposta em

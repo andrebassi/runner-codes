@@ -2,6 +2,7 @@ package krun
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
@@ -31,7 +32,7 @@ func startNetwork(n *ports.VMNet, vsockSocket string) (int, []string, io.Closer,
 		return -1, nil, nil, err
 	}
 	// A config inteira antes do socketpair: um erro aqui não deixa descritor para trás.
-	cfg := netgw.Config{Policy: pol, Ports: n.Network.Ports, MachineName: n.Machine}
+	cfg := netgw.Config{Policy: pol, Ports: n.Network.Ports, MachineName: n.Machine, EgressProxy: n.EgressProxy}
 	if n.FabricDir != "" {
 		self, err := netip.ParseAddr(n.Network.Address)
 		if err != nil {
@@ -143,7 +144,32 @@ func newInterceptor(n *ports.VMNet) (*netgw.Interceptor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("credential CA: %w", err)
 	}
-	return &netgw.Interceptor{Bindings: n.Network.Credentials, Authority: auth, Port: httpsPort, Resolve: envValue}, nil
+	roots, err := interceptRoots(n.EgressCA)
+	if err != nil {
+		return nil, err
+	}
+	return &netgw.Interceptor{Bindings: n.Network.Credentials, Authority: auth, Port: httpsPort, Resolve: envValue, Roots: roots}, nil
+}
+
+// interceptRoots é em quem o interceptador de credenciais confia do lado de fora: as raízes do sistema e, com proxy
+// de saída, a CA dele — o interceptador fala TLS com o proxy (que abre o TLS para registrar), não com o destino, e o
+// proxy verifica o destino de verdade contra as raízes públicas. Sem CA do proxy, nil: só as raízes do sistema.
+func interceptRoots(egressCA string) (*x509.CertPool, error) {
+	if egressCA == "" {
+		return nil, nil
+	}
+	pemBytes, err := os.ReadFile(egressCA)
+	if err != nil {
+		return nil, fmt.Errorf("egress CA: %w", err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pemBytes) {
+		return nil, fmt.Errorf("egress CA: no certificate in %s", egressCA)
+	}
+	return pool, nil
 }
 
 // envValue lê o valor da binding: do arquivo de um segredo de mesmo nome (lido a cada

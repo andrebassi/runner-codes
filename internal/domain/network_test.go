@@ -56,6 +56,52 @@ func TestPolicyOpen(t *testing.T) {
 // TestPolicyHosts: as três formas de nome (apex+sub, =exato, *.sub) e os padrões; o IP
 // só passa se aprendido pelo DNS de um nome permitido; loopback aprendido nunca passa
 // (DNS rebinding); nome com esquema ou porta é recusado na compilação.
+// TestPolicyBlockPage: a página de bloqueio é opção da política (desligada por padrão), e a lista que ela mostra é a
+// declarada, nomes e padrões, na ordem.
+func TestPolicyBlockPage(t *testing.T) {
+	p, err := Egress{AllowHosts: []string{"claude.ai", "=api.x.io"}, AllowHostPatterns: []string{"*.cdn.net"}, BlockPage: true}.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.BlockPage() || strings.Join(p.AllowedHosts(), ",") != "claude.ai,=api.x.io,*.cdn.net" {
+		t.Fatalf("block page %v, allowed %v", p.BlockPage(), p.AllowedHosts())
+	}
+	off, _ := Egress{AllowHosts: []string{"claude.ai"}}.Compile()
+	if off.BlockPage() {
+		t.Fatal("block page must be off unless asked")
+	}
+}
+
+// TestPolicyPaths: a regra de caminho sai normalizada (host minúsculo), restringe a política, faz o DNS filtrar nomes
+// (o host dela cai no sinkhole, não resolve livre) e exige a página de bloqueio; cada forma que o proxy não conseguiria
+// comparar com segurança é recusada na compilação.
+func TestPolicyPaths(t *testing.T) {
+	e := Egress{AllowPaths: []string{"CDNJS.Cloudflare.com./polyfill/", "x.io/a/b.js"}, BlockPage: true}
+	p, err := e.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(p.AllowedPaths(), ","); got != "cdnjs.cloudflare.com/polyfill/,x.io/a/b.js" {
+		t.Fatalf("paths %q", got)
+	}
+	if !e.Restricted() || !p.FiltersNames() || p.NameAllowed("cdnjs.cloudflare.com") {
+		t.Fatal("a path rule must restrict, filter names, and keep its host on the sinkhole")
+	}
+	if ok, _ := p.IPAllowed(netip.MustParseAddr("1.1.1.1"), false); ok {
+		t.Fatal("a path rule must not open IPs")
+	}
+	if _, err := (Egress{AllowPaths: []string{"x.io/a"}}).Compile(); err == nil || !strings.Contains(err.Error(), "block_page") {
+		t.Fatalf("without block_page: %v", err)
+	}
+	for _, bad := range []string{"x.io", "x.io/", "/a", "=x.io/a", "*.x.io/a", "x.io:443/a", "x.io//a", "x.io/a/../b",
+		"x.io/./a", "x.io/a%2Fb", "x.io/a?b=1", "x.io/a#b", "x.io/a,b", "x.io/a b", "x.io/a\\b"} {
+		if _, err := (Egress{AllowPaths: []string{bad}, BlockPage: true}).Compile(); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+}
+
+// TestPolicyHosts: nome casa subdomínios, "=" só o nome, "*." só subdomínios; IP só passa se aprendido de nome liberado.
 func TestPolicyHosts(t *testing.T) {
 	p, err := Egress{AllowHosts: []string{"Example.com.", "=api.only.io", "*.sub.dev"}, AllowHostPatterns: []string{"registry.npmjs.org", "*.cdn.net"}}.Compile()
 	if err != nil {

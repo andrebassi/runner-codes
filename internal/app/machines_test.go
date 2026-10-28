@@ -10,8 +10,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -107,10 +109,41 @@ type procs struct {
 	killed  []int
 	paused  []int
 	resumed []int
+	// suspended anota cada pedido de suspender; onSuspend simula o que o vmm faz ao receber o sinal (gravar o
+	// snapshot e sair, ou não) e roda fora do lock.
+	suspended []int
+	onSuspend func(pid int)
+	// linger é por quantas conferências (Alive) o processo morto pelo Kill ainda aparece vivo: a VM de verdade leva
+	// um tempo para sair depois do SIGKILL.
+	linger int
 }
 
-// Alive confere o mapa.
-func (p *procs) Alive(pid int) bool { p.mu.Lock(); defer p.mu.Unlock(); return p.alive[pid] }
+// Suspend anota e chama o onSuspend; pid morto é erro, como o kill de verdade.
+func (p *procs) Suspend(pid int) error {
+	p.mu.Lock()
+	if !p.alive[pid] {
+		p.mu.Unlock()
+		return errors.New("no such process")
+	}
+	p.suspended = append(p.suspended, pid)
+	fn := p.onSuspend
+	p.mu.Unlock()
+	if fn != nil {
+		fn(pid)
+	}
+	return nil
+}
+
+// Alive confere o mapa; o processo que ainda está saindo (linger) conta como vivo e gasta uma conferência.
+func (p *procs) Alive(pid int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.linger > 0 && slices.Contains(p.killed, pid) {
+		p.linger--
+		return true
+	}
+	return p.alive[pid]
+}
 
 // Pause anota; pid morto é erro, como o kill de verdade.
 func (p *procs) Pause(pid int) error {
@@ -185,15 +218,18 @@ func (d disks) DiskTemplate(_ context.Context, gib int) (string, error) {
 // put/get guardam e devolvem bytes, shutdown "desliga" a VM.
 type fileGuest struct {
 	// hang faz o WaitReady esperar o contexto acabar.
-	hang        bool
-	mu          sync.Mutex
-	files       map[string][]byte
-	partial     map[string][]byte
-	shutdown    func()
-	jobs        []protocol.Job
-	readyErr    error
-	execErr     error
-	workloadErr string
+	hang     bool
+	mu       sync.Mutex
+	files    map[string][]byte
+	partial  map[string][]byte
+	shutdown func()
+	jobs     []protocol.Job
+	readyErr error
+	// readyFailures faz as próximas N esperas de pronto falharem e depois responderem (o restore que não volta,
+	// seguido do boot do zero que liga).
+	readyFailures int
+	execErr       error
+	workloadErr   string
 	// dialed guarda as portas pedidas ao DialPort; dialErr simula porta fechada no guest.
 	dialed  []uint16
 	dialErr error
@@ -346,6 +382,12 @@ func (g *fileGuest) WaitReady(ctx context.Context, _ string) error {
 	if g.hang {
 		<-ctx.Done()
 		return ctx.Err()
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.readyFailures > 0 {
+		g.readyFailures--
+		return errors.New("guest did not answer")
 	}
 	return g.readyErr
 }
@@ -827,6 +869,88 @@ func TestMachineFromImage(t *testing.T) {
 	}
 }
 
+// TestMachineFromImageConcurrent: seis máquinas da mesma imagem criadas AO MESMO TEMPO (o host novo do superbot
+// recebendo seis desktops de uma vez) constroem a imagem uma de cada vez — nunca dois builds juntos, que dividiriam o
+// diretório de trabalho do builder — e todas nascem.
+func TestMachineFromImageConcurrent(t *testing.T) {
+	m, _, _, _, _ := machinesFixture(t)
+	ctx := context.Background()
+	var inFlight, peak atomic.Int32
+	m.BuildImage = func(context.Context, domain.Language) error {
+		n := inFlight.Add(1)
+		for {
+			p := peak.Load()
+			if n <= p || peak.CompareAndSwap(p, n) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond) // um build "demora": dá tempo de os outros chegarem
+		inFlight.Add(-1)
+		return nil
+	}
+	var wg sync.WaitGroup
+	errs := make([]error, 6)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = m.Create(ctx, domain.Machine{Name: fmt.Sprintf("desk%d", i), Image: "node:22"})
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("máquina %d: %v", i, err)
+		}
+	}
+	if peak.Load() != 1 {
+		t.Fatalf("%d builds ao mesmo tempo (esperava 1)", peak.Load())
+	}
+}
+
+// peakDisks é o modelo de disco que mede quantos preparos rodam ao mesmo tempo.
+type peakDisks struct{ inFlight, peak *atomic.Int32 }
+
+// DiskTemplate conta o preparo em andamento e guarda o pico.
+func (d peakDisks) DiskTemplate(_ context.Context, gib int) (string, error) {
+	n := d.inFlight.Add(1)
+	for {
+		p := d.peak.Load()
+		if n <= p || d.peak.CompareAndSwap(p, n) {
+			break
+		}
+	}
+	time.Sleep(10 * time.Millisecond)
+	d.inFlight.Add(-1)
+	return filepath.Join("/tpl", strings.Repeat("g", gib)), nil
+}
+
+// TestMachineDiskTemplateConcurrent: seis criações juntas preparam o modelo de disco uma de cada vez (o builder usa
+// um arquivo de trabalho só e os perdedores da corrida não achavam o arquivo para mover) — e todas nascem.
+func TestMachineDiskTemplateConcurrent(t *testing.T) {
+	m, _, _, _, _ := machinesFixture(t)
+	var inFlight, peak atomic.Int32
+	m.Disks = peakDisks{&inFlight, &peak}
+	var wg sync.WaitGroup
+	errs := make([]error, 6)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = m.Create(context.Background(), domain.Machine{Name: fmt.Sprintf("disk%d", i), Stack: "python"})
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("máquina %d: %v", i, err)
+		}
+	}
+	if peak.Load() != 1 {
+		t.Fatalf("%d preparos de disco ao mesmo tempo (esperava 1)", peak.Load())
+	}
+}
+
 // TestMachineMounts: o create guarda o caminho real (sem link) e recusa o que não é
 // diretório; o start passa cada volume como virtio-fs com tag própria e monta no guest, a
 // cada start, antes do workdir; volume que sumiu ou montagem que falha viram erro claro.
@@ -907,6 +1031,16 @@ func TestMachineNetwork(t *testing.T) {
 	}
 	if _, err := os.Stat(sp.ControlSocket); !os.IsNotExist(err) {
 		t.Fatal("a stale control socket must be removed before start")
+	}
+	if sp.EgressProxy != "" || sp.EgressCA != "" {
+		t.Fatalf("no egress proxy unless the host has one: %+v", sp)
+	}
+	// Host com proxy de saída: toda máquina com rede leva o proxy e a CA dele para o gateway.
+	m.EgressProxy, m.EgressCA = "127.0.0.1:15080", "/etc/sbot/egress-ca.pem"
+	m.Stop(ctx, "on", 0)
+	m.Start(ctx, "on")
+	if sp := d.specs[len(d.specs)-1].Net; sp.EgressProxy != "127.0.0.1:15080" || sp.EgressCA != "/etc/sbot/egress-ca.pem" {
+		t.Fatalf("egress proxy in the spec: %+v", sp)
 	}
 
 	var sent []string

@@ -105,6 +105,17 @@ type Builder struct {
 	Source      Source
 	HTTP        *http.Client
 	Log         io.Writer
+	// Shared é o cache de imagens compartilhado pela frota (gcsimages, rc serve --image-cache); nil constrói sempre
+	// aqui. Com ele, o ext4 que outro host já construiu é baixado em vez de construído — o host novo de um failover fica
+	// pronto em segundos, e todos rodam o mesmo arquivo (o restore de snapshot entre hosts exige a mesma imagem base).
+	Shared SharedImages
+}
+
+// SharedImages é o cache de imagens de uma frota, por chave de conteúdo: Get devolve um erro qualquer quando a imagem
+// não está lá (quem pediu constrói), Put não sobrescreve o que já existe.
+type SharedImages interface {
+	Get(ctx context.Context, key, dst string) error
+	Put(ctx context.Context, key, src string) error
 }
 
 // Image é o resultado de um build.
@@ -248,9 +259,6 @@ func fileSum(path string) ([]byte, error) {
 func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error) {
 	start := time.Now()
 	res := Image{Language: lang.Name}
-	if err := b.EnsureBuilder(ctx); err != nil {
-		return res, err
-	}
 	guestSum, err := fileSum(b.GuestBinary)
 	if err != nil {
 		return res, fmt.Errorf("guest to inject: %w", err)
@@ -265,12 +273,30 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 		return res, err
 	}
 	res.Digest = digest.String()
-	out := filepath.Join(b.imagesDir(), fmt.Sprintf("%s-%s.ext4", lang.Name, cacheKey(res.Digest, lang.Warmup, guestSum)))
+	key := fmt.Sprintf("%s-%s", lang.Name, cacheKey(res.Digest, lang.Warmup, guestSum))
+	out := filepath.Join(b.imagesDir(), key+".ext4")
 	if _, err := os.Stat(out); err == nil {
 		res.Path, res.Cached, res.Elapsed = out, true, time.Since(start)
 		return res, b.link(lang.Name, out)
 	}
+	if b.Shared != nil {
+		if err := os.MkdirAll(b.imagesDir(), 0o755); err != nil {
+			return res, err
+		}
+		if err := b.Shared.Get(ctx, key, out); err == nil {
+			b.logf("[%s] downloaded from the shared image cache", lang.Name)
+			res.Path, res.Cached, res.Elapsed = out, true, time.Since(start)
+			return res, b.link(lang.Name, out)
+		} else {
+			b.logf("[%s] not in the shared image cache (%v): building here", lang.Name, err)
+		}
+	}
 
+	// A VM de build só quando vai construir de verdade: com a imagem no cache local ou no compartilhado, o host novo
+	// de um failover não gasta o bootstrap (baixar o minirootfs e o apk add) à toa.
+	if err := b.EnsureBuilder(ctx); err != nil {
+		return res, err
+	}
 	work := filepath.Join(b.builderRoot(), "work")
 	inject := filepath.Join(work, "inject")
 	if err := os.MkdirAll(inject, 0o755); err != nil {
@@ -316,6 +342,19 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 		return res, fmt.Errorf("move ext4: %w", err)
 	}
 	res.Path, res.Metrics, res.Elapsed = out, metrics, time.Since(start)
+	if b.Shared != nil {
+		// Sobe para os outros hosts em segundo plano: quem pediu a imagem não espera o upload. Falha só vai para o log —
+		// o próximo host constrói a sua, como sempre foi.
+		go func() {
+			uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
+			defer cancel()
+			if err := b.Shared.Put(uctx, key, out); err != nil {
+				b.logf("[%s] shared image cache upload failed: %v", lang.Name, err)
+				return
+			}
+			b.logf("[%s] uploaded to the shared image cache", lang.Name)
+		}()
+	}
 	return res, b.link(lang.Name, out)
 }
 

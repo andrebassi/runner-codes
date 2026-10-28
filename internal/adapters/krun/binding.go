@@ -40,6 +40,9 @@ type libAPI struct {
 	// setNestedVirt e checkNestedVirt ficam nil numa libkrun anterior ao suporte a nested.
 	setNestedVirt   func(uint32, bool) int32
 	checkNestedVirt func() int32
+	// snapshotRequest e restore ficam nil numa libkrun sem snapshot (a 1.x do nixpkgs; o fork do superbot tem).
+	snapshotRequest func(uint32, string, uint32) int32
+	restore         func(uint32, string, uint32) int32
 }
 
 // keepAlive segura os arrays argv/envp passados à libkrun: krun_start_enter não volta
@@ -89,6 +92,10 @@ func Load(path string) (api API, err error) {
 	if _, err := purego.Dlsym(h, "krun_set_nested_virt"); err == nil {
 		reg(&l.setNestedVirt, "krun_set_nested_virt")
 		reg(&l.checkNestedVirt, "krun_check_nested_virt")
+	}
+	if _, err := purego.Dlsym(h, "krun_snapshot_request"); err == nil {
+		reg(&l.snapshotRequest, "krun_snapshot_request")
+		reg(&l.restore, "krun_restore")
 	}
 	return l, nil
 }
@@ -225,3 +232,23 @@ func (l *libAPI) AddVirtioConsoleDefault(ctx uint32, inFD, outFD, errFD int32) i
 
 // StartEnter repassa a krun_start_enter; só volta em erro.
 func (l *libAPI) StartEnter(ctx uint32) int32 { return l.startEnter(ctx) }
+
+// SnapshotRequest repassa a krun_snapshot_request (pedido feito de outra thread: a libkrun grava e encerra o
+// processo); sem o símbolo devolve -ENOTSUP.
+func (l *libAPI) SnapshotRequest(ctx uint32, path string, flags uint32) int32 {
+	if l.snapshotRequest == nil {
+		return -int32(syscall.ENOTSUP)
+	}
+	return l.snapshotRequest(ctx, path, flags)
+}
+
+// Restore repassa a krun_restore (no lugar do krun_start_enter); sem o símbolo devolve -ENOTSUP.
+func (l *libAPI) Restore(ctx uint32, path string, flags uint32) int32 {
+	if l.restore == nil {
+		return -int32(syscall.ENOTSUP)
+	}
+	return l.restore(ctx, path, flags)
+}
+
+// HasSnapshot diz se a libkrun carregada sabe suspender e restaurar.
+func (l *libAPI) HasSnapshot() bool { return l.snapshotRequest != nil }

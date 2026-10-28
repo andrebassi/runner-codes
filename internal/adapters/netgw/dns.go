@@ -51,6 +51,18 @@ func (l *learnedSet) add(a netip.Addr, name string, ttl time.Duration) {
 	l.ips[a.Unmap()] = learned{name: name, expires: l.now().Add(ttl)}
 }
 
+// name devolve o nome de onde o IP foi aprendido (vazio se não foi, ou venceu): é o que vai ao proxy de saída, para o
+// registro mostrar "github.com" em vez do IP numa conexão que não é HTTP nem TLS.
+func (l *learnedSet) name(a netip.Addr) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.ips[a.Unmap()]
+	if !ok || !l.now().Before(e.expires) {
+		return ""
+	}
+	return e.name
+}
+
 // has diz se o IP está aprendido e na validade.
 func (l *learnedSet) has(a netip.Addr) bool {
 	l.mu.Lock()
@@ -121,8 +133,11 @@ func (g *Gateway) answer(raw []byte) []byte {
 		out, _ := m.Pack()
 		return out
 	}
-	if !g.policy.Load().NameAllowed(name) {
+	if pol := g.policy.Load(); !pol.NameAllowed(name) {
 		g.deny("dns", name, "name not in the allow list")
+		if g.cfg.EgressProxy != "" && pol.BlockPage() {
+			return sinkhole(q)
+		}
 		return reply(q, dns.RcodeNameError)
 	}
 	cl := &dns.Client{Net: "udp", Timeout: dnsTimeout}
@@ -147,6 +162,19 @@ func (g *Gateway) answer(raw []byte) []byte {
 	if err != nil {
 		return reply(q, dns.RcodeServerFailure)
 	}
+	return out
+}
+
+// sinkhole responde um nome negado com o SinkholeIP (só o A; os outros tipos voltam vazios, sem NXDOMAIN, que faria o
+// resolvedor do musl descartar também o A — mesmo motivo da rede nomeada).
+func sinkhole(q *dns.Msg) []byte {
+	m := new(dns.Msg)
+	m.SetReply(q)
+	if q.Question[0].Qtype == dns.TypeA {
+		m.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: sinkholeTTL},
+			A: SinkholeIP.AsSlice()}}
+	}
+	out, _ := m.Pack()
 	return out
 }
 

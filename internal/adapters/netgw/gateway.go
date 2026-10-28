@@ -81,6 +81,10 @@ type Config struct {
 	MachineName string
 	// Intercept troca credenciais nas requisições HTTPS (nil: nenhuma binding).
 	Intercept *Interceptor
+	// EgressProxy é o proxy de saída do host ("host:porta"): toda conexão TCP permitida vai a ele, com o header PROXY
+	// v2, em vez de ir direto ao destino; com ele, o nome negado de uma política com BlockPage resolve para o
+	// SinkholeIP. Vazio: saída direta (egress.go).
+	EgressProxy string
 }
 
 // Gateway é a pilha ligada a uma máquina.

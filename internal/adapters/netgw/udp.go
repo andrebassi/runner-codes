@@ -34,6 +34,10 @@ func (g *Gateway) handleUDP(r *udp.ForwarderRequest) bool {
 		return true
 	}
 	target := net.JoinHostPort(dst.String(), strconv.Itoa(int(id.LocalPort)))
+	if g.uninspectedUDP(id.LocalPort) {
+		g.deny("udp", target, "QUIC is not inspected by the egress proxy (the client falls back to TCP)")
+		return true
+	}
 	dial, ok, why := g.decide(dst)
 	if !ok {
 		g.deny("udp", target, why)

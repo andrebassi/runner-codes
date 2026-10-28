@@ -3,6 +3,7 @@ package netgw
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -38,17 +39,49 @@ func (g *Gateway) handleTCP(r *tcp.ForwarderRequest) {
 		return
 	}
 	target := net.JoinHostPort(dst.String(), strconv.Itoa(int(id.LocalPort)))
+	if g.cfg.EgressProxy != "" && dst == SinkholeIP {
+		// Nome negado com página de bloqueio: vai ao proxy marcado como negado, que serve "Sem acesso" e nunca disca
+		// destino nenhum — fora os requests que caem numa regra de caminho, que ele mesmo resolve e disca. O nome pedido
+		// ele lê do SNI ou do Host (todo nome negado resolve para este mesmo IP).
+		pol := g.policy.Load()
+		proxied, err := g.dialEgress(netip.AddrPortFrom(dst, id.LocalPort), "", true, pol.AllowedHosts(), pol.AllowedPaths())
+		if err != nil {
+			g.deny("tcp", target, err.Error())
+			r.Complete(true)
+			return
+		}
+		g.accept(r, proxied, false)
+		return
+	}
 	dial, ok, why := g.decide(dst)
 	if !ok {
 		g.deny("tcp", target, why)
 		r.Complete(true)
 		return
 	}
-	host, err := g.cfg.Dial(g.ctx, "tcp", net.JoinHostPort(dial.String(), strconv.Itoa(int(id.LocalPort))))
+	var host net.Conn
+	var err error
+	if g.cfg.EgressProxy != "" {
+		// Com o proxy de saída, a conexão vai a ele (que disca o destino e registra); proxy fora do ar recusa a
+		// conexão do guest — falha fechada, nada sai sem registro.
+		host, err = g.dialEgress(netip.AddrPortFrom(dial, id.LocalPort), g.learned.name(dial), false, nil, nil)
+		if err != nil {
+			g.deny("tcp", target, err.Error())
+		}
+	} else {
+		host, err = g.cfg.Dial(g.ctx, "tcp", net.JoinHostPort(dial.String(), strconv.Itoa(int(id.LocalPort))))
+	}
 	if err != nil {
 		r.Complete(true)
 		return
 	}
+	g.accept(r, host, true)
+}
+
+// accept aceita o SYN do guest e liga a conexão dele a host (o destino, ou o proxy de saída). intercept deixa a porta
+// de HTTPS passar pelo interceptador de credenciais; a conexão negada ao sinkhole não passa (não há o que trocar).
+func (g *Gateway) accept(r *tcp.ForwarderRequest, host net.Conn, intercept bool) {
+	id := r.ID()
 	var wq waiter.Queue
 	ep, terr := r.CreateEndpoint(&wq)
 	if terr != nil {
@@ -57,7 +90,7 @@ func (g *Gateway) handleTCP(r *tcp.ForwarderRequest) {
 		return
 	}
 	r.Complete(false)
-	if ic := g.cfg.Intercept; ic != nil && id.LocalPort == ic.Port {
+	if ic := g.cfg.Intercept; intercept && ic != nil && id.LocalPort == ic.Port {
 		// Porta de HTTPS com credencial na máquina: o interceptador decide pelo SNI.
 		go ic.serve(gonet.NewTCPConn(&wq, ep), host)
 		return

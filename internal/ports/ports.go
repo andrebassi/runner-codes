@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"syscall"
 
 	"runner.codes/internal/domain"
 	"runner.codes/internal/protocol"
@@ -90,6 +91,13 @@ type VMSpec struct {
 	// UID e GID trocam o usuário do processo vmm antes do boot (Linux). Nil mantém o atual.
 	UID *uint32 `json:"uid,omitempty"`
 	GID *uint32 `json:"gid,omitempty"`
+	// SnapshotDir é onde o processo vmm grava o snapshot da VM ao receber SIGUSR2 (suspender): vCPUs, devices e
+	// RAM. Fica no diretório da máquina, que mora no disco próprio dela — o snapshot viaja com o disco para o host
+	// novo. Vazio: a VM não suspende (só desliga).
+	SnapshotDir string `json:"snapshot_dir,omitempty"`
+	// RestoreFrom é um snapshot a restaurar em vez de dar boot: a VM volta no ponto em que foi suspensa. A forma
+	// (CPUs, memória, devices) tem de ser a mesma do snapshot — a libkrun recusa outra.
+	RestoreFrom string `json:"restore_from,omitempty"`
 }
 
 // VMNet é a rede de uma máquina: a declaração do domínio mais onde o gateway grava o log
@@ -108,6 +116,13 @@ type VMNet struct {
 	// gateway termina o TLS dos hosts das bindings com certificados assinados por ela.
 	CACert string `json:"ca_cert,omitempty"`
 	CAKey  string `json:"ca_key,omitempty"`
+	// EgressProxy é o proxy de saída do host (host:porta, RC_EGRESS_PROXY do rc): toda conexão TCP permitida vai a
+	// ele com um header PROXY v2 (destino e máquina), e ele registra e repassa. Vazio: o gateway disca o destino
+	// direto, como sempre.
+	EgressProxy string `json:"egress_proxy,omitempty"`
+	// EgressCA é o certificado (PEM) da CA do proxy de saída: com credenciais, o gateway troca o token falando TLS com
+	// o proxy, que apresenta um certificado dessa CA — sem ela no cofre, a troca recusaria o proxy.
+	EgressCA string `json:"egress_ca,omitempty"`
 }
 
 // VMDisplay é a tela de uma máquina: tamanho e onde o visualizador escuta (host:porta,
@@ -257,7 +272,13 @@ type Processes interface {
 	// Pause congela o grupo do processo (as vCPUs param onde estão); Resume continua.
 	Pause(pid int) error
 	Resume(pid int) error
+	// Suspend pede ao processo vmm (só a ele, não ao grupo) para gravar o snapshot da VM e sair: SuspendSignal.
+	Suspend(pid int) error
 }
+
+// SuspendSignal é o sinal que pede ao processo vmm para suspender a VM (gravar o snapshot e sair). SIGUSR2: o SIGTERM
+// já é "desligar" e o SIGSTOP é o Pause, que congela sem gravar nada.
+const SuspendSignal = syscall.SIGUSR2
 
 // ImageStore diz onde está o ext4 pronto de uma linguagem.
 type ImageStore interface {

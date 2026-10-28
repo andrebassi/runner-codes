@@ -22,6 +22,8 @@ import (
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
+	// Token vai como `Authorization: Bearer` em toda chamada (rc serve --token-file); vazio não manda.
+	Token string
 }
 
 // New devolve um cliente para baseURL.
@@ -104,12 +106,21 @@ type Egress struct {
 	DenyCIDRs         []string `json:"deny_cidrs,omitempty"`
 	BlockPrivate      bool     `json:"block_private,omitempty"`
 	AllowPrivate      []string `json:"allow_private,omitempty"`
+	// BlockPage troca o "host não encontrado" de um nome negado pela página "Sem acesso" do proxy de saída do host
+	// (só vale onde o rc tem RC_EGRESS_PROXY).
+	BlockPage bool `json:"block_page,omitempty"`
+	// AllowPaths libera só um caminho de um host ("cdn.example.com/lib/"): o proxy de saída deixa passar os requests
+	// abaixo do prefixo e nega o resto do host. Exige BlockPage (o servidor recusa a política sem ela).
+	AllowPaths []string `json:"allow_paths,omitempty"`
 }
 
 // MachineSpec é o pedido de criação. Campo vazio fica com o padrão do servidor; com
 // RunnerCode, o arquivo é a base e os campos preenchidos vencem.
 type MachineSpec struct {
-	Name        string   `json:"name"`
+	Name string `json:"name"`
+	// Golden é o snapshot dourado de onde a máquina nasce restaurada (sem boot nem init), quando o host tem o recurso
+	// e o dourado serve; senão o rc cria do jeito normal. Vai na URL, não no corpo.
+	Golden      string   `json:"-"`
 	Stack       string   `json:"stack,omitempty"`
 	Image       string   `json:"image,omitempty"`
 	CPUs        int      `json:"cpus,omitempty"`
@@ -177,11 +188,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, co
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	hc := c.HTTP
-	if hc == nil {
-		hc = http.DefaultClient
-	}
-	resp, err := hc.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return err
 	}
@@ -202,6 +209,47 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, co
 	default:
 		return json.Unmarshal(data, out)
 	}
+}
+
+// send manda a requisição com o token (se houver) pelo cliente HTTP configurado.
+func (c *Client) send(req *http.Request) (*http.Response, error) {
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	hc := c.HTTP
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	return hc.Do(req)
+}
+
+// Export escreve em w a máquina desligada no formato de transferência do rc (GET .../export), em
+// streaming: o disco pode ter gigabytes e não passa pela memória. Corpo cortado no meio chega a w
+// truncado, e o Import do outro lado recusa.
+func (c *Client) Export(ctx context.Context, name string, w io.Writer) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+machinePath(name, "/export"), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.send(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return decodeError(resp.StatusCode, data)
+	}
+	_, err = io.Copy(w, resp.Body)
+	return err
+}
+
+// Import cria a máquina a partir de uma exportação (POST /api/v1/machines/import); o nome vem do
+// registro dentro dela. Nome que já existe é CONFLICT.
+func (c *Client) Import(ctx context.Context, r io.Reader) (Machine, error) {
+	var m Machine
+	err := c.do(ctx, http.MethodPost, "/api/v1/machines/import", r, "application/x-runner-machine", &m)
+	return m, err
 }
 
 // decodeError lê os dois formatos de erro da API: {"error":{"code","message"}} das máquinas
@@ -256,8 +304,17 @@ func (c *Client) Execute(ctx context.Context, j Job) (JobResult, error) {
 // CreateMachine cria a máquina (parada).
 func (c *Client) CreateMachine(ctx context.Context, s MachineSpec) (Machine, error) {
 	var m Machine
-	err := c.doJSON(ctx, http.MethodPost, "/api/v1/machines", s, &m)
+	u := "/api/v1/machines"
+	if s.Golden != "" {
+		u += "?golden=" + url.QueryEscape(s.Golden)
+	}
+	err := c.doJSON(ctx, http.MethodPost, u, s, &m)
 	return m, err
+}
+
+// PublishGolden faz da máquina suspensa o snapshot dourado com o nome dado (o disco de trabalho dela é apagado).
+func (c *Client) PublishGolden(ctx context.Context, name, snapshot string) error {
+	return c.doJSON(ctx, http.MethodPost, machinePath(name, "/golden"), map[string]string{"snapshot": snapshot}, nil)
 }
 
 // Machines lista as máquinas com o estado de cada uma.
@@ -267,10 +324,72 @@ func (c *Client) Machines(ctx context.Context) ([]Machine, error) {
 	return ms, err
 }
 
+// Host é o que o host do rc tem livre (GET /api/v1/host). Memória zero quer dizer "não medida".
+type Host struct {
+	MemTotalMiB     int64 `json:"mem_total_mib"`
+	MemAvailableMiB int64 `json:"mem_available_mib"`
+	DiskTotalMiB    int64 `json:"disk_total_mib"`
+	DiskFreeMiB     int64 `json:"disk_free_mib"`
+	KVM             bool  `json:"kvm"`
+	Machines        int   `json:"machines"`
+	Running         int   `json:"running"`
+	// CPU do host: ticks acumulados (a % sai da diferença entre duas leituras), núcleos e carga.
+	Cores         int     `json:"cores"`
+	Load1         float64 `json:"load1"`
+	CPUBusyTicks  uint64  `json:"cpu_busy_ticks"`
+	CPUTotalTicks uint64  `json:"cpu_total_ticks"`
+	// Procs é o consumo do processo de cada máquina ligada.
+	Procs []MachineProc `json:"procs,omitempty"`
+	// PersistentDisks diz se cada máquina mora num disco próprio (muda de host com ReleaseMachine, sem cópia).
+	PersistentDisks bool `json:"persistent_disks"`
+	// Preempting diz que o provedor vai tirar o host (spot); Drained são as máquinas que estavam ligadas no aviso.
+	Preempting bool     `json:"preempting"`
+	Drained    []string `json:"drained,omitempty"`
+}
+
+// MachineProc é o consumo de uma máquina ligada: CPU acumulada em ns e memória residente no host.
+type MachineProc struct {
+	Name     string `json:"name"`
+	PID      int    `json:"pid"`
+	CPUNanos int64  `json:"cpu_nanos"`
+	RSSBytes int64  `json:"rss_bytes"`
+}
+
+// Host mede o host do rc: memória, disco do estado, KVM e máquinas (para escolher onde criar).
+func (c *Client) Host(ctx context.Context) (Host, error) {
+	var h Host
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/host", nil, &h)
+	return h, err
+}
+
 // Machine devolve uma máquina.
 func (c *Client) Machine(ctx context.Context, name string) (Machine, error) {
 	var m Machine
 	err := c.doJSON(ctx, http.MethodGet, machinePath(name, ""), nil, &m)
+	return m, err
+}
+
+// ReleaseMachine desliga a máquina (se ligada) e solta o disco próprio dela: o próximo create com o mesmo nome em
+// outro host adota o disco, com tudo dentro. Host sem disco próprio por máquina responde 501.
+func (c *Client) ReleaseMachine(ctx context.Context, name string) error {
+	return c.doJSON(ctx, http.MethodPost, machinePath(name, "/release"), nil, nil)
+}
+
+// SuspendMachine grava o estado inteiro da máquina ligada (RAM, vCPUs, devices) no disco dela e a desliga: o próximo
+// Start a devolve no mesmo ponto. timeout 0 usa o padrão do host; host sem suporte responde 501.
+func (c *Client) SuspendMachine(ctx context.Context, name string, timeout time.Duration) error {
+	q := ""
+	if timeout > 0 {
+		q = "?timeout=" + strconv.Itoa(int(timeout/time.Second))
+	}
+	return c.doJSON(ctx, http.MethodPost, machinePath(name, "/suspend"+q), nil, nil)
+}
+
+// AdoptMachine traz para este host a máquina cujo disco próprio está solto (solta por ReleaseMachine em outro host,
+// ou presa a um host que morreu), sem ligar. Disco inexistente é 404.
+func (c *Client) AdoptMachine(ctx context.Context, name string) (Machine, error) {
+	var m Machine
+	err := c.doJSON(ctx, http.MethodPost, machinePath(name, "/adopt"), nil, &m)
 	return m, err
 }
 

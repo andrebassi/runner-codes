@@ -23,7 +23,9 @@ import (
 	"golang.org/x/term"
 
 	"runner.codes/internal/adapters/catalog"
+	"runner.codes/internal/adapters/gcsimages"
 	"runner.codes/internal/adapters/guestproto"
+	"runner.codes/internal/adapters/hoststats"
 	"runner.codes/internal/adapters/httpapi"
 	"runner.codes/internal/adapters/krun"
 	"runner.codes/internal/adapters/oci"
@@ -381,12 +383,26 @@ func serveCmd() *cobra.Command {
 	var listen string
 	var poolSize int
 	var allowNested bool
+	var tokenFile string
+	var persistentDisks string
+	var imageCache string
 	c := &cobra.Command{
 		Use: "serve", Short: "HTTP API with a pool of pre-booted VMs",
 		RunE: func(*cobra.Command, []string) error {
+			token, err := serveToken(tokenFile, listen)
+			if err != nil {
+				return err
+			}
 			d, err := wire()
 			if err != nil {
 				return err
+			}
+			if imageCache != "" {
+				shared, err := gcsimages.Parse(imageCache)
+				if err != nil {
+					return err
+				}
+				d.builder.Shared = shared
 			}
 			exec, pool := d.newExecutor(poolSize)
 			var built []string
@@ -397,13 +413,25 @@ func serveCmd() *cobra.Command {
 			}
 			pool.Start(built)
 			defer pool.Close()
-			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: d.newMachines(), AllowNested: allowNested, Languages: func() []httpapi.LanguageInfo {
-				return languageInfo(d)
-			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
+			machines := d.newMachines()
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
+			if err := enablePersistentDisks(ctx, persistentDisks, machines); err != nil {
+				return err
+			}
+			srv := &http.Server{Addr: listen, Handler: (&httpapi.Server{Runner: exec, Version: Version, Pool: pool.Status, Machines: machines, AllowNested: allowNested, Token: token, Host: hoststats.Reader{Dir: cacheDir()}.Read, Proc: hoststats.Reader{}.Proc, EgressAPI: os.Getenv("RC_EGRESS_API"), Languages: func() []httpapi.LanguageInfo {
+				return languageInfo(d)
+			}}).Handler(), ReadHeaderTimeout: 10 * time.Second}
 			go func() {
 				<-ctx.Done()
+				// Na preempção, drena ANTES de fechar a API: o HQ lê o host (preempting e as ligadas) durante a
+				// drenagem e religa as ligadas em outro worker. Fechar primeiro (como era) deixava o HQ só com
+				// "o rc não responde", e ele adivinhava as ligadas pela telemetria — medido em 25/10/2026, um desktop
+				// recém-chegado ao worker ficou de fora e não foi religado em lugar nenhum.
+				sigterm := time.Now()
+				if persistentDisks != "" && shutdownDrain(preemption, machines) {
+					time.Sleep(lingerAfterDrain(time.Since(sigterm)))
+				}
 				shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				srv.Shutdown(shut)
@@ -412,12 +440,16 @@ func serveCmd() *cobra.Command {
 			if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
+			waitDrain(30 * time.Second)
 			return nil
 		},
 	}
-	c.Flags().StringVar(&listen, "listen", env("RUNNER_LISTEN", "127.0.0.1:8080"), "listen address (loopback by default: the API has no authentication)")
+	c.Flags().StringVar(&listen, "listen", env("RUNNER_LISTEN", "127.0.0.1:8080"), "listen address (loopback by default; any other address requires a token)")
+	c.Flags().StringVar(&tokenFile, "token-file", "", "file with the API bearer token (or RUNNER_API_TOKEN); required outside loopback")
 	c.Flags().IntVar(&poolSize, "pool-size", 2, "ready VMs per stack")
 	c.Flags().BoolVar(&allowNested, "allow-nested-virt", false, "accept nestedVirt in machine create bodies (off: a client could otherwise hand guests the host's virtualization)")
+	c.Flags().StringVar(&imageCache, "image-cache", "", `share built machine images through a Cloud Storage bucket ("gs://bucket/prefix/"): a host downloads what another host built instead of building it, and every host runs the same file (a snapshot only restores over the base image it was taken on)`)
+	c.Flags().StringVar(&persistentDisks, "persistent-disks", "", `keep each machine on its own network disk ("gce": a Persistent Disk per machine, adopted by the next host when this one goes away; spot preemption drains them)`)
 	return c
 }
 
@@ -475,6 +507,12 @@ func doctorCmd() *cobra.Command {
 				fmt.Println("ok    gpu: libkrun built with virtio-gpu (Venus); use --gpu on a stack with gpu")
 			} else if err == nil {
 				fmt.Println("info  gpu: this libkrun has no virtio-gpu; --gpu is unavailable")
+			}
+			// Suspender (snapshot/restore) é do fork da libkrun do superbot: o doctor diz se a deste host sabe.
+			if sn, ok := api.(interface{ HasSnapshot() bool }); ok && sn.HasSnapshot() {
+				fmt.Println("ok    suspend: libkrun can snapshot and restore machines (rc machine suspend)")
+			} else if err == nil {
+				fmt.Println("info  suspend: this libkrun has no snapshot; machines only stop")
 			}
 			// CUDA é a pergunta que um preflight responde sem ligar VM: aqui a resposta
 			// é sempre não, e dita, para ninguém ler um teste de Vulkan como sim.

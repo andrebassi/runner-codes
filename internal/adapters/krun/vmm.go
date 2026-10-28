@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+
+	"runner.codes/internal/ports"
 )
 
 // ExitParentGone é o código com que o vmm sai quando o pipe de vigia fecha:
@@ -77,7 +80,37 @@ func RunVMM(api API, s Spec, watchdog io.Reader) error {
 	if err := sandbox(s); err != nil {
 		return err
 	}
+	snap, canSnap := api.(SnapshotAPI)
+	if s.SnapshotDir != "" && canSnap {
+		armSuspend(snap, ctx, s.SnapshotDir)
+	}
+	if s.RestoreFrom != "" {
+		if !canSnap {
+			return fmt.Errorf("restore from %s: this libkrun cannot restore snapshots", s.RestoreFrom)
+		}
+		return callErr("krun_restore", snap.Restore(ctx, s.RestoreFrom, 0))
+	}
 	return callErr("krun_start_enter", api.StartEnter(ctx))
+}
+
+// SuspendSignal é o sinal de suspender (ports.SuspendSignal): o vmm grava o snapshot em SnapshotDir e sai.
+const SuspendSignal = ports.SuspendSignal
+
+// notifySuspend é o signal.Notify; os testes trocam para disparar o pedido sem mandar sinal ao processo de teste.
+var notifySuspend = func(c chan<- os.Signal) { signal.Notify(c, SuspendSignal) }
+
+// armSuspend espera o sinal de suspender numa goroutine: a thread principal fica no krun_start_enter (que não volta),
+// e o pedido de snapshot é feito de outra thread — a libkrun congela as vCPUs, grava e encerra o processo com 0. Se
+// o pedido falhar, a VM segue rodando e o erro vai para o stderr (o console log da máquina), sem matar nada.
+func armSuspend(snap SnapshotAPI, ctx uint32, dir string) {
+	c := make(chan os.Signal, 1)
+	notifySuspend(c)
+	go func() {
+		<-c
+		if rc := snap.SnapshotRequest(ctx, dir, 0); rc < 0 {
+			fmt.Fprintf(os.Stderr, "suspend: krun_snapshot_request: %d\n", rc)
+		}
+	}()
 }
 
 // preload é preloadKrunfw; os testes trocam porque a máquina de teste pode não ter libkrunfw.

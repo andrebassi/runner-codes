@@ -63,7 +63,9 @@ async function loop() {
       if (c.width !== bmp.width || c.height !== bmp.height) { c.width = bmp.width; c.height = bmp.height; }
       ctx.drawImage(bmp, 0, 0);
       frames++;
-      st.textContent = "ao vivo (" + c.width + "×" + c.height + ")";
+      // Sem o "ao vivo": quem embute a tela (o HQ do superbot.computer) já mostra o estado na barra dele, e o texto
+      // repetido logo abaixo parecia defeito (pedido do dono, 27/10/2026). O tamanho da tela fica.
+      st.textContent = c.width + "×" + c.height;
     } catch (e) {
       st.textContent = "sem conexão com a máquina; tentando de novo…";
       await new Promise(ok => setTimeout(ok, 1000));
@@ -92,9 +94,44 @@ function pos(e) {
   const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
   return [{ type: EV_ABS, code: ABS_X, value: Math.round(x * 32767) }, { type: EV_ABS, code: ABS_Y, value: Math.round(y * 32767) }];
 }
-c.addEventListener("mousemove", e => send(pos(e)));
-c.addEventListener("mousedown", e => { c.focus(); send([...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 1 }]); e.preventDefault(); });
-c.addEventListener("mouseup", e => send([...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 0 }]));
+// Clique vai INTEIRO num pacote só (aperta e solta juntos). Medido em 28/10/2026 num desktop do superbot.computer
+// num worker remoto: a fila manda um POST por vez, então o "soltou" chegava ao guest uma ida e volta inteira depois do
+// "apertou" (navegador → gateway → rc do worker). Passando de ~500 ms, o XFCE via o botão segurado num dispositivo de
+// mesa digitalizadora (o mouse do rc é absoluto) e abria o menu de contexto em TODO clique esquerdo. Agora o aperto
+// espera até PRESS_HOLD_MS: o soltar que chega antes vai junto, no mesmo lote; arrastar (o mouse sai mais de
+// PRESS_SLOP px) ou segurar de propósito solta o aperto na hora, e o resto segue evento a evento como antes.
+const PRESS_HOLD_MS = 250, PRESS_SLOP = 4;
+let press = null; // { evs, x, y, timer } do aperto ainda não mandado
+function flushPress() {
+  if (!press) return;
+  clearTimeout(press.timer);
+  const evs = press.evs;
+  press = null;
+  send(evs);
+}
+c.addEventListener("mousemove", e => {
+  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > PRESS_SLOP) flushPress();
+  if (!press) send(pos(e));
+});
+c.addEventListener("mousedown", e => {
+  c.focus();
+  flushPress();
+  const evs = [...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 1 }];
+  press = { evs, x: e.clientX, y: e.clientY, timer: setTimeout(flushPress, PRESS_HOLD_MS) };
+  e.preventDefault();
+});
+c.addEventListener("mouseup", e => {
+  const up = [...pos(e), { type: EV_KEY, code: BTN[e.button] || BTN[0], value: 0 }];
+  if (press) {
+    // Clique: aperto e soltura no mesmo lote, separados pelo SYN_REPORT, para o guest ver os dois em sequência.
+    clearTimeout(press.timer);
+    const evs = press.evs;
+    press = null;
+    send([...evs, { type: EV_SYN, code: SYN_REPORT, value: 0 }, ...up]);
+    return;
+  }
+  send(up);
+});
 c.addEventListener("contextmenu", e => e.preventDefault());
 c.addEventListener("wheel", e => { send([{ type: 2, code: 8, value: e.deltaY > 0 ? -1 : 1 }]); e.preventDefault(); }, { passive: false });
 // Modificadores pelo estado do evento (ctrlKey, shiftKey...): automação e alguns teclados mandam

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runner.codes/internal/ports"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,10 +48,14 @@ func (s *Store) Create(m domain.Machine, diskTemplate string) error {
 	}
 	dir := s.Dir(m.Name)
 	if err := os.Mkdir(dir, 0o700); err != nil {
-		if errors.Is(err, fs.ErrExist) {
+		if !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		// Diretório que já existe sem registro é o ponto de montagem do disco próprio da máquina, recém-criado
+		// (vazio, só o lost+found do ext4): é ali que ela nasce. Com registro, é outra máquina com o mesmo nome.
+		if _, lerr := os.Stat(filepath.Join(dir, recordFile)); lerr == nil {
 			return domain.ErrMachineExists(m.Name)
 		}
-		return err
 	}
 	if err := s.clone(diskTemplate, filepath.Join(dir, DiskFile)); err != nil {
 		os.RemoveAll(dir)
@@ -177,6 +182,15 @@ func (Processes) Resume(pid int) error {
 		return syscall.ESRCH
 	}
 	return syscall.Kill(-pid, syscall.SIGCONT)
+}
+
+// Suspend manda o sinal de suspender só ao vmm: é ele quem atende (pede o snapshot à libkrun); o resto do grupo segue
+// até o vmm sair.
+func (Processes) Suspend(pid int) error {
+	if pid <= 0 {
+		return syscall.ESRCH
+	}
+	return syscall.Kill(pid, ports.SuspendSignal)
 }
 
 // Kill manda SIGKILL ao grupo do vmm (ele lidera a própria sessão, então o grupo é o pid).

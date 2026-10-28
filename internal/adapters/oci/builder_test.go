@@ -428,3 +428,109 @@ func TestHelpers(t *testing.T) {
 	}
 	b.logf("missing log destination must not panic")
 }
+
+// fakeShared é o cache compartilhado de mentira: has diz quais chaves estão "no bucket"; put avisa cada upload.
+type fakeShared struct {
+	mu     sync.Mutex
+	has    map[string][]byte
+	gets   []string
+	put    chan string
+	putErr error
+}
+
+// Get copia o conteúdo plantado para dst, ou falha como chave ausente.
+func (f *fakeShared) Get(_ context.Context, key, dst string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gets = append(f.gets, key)
+	data, ok := f.has[key]
+	if !ok {
+		return errors.New("not in the shared cache")
+	}
+	return os.WriteFile(dst, data, 0o644)
+}
+
+// Put guarda o que subiu e avisa pelo canal.
+func (f *fakeShared) Put(_ context.Context, key, src string) error {
+	data, err := os.ReadFile(src)
+	f.mu.Lock()
+	if err == nil && f.putErr == nil {
+		f.has[key] = data
+	}
+	f.mu.Unlock()
+	f.put <- key
+	if err != nil {
+		return err
+	}
+	return f.putErr
+}
+
+// syncLog é um log seguro para goroutines (o upload em segundo plano escreve nele enquanto o teste lê).
+type syncLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+// Write acrescenta ao log.
+func (l *syncLog) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.b.Write(p) }
+
+// String devolve o log até agora.
+func (l *syncLog) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+// TestSharedImageCache: imagem que outro host já subiu é BAIXADA — sem VM de build, com o symlink apontando para ela —
+// e a que ninguém subiu é construída aqui e subida com a mesma chave, para o próximo host só baixar. Upload que falha
+// não derruba o build: a imagem local está pronta, só fica no log.
+func TestSharedImageCache(t *testing.T) {
+	img, _ := random.Image(256, 2)
+	ctx := context.Background()
+
+	// Falta no bucket: constrói e sobe.
+	l := &fakeLauncher{handle: buildOK}
+	b := newBuilder(t, l, img)
+	sh := &fakeShared{has: map[string][]byte{}, put: make(chan string, 1)}
+	b.Shared = sh
+	b.Log = &syncLog{}
+	res, err := b.Build(ctx, pyLang)
+	if err != nil || res.Cached || l.calls() == 0 {
+		t.Fatalf("falta no bucket devia construir: %+v %v", res, err)
+	}
+	key := <-sh.put
+	if key != strings.TrimSuffix(filepath.Base(res.Path), ".ext4") || len(sh.gets) != 1 || sh.gets[0] != key {
+		t.Fatalf("chave subida %q, pedida %v, arquivo %s", key, sh.gets, res.Path)
+	}
+
+	// Outro host, mesma imagem: baixa do bucket, sem VM de build.
+	l2 := &fakeLauncher{handle: buildOK}
+	b2 := newBuilder(t, l2, img)
+	b2.GuestBinary = b.GuestBinary // o mesmo guest: a chave de conteúdo é a mesma
+	b2.Shared = sh
+	got, err := b2.Build(ctx, pyLang)
+	if err != nil || !got.Cached || l2.calls() != 0 {
+		t.Fatalf("acerto no bucket devia baixar sem VM: %+v %v (VMs %d)", got, err, l2.calls())
+	}
+	want, _ := os.ReadFile(res.Path)
+	if data, _ := os.ReadFile(got.Path); string(data) != string(want) {
+		t.Fatal("a imagem baixada não é a que o outro host construiu")
+	}
+	if p, ok := b2.ImagePath("python"); !ok || p != got.Path {
+		t.Fatalf("symlink não aponta para a baixada: %s %v", p, ok)
+	}
+
+	// Upload recusado: o build vale assim mesmo, e a falha vai para o log.
+	l3 := &fakeLauncher{handle: buildOK}
+	b3 := newBuilder(t, l3, img)
+	sh3 := &fakeShared{has: map[string][]byte{}, put: make(chan string, 1), putErr: errors.New("403")}
+	b3.Shared = sh3
+	log3 := &syncLog{}
+	b3.Log = log3
+	if _, err := b3.Build(ctx, pyLang); err != nil {
+		t.Fatalf("upload recusado derrubou o build: %v", err)
+	}
+	<-sh3.put
+	for i := 0; i < 100 && !strings.Contains(log3.String(), "upload failed"); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(log3.String(), "upload failed") {
+		t.Fatalf("falha do upload sem log: %q", log3.String())
+	}
+}

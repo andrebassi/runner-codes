@@ -3,8 +3,9 @@
 # `nix profile install .#krun` põe libkrun + libkrunfw em ~/.nix-profile/lib, que é onde o
 # `rc` procura por padrão (cmd/rc/main.go, libPath).
 #   - macOS arm64: derivações próprias em nix/ (o nixpkgs só tem Linux);
-#   - Linux: as do nixpkgs, com virtio-blk ligado (o padrão do nixpkgs vem sem BLK, e sem ele
-#     não existe krun_add_disk2) e a lib movida de lib64/ para lib/.
+#   - Linux: derivações próprias em nix/*-linux.nix sobre as do nixpkgs — libkrun 1.19.6 com BLK, NET,
+#     GPU e INPUT (a API de tela) e libkrunfw 5.6.2 (kernel com virtio-input) — e a lib movida de
+#     lib64/ para lib/.
 {
   description = "runner.codes: libkrun + libkrunfw";
 
@@ -24,15 +25,22 @@
       packages = forAll (
         pkgs:
         let
+          # No Linux, a do nixpkgs (5.3.0) sai sem CONFIG_VIRTIO_INPUT: tela viva e teclado/mouse mortos
+          # no desktop (medido numa VM do GCP em 24/10/2026). A 5.6.2 é a mesma do Mac.
           libkrunfw =
-            if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/libkrunfw-darwin.nix { } else pkgs.libkrunfw;
+            if pkgs.stdenv.hostPlatform.isDarwin then
+              pkgs.callPackage ./nix/libkrunfw-darwin.nix { }
+            else
+              pkgs.callPackage ./nix/libkrunfw-linux.nix { };
           virglrenderer =
             if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./nix/virglrenderer-darwin.nix { } else pkgs.virglrenderer;
           libkrun =
             if pkgs.stdenv.hostPlatform.isDarwin then
               pkgs.callPackage ./nix/libkrun-darwin.nix { inherit libkrunfw virglrenderer; }
             else
-              pkgs.libkrun.override { withBlk = true; withNet = true; };
+              # A do nixpkgs (1.17.4) não tem krun_set_display_backend nem GPU/INPUT ligados: a 1.19.6
+              # com os mesmos remendos de tela 2D do Mac.
+              pkgs.callPackage ./nix/libkrun-linux.nix { inherit libkrunfw; };
         in
         {
           inherit libkrun libkrunfw virglrenderer;

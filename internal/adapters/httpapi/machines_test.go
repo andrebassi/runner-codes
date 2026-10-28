@@ -78,6 +78,10 @@ func (f *fakeMachines) List() ([]app.MachineStatus, error) {
 
 // Status devolve a máquina pedida ligada.
 func (f *fakeMachines) Status(n string) (app.MachineStatus, error) {
+	// Máquina com nome começando por "off-" está desligada (rotas que exigem desligada: export).
+	if strings.HasPrefix(n, "off-") {
+		return app.MachineStatus{Machine: domain.Machine{Name: n}, State: app.StateStopped}, f.err
+	}
 	return app.MachineStatus{Machine: domain.Machine{Name: n}, State: app.StateRunning, PID: 7}, f.err
 }
 

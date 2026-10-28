@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -251,6 +252,11 @@ func (s *syncBuffer) String() string { s.mu.Lock(); defer s.mu.Unlock(); return 
 
 // TestCpTree: copia preservando a árvore; origem inexistente falha com a saída do cp.
 func TestCpTree(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		// O shim só roda em pod Linux, e o cpTree usa o cp do GNU (--reflink=auto); o cp do BSD do macOS recusa a
+		// opção. No Mac o teste não prova nada sobre o alvo — vale no Linux (CI e workers).
+		t.Skip("cpTree runs the GNU cp of the Linux pod")
+	}
 	orig := runChild
 	runChild = func(cmd *exec.Cmd) (int, error) {
 		err := cmd.Run()

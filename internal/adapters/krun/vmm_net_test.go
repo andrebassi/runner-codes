@@ -131,6 +131,42 @@ func TestStartNetworkFabric(t *testing.T) {
 	}
 }
 
+// TestInterceptRoots: sem proxy de saída, o interceptador fica nas raízes do sistema (nil); com ele, as raízes ganham
+// a CA do proxy — senão a troca de token recusaria o certificado que o proxy apresenta. Arquivo ausente ou sem
+// certificado é erro no start, não uma troca que falha calada depois.
+func TestInterceptRoots(t *testing.T) {
+	if pool, err := interceptRoots(""); pool != nil || err != nil {
+		t.Fatalf("no proxy: %v %v", pool, err)
+	}
+	dir := shortDir(t)
+	cert, _, _ := credca.New([]string{"x.io"}, time.Now())
+	good := filepath.Join(dir, "egress-ca.pem")
+	os.WriteFile(good, cert, 0o644)
+	if pool, err := interceptRoots(good); pool == nil || err != nil {
+		t.Fatalf("with the proxy CA: %v", err)
+	}
+	if _, err := interceptRoots(filepath.Join(dir, "none.pem")); err == nil {
+		t.Fatal("missing CA file")
+	}
+	bad := filepath.Join(dir, "bad.pem")
+	os.WriteFile(bad, []byte("não é PEM"), 0o644)
+	if _, err := interceptRoots(bad); err == nil || !strings.Contains(err.Error(), "no certificate") {
+		t.Fatalf("file without a certificate: %v", err)
+	}
+	creds := []domain.Credential{{Name: "gh", Env: "RC_TEST_GH", Hosts: []string{"x.io"}, Placeholder: "RC_PLACEHOLDER_GH_1"}}
+	ccert, ckey, _ := credca.New([]string{"x.io"}, time.Now())
+	os.WriteFile(filepath.Join(dir, "ca.pem"), ccert, 0o644)
+	os.WriteFile(filepath.Join(dir, "ca.key"), ckey, 0o600)
+	n := &ports.VMNet{Network: domain.Network{Credentials: creds}, CACert: filepath.Join(dir, "ca.pem"), CAKey: filepath.Join(dir, "ca.key"), EgressCA: bad}
+	if _, err := newInterceptor(n); err == nil {
+		t.Fatal("a broken proxy CA must fail the interceptor")
+	}
+	n.EgressCA = good
+	if ic, err := newInterceptor(n); err != nil || ic.Roots == nil {
+		t.Fatalf("interceptor with the proxy CA: %v", err)
+	}
+}
+
 // TestStartNetworkCredentials: com bindings, o gateway sobe com o interceptador carregado
 // da CA da máquina, e o valor sai do ambiente deste processo; CA ausente ou quebrada falha
 // antes de abrir descritor.

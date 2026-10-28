@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,41 @@ type MachineService interface {
 	Branch(ctx context.Context, from, to string) (domain.Machine, error)
 	// DisplayPort é a porta do visualizador da tela de uma máquina ligada (rotas /screen).
 	DisplayPort(name string) (uint16, error)
+	// Export escreve a máquina desligada no formato de transferência; Import cria uma de lá.
+	Export(ctx context.Context, name string, w io.Writer) error
+	Import(ctx context.Context, r io.Reader) (domain.Machine, error)
+}
+
+// SuspendService é o suspender do serviço de máquinas: grava o estado inteiro da máquina ligada no disco dela e a
+// desliga; o próximo start a devolve no mesmo ponto. Opcional — sem ele (ou num host cuja libkrun não sabe), a rota
+// responde 501.
+type SuspendService interface {
+	Suspend(ctx context.Context, name string, timeout time.Duration) error
+}
+
+// GoldenService é o snapshot dourado (app.Machines com disco próprio que sabe de snapshot): criar a máquina a partir
+// dele — restaurada, sem boot nem init — e publicar uma máquina suspensa como um. Opcional: sem ele, o create com
+// ?golden= cria do jeito normal e a publicação responde 501.
+type GoldenService interface {
+	CreateFromGolden(ctx context.Context, mc domain.Machine, snapshot string) (domain.Machine, error)
+	PublishGolden(ctx context.Context, name, snapshot string) error
+}
+
+// goldenHeader diz, na resposta do create com ?golden=, de onde a máquina nasceu: "restored" (do dourado) ou "cold"
+// (do jeito normal, porque o dourado não existe ou não serve). Quem pediu usa para medir e para os logs.
+const goldenHeader = "X-RC-Golden"
+
+// snapshotName casa nome de snapshot do GCE: minúscula, dígito e hífen, até 63, começando por letra.
+var snapshotName = regexp.MustCompile(`^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$`)
+
+// PersistentService é o que o serviço de máquinas oferece quando o host guarda cada máquina num disco próprio
+// (app.Machines com Persist): soltar o disco para outro host e o estado da preempção. Opcional — o fake dos testes
+// e o rc sem o recurso não implementam, e aí a rota responde 501 e o host diz persistent_disks=false.
+type PersistentService interface {
+	Release(ctx context.Context, name string) error
+	Adopt(ctx context.Context, name string) (app.MachineStatus, error)
+	Preemption() (bool, []string)
+	HasPersistentDisks() bool
 }
 
 // CreateMachineRequest é o corpo de POST /api/v1/machines.
@@ -181,6 +217,7 @@ func (s *Server) machineRoutes(v1 *gin.RouterGroup) {
 	}
 	g := v1.Group("/machines")
 	g.POST("", s.createMachine)
+	g.POST("/import", s.importMachine)
 	g.GET("", s.listMachines)
 	g.GET("/:name", s.machineStatus)
 	g.DELETE("/:name", s.deleteMachine)
@@ -201,6 +238,12 @@ func (s *Server) machineRoutes(v1 *gin.RouterGroup) {
 	g.POST("/:name/branch", s.branchMachine)
 	g.GET("/:name/screen", s.screenshot)
 	g.POST("/:name/screen/actions", s.screenActions)
+	g.GET("/:name/export", s.exportMachine)
+	g.POST("/:name/release", s.releaseMachine)
+	g.POST("/:name/suspend", s.suspendMachine)
+	g.POST("/:name/golden", s.publishGolden)
+	g.POST("/:name/adopt", s.adoptMachine)
+	g.Any("/:name/display/*path", s.display)
 }
 
 // machineError responde o erro com o status HTTP do código estável.
@@ -258,12 +301,58 @@ func (s *Server) createMachine(c *gin.Context) {
 		machineError(c, err)
 		return
 	}
+	if snap := c.Query("golden"); snap != "" {
+		if !snapshotName.MatchString(snap) {
+			machineError(c, domain.ValidationError{Err: fmt.Errorf("golden %q is not a snapshot name", snap)})
+			return
+		}
+		// Do dourado, quando ele existe e serve; senão o create normal, na mesma chamada — o dourado é só o atalho.
+		if gs, ok := s.Machines.(GoldenService); ok {
+			m, err := gs.CreateFromGolden(c.Request.Context(), mc, snap)
+			if err == nil {
+				c.Header(goldenHeader, "restored")
+				c.JSON(http.StatusCreated, app.MachineStatus{Machine: m, State: app.StateStopped})
+				return
+			}
+			if !errors.Is(err, app.ErrNoGolden) {
+				machineError(c, err)
+				return
+			}
+		}
+		c.Header(goldenHeader, "cold")
+	}
 	m, err := s.Machines.Create(c.Request.Context(), mc)
 	if err != nil {
 		machineError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, app.MachineStatus{Machine: m, State: app.StateStopped})
+}
+
+// publishGolden atende POST .../golden {"snapshot": "<nome>"}: a máquina suspensa vira o snapshot dourado e o disco de
+// trabalho dela é apagado. 204 publicado; 409 não está suspensa; 501 sem o recurso. Nome já usado é recusado pelo
+// GCE (os nomes levam a versão da receita: reescrever o dourado de uma versão em uso trocaria a máquina de quem usa).
+func (s *Server) publishGolden(c *gin.Context) {
+	gs, ok := s.Machines.(GoldenService)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "golden snapshots are not available on this host"})
+		return
+	}
+	var req struct {
+		Snapshot string `json:"snapshot" binding:"required"`
+	}
+	if err := bindStrict(c, &req); err != nil || !snapshotName.MatchString(req.Snapshot) {
+		machineError(c, domain.ValidationError{Err: fmt.Errorf("invalid request: snapshot must be a snapshot name")})
+		return
+	}
+	switch err := gs.PublishGolden(c.Request.Context(), c.Param("name"), req.Snapshot); {
+	case errors.Is(err, app.ErrNoGolden):
+		c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+	case err != nil:
+		machineError(c, err)
+	default:
+		c.Status(http.StatusNoContent)
+	}
 }
 
 // listMachines atende GET /api/v1/machines.
@@ -296,6 +385,66 @@ func (s *Server) deleteMachine(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// suspendMachine atende POST .../suspend: grava o snapshot da máquina ligada no disco dela e a desliga (?timeout=N
+// em segundos, até 120; sem ele vale o padrão do serviço). 204 suspensa; 409 não está ligada; 501 o host não sabe
+// suspender.
+func (s *Server) suspendMachine(c *gin.Context) {
+	sv, ok := s.Machines.(SuspendService)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "suspend is not available on this host"})
+		return
+	}
+	var timeout time.Duration
+	if t := c.Query("timeout"); t != "" {
+		n, err := strconv.Atoi(t)
+		if err != nil || n < 1 || n > 120 {
+			machineError(c, domain.ValidationError{Err: fmt.Errorf("timeout %q out of range [1, 120]", t)})
+			return
+		}
+		timeout = time.Duration(n) * time.Second
+	}
+	if err := sv.Suspend(c.Request.Context(), c.Param("name"), timeout); err != nil {
+		if errors.Is(err, app.ErrSuspendUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
+		machineError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// releaseMachine atende POST .../release: desliga a máquina (se ligada) e solta o disco próprio dela, para outro
+// host adotar no próximo create. 204 solto; 501 o host não tem disco próprio por máquina; 400 a máquina não tem.
+func (s *Server) releaseMachine(c *gin.Context) {
+	p, ok := s.Machines.(PersistentService)
+	if !ok || !p.HasPersistentDisks() {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "persistent disks are not enabled on this host"})
+		return
+	}
+	if err := p.Release(c.Request.Context(), c.Param("name")); err != nil {
+		machineError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// adoptMachine atende POST .../adopt: traz para este host a máquina cujo disco próprio está solto, sem ligar. 200
+// com o estado; 404 se o disco não existe; 501 no host sem disco próprio por máquina.
+func (s *Server) adoptMachine(c *gin.Context) {
+	p, ok := s.Machines.(PersistentService)
+	if !ok || !p.HasPersistentDisks() {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "persistent disks are not enabled on this host"})
+		return
+	}
+	st, err := p.Adopt(c.Request.Context(), c.Param("name"))
+	if err != nil {
+		machineError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, st)
 }
 
 // startMachine atende POST .../start.

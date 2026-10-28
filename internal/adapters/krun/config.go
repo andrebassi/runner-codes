@@ -61,6 +61,13 @@ type API interface {
 	StartEnter(ctx uint32) int32
 }
 
+// SnapshotAPI é a parte opcional da libkrun que suspende e restaura a VM (o fork do superbot). Fora de API pelo mesmo
+// motivo do NestedAPI: a libkrun sem ela continua servindo, só sem suspender.
+type SnapshotAPI interface {
+	SnapshotRequest(ctx uint32, path string, flags uint32) int32
+	Restore(ctx uint32, path string, flags uint32) int32
+}
+
 // NestedAPI é a parte opcional da libkrun que liga virtualização aninhada. Fica fora de API
 // para que uma libkrun (ou um fake) sem ela continue servindo às VMs que não a pedem.
 type NestedAPI interface {
