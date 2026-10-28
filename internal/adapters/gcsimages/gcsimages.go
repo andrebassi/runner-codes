@@ -133,6 +133,42 @@ func (s *Store) Put(ctx context.Context, key, src string) error {
 	}
 }
 
+// Find devolve a chave mais nova cujo nome começa com prefix (ErrNotFound se nenhuma). É como o host acha a imagem da
+// mesma base feita com outro guest (oci.Builder.rebase): lista os objetos do prefixo e fica com o de criação mais
+// recente — o guest mais próximo do atual, e o arquivo que os outros hosts provavelmente também baixaram.
+func (s *Store) Find(ctx context.Context, prefix string) (string, error) {
+	u := fmt.Sprintf("%s/storage/v1/b/%s/o?prefix=%s&fields=items(name,timeCreated)", s.API, url.PathEscape(s.Bucket),
+		url.QueryEscape(s.Prefix+prefix))
+	res, err := s.do(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("image cache find %s: status %d", prefix, res.StatusCode)
+	}
+	var list struct {
+		Items []struct {
+			Name        string    `json:"name"`
+			TimeCreated time.Time `json:"timeCreated"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
+		return "", fmt.Errorf("image cache find %s: %w", prefix, err)
+	}
+	best, bestAt := "", time.Time{}
+	for _, it := range list.Items {
+		key, ok := strings.CutSuffix(strings.TrimPrefix(it.Name, s.Prefix), ".ext4.zst")
+		if ok && (best == "" || it.TimeCreated.After(bestAt)) {
+			best, bestAt = key, it.TimeCreated
+		}
+	}
+	if best == "" {
+		return "", ErrNotFound
+	}
+	return best, nil
+}
+
 // do manda a requisição com o token da VM.
 func (s *Store) do(ctx context.Context, method, u string, body io.Reader) (*http.Response, error) {
 	tok, err := s.accessToken(ctx)

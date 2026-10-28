@@ -48,6 +48,11 @@ var diskScript []byte
 //go:embed scripts/shell.sh
 var shellScript []byte
 
+// reinjectScript troca só os arquivos injetados num ext4 pronto (o caminho barato de um guest novo).
+//
+//go:embed scripts/reinject.sh
+var reinjectScript []byte
+
 //go:embed scripts/bootstrap.sh
 var bootstrapScript []byte
 
@@ -112,10 +117,12 @@ type Builder struct {
 }
 
 // SharedImages é o cache de imagens de uma frota, por chave de conteúdo: Get devolve um erro qualquer quando a imagem
-// não está lá (quem pediu constrói), Put não sobrescreve o que já existe.
+// não está lá (quem pediu constrói), Put não sobrescreve o que já existe, e Find devolve uma chave qualquer que comece
+// com o prefixo (erro se nenhuma) — é como o host acha a imagem da mesma base feita com outro guest.
 type SharedImages interface {
 	Get(ctx context.Context, key, dst string) error
 	Put(ctx context.Context, key, src string) error
+	Find(ctx context.Context, prefix string) (string, error)
 }
 
 // Image é o resultado de um build.
@@ -230,15 +237,28 @@ func (b *Builder) downloadVerified(ctx context.Context, root string) error {
 	return extractTarGz(tmp, root)
 }
 
-// cacheKey identifica o ext4: muda se mudar a imagem, o warmup, os scripts ou o guest
-// (o guest vai dentro da imagem, então guest novo exige imagem nova).
-func cacheKey(digest, warmup string, guestSum []byte) string {
+// sum12 são os 12 primeiros hex do sha256 das partes, separadas por um zero (partes vizinhas não se confundem).
+func sum12(parts ...[]byte) string {
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte(digest), []byte(warmup), buildScript, startScript, shellScript, machineScript, guestSum} {
+	for _, part := range parts {
 		h.Write(part)
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
+}
+
+// baseKey identifica a parte CARA do ext4: as camadas da imagem, o warmup e o script que monta. Não muda com o rc.
+func baseKey(digest, warmup string) string { return sum12([]byte(digest), []byte(warmup), buildScript) }
+
+// injectKey identifica o que o host injeta em /opt/runner: o guest e os scripts de arranque — muda a cada rc novo.
+func injectKey(guestSum []byte) string {
+	return sum12(startScript, shellScript, machineScript, guestSum)
+}
+
+// cacheKey identifica o ext4 inteiro: "<base>-<injeção>". A chave em duas partes é o que deixa um rc novo reaproveitar
+// a imagem da mesma base (só a injeção difere) em vez de reconstruí-la inteira.
+func cacheKey(digest, warmup string, guestSum []byte) string {
+	return baseKey(digest, warmup) + "-" + injectKey(guestSum)
 }
 
 // fileSum devolve o sha256 de um arquivo.
@@ -288,7 +308,17 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 			res.Path, res.Cached, res.Elapsed = out, true, time.Since(start)
 			return res, b.link(lang.Name, out)
 		} else {
-			b.logf("[%s] not in the shared image cache (%v): building here", lang.Name, err)
+			b.logf("[%s] not in the shared image cache (%v)", lang.Name, err)
+		}
+		// A mesma base com outro guest (um rc novo): baixa e troca só a injeção. Falhou, constrói inteira como sempre.
+		prefix := fmt.Sprintf("%s-%s-", lang.Name, baseKey(res.Digest, lang.Warmup))
+		if old, err := b.Shared.Find(ctx, prefix); err == nil && old != key {
+			if err := b.rebase(ctx, lang, img, old, key, out); err == nil {
+				res.Path, res.Cached, res.Elapsed = out, true, time.Since(start)
+				return res, b.link(lang.Name, out)
+			} else {
+				b.logf("[%s] reuse of %s failed (%v): building here", lang.Name, old, err)
+			}
 		}
 	}
 
@@ -308,7 +338,7 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 	if err := writeFlat(img, tarPath); err != nil {
 		return res, err
 	}
-	if err := copyFile(b.GuestBinary, filepath.Join(inject, "guest"), 0o755); err != nil {
+	if err := b.writeInject(img, inject); err != nil {
 		return res, err
 	}
 	env, err := imageEnv(img)
@@ -316,10 +346,6 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 		return res, err
 	}
 	writes := map[string][]byte{
-		filepath.Join(inject, "start.sh"):           startScript,
-		filepath.Join(inject, "shell.sh"):           shellScript,
-		filepath.Join(inject, "machine.sh"):         machineScript,
-		filepath.Join(inject, "env"):                []byte(strings.Join(env, "\n") + "\n"),
 		filepath.Join(work, "build.sh"):             buildScript,
 		filepath.Join(work, lang.Name+".warmup.sh"): []byte(warmupScript(env, lang.Warmup)),
 	}
@@ -342,20 +368,83 @@ func (b *Builder) Build(ctx context.Context, lang domain.Language) (Image, error
 		return res, fmt.Errorf("move ext4: %w", err)
 	}
 	res.Path, res.Metrics, res.Elapsed = out, metrics, time.Since(start)
-	if b.Shared != nil {
-		// Sobe para os outros hosts em segundo plano: quem pediu a imagem não espera o upload. Falha só vai para o log —
-		// o próximo host constrói a sua, como sempre foi.
-		go func() {
-			uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
-			defer cancel()
-			if err := b.Shared.Put(uctx, key, out); err != nil {
-				b.logf("[%s] shared image cache upload failed: %v", lang.Name, err)
-				return
-			}
-			b.logf("[%s] uploaded to the shared image cache", lang.Name)
-		}()
-	}
+	b.share(ctx, lang, key, out)
 	return res, b.link(lang.Name, out)
+}
+
+// share sobe a imagem para os outros hosts em segundo plano: quem pediu a imagem não espera o upload. Falha só vai para
+// o log — o próximo host constrói (ou reaproveita) a sua, como sempre foi.
+func (b *Builder) share(ctx context.Context, lang domain.Language, key, out string) {
+	if b.Shared == nil {
+		return
+	}
+	go func() {
+		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
+		defer cancel()
+		if err := b.Shared.Put(uctx, key, out); err != nil {
+			b.logf("[%s] shared image cache upload failed: %v", lang.Name, err)
+			return
+		}
+		b.logf("[%s] uploaded to the shared image cache", lang.Name)
+	}()
+}
+
+// rebase faz a imagem da chave nova a partir da `old` (mesma base, outra injeção): baixa o ext4, troca os arquivos de
+// /opt/runner na VM de build (reinject.sh, que confere cada um byte a byte) e sobe com a chave nova. Segundos, contra
+// os minutos de reconstruir as camadas e o warmup.
+func (b *Builder) rebase(ctx context.Context, lang domain.Language, img v1.Image, old, key, out string) error {
+	if err := b.EnsureBuilder(ctx); err != nil {
+		return err
+	}
+	work := filepath.Join(b.builderRoot(), "work")
+	inject := filepath.Join(work, "inject")
+	if err := os.MkdirAll(inject, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(work, lang.Name+".ext4")
+	defer os.Remove(tmp)
+	b.logf("[%s] reusing %s from the shared image cache with the new guest", lang.Name, old)
+	if err := b.Shared.Get(ctx, old, tmp); err != nil {
+		return fmt.Errorf("download %s: %w", old, err)
+	}
+	if err := b.writeInject(img, inject); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(work, "reinject.sh"), reinjectScript, 0o755); err != nil {
+		return err
+	}
+	console := filepath.Join(work, lang.Name+".reinject.console")
+	if _, err := b.runBuildVM(ctx, "/work/reinject.sh", []string{"/work/" + lang.Name + ".ext4"}, console); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(b.imagesDir(), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, out); err != nil {
+		return fmt.Errorf("move ext4: %w", err)
+	}
+	b.share(ctx, lang, key, out)
+	return nil
+}
+
+// writeInject grava em dir os arquivos que vão para /opt/runner: o guest, os scripts de arranque e o env da imagem.
+func (b *Builder) writeInject(img v1.Image, dir string) error {
+	if err := copyFile(b.GuestBinary, filepath.Join(dir, "guest"), 0o755); err != nil {
+		return err
+	}
+	env, err := imageEnv(img)
+	if err != nil {
+		return err
+	}
+	for name, data := range map[string][]byte{
+		"start.sh": startScript, "shell.sh": shellScript, "machine.sh": machineScript,
+		"env": []byte(strings.Join(env, "\n") + "\n"),
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // runBuildVM sobe a VM de build com rede (código confiável: só o nosso script), espera

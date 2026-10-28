@@ -101,11 +101,11 @@ func TestMachineLifecycle(t *testing.T) {
 	if _, err := c.Start(ctx, "dev"); err != nil {
 		t.Fatal(err)
 	}
-	r, err := c.Exec(ctx, "dev", []string{"sh", "-c", "x"}, ExecOptions{Env: []string{"A=1"}, Stdin: "in", Timeout: 5})
+	r, err := c.Exec(ctx, "dev", []string{"sh", "-c", "x"}, ExecOptions{Env: []string{"A=1"}, Stdin: "in", Timeout: 5, User: "agent"})
 	if err != nil || r.ExitCode != 3 || r.Stdout != "o" || r.Stderr != "e" {
 		t.Fatalf("exec: %+v %v", r, err)
 	}
-	if b := f.calls[len(f.calls)-1].body; b != `{"command":["sh","-c","x"],"env":["A=1"],"stdin":"in","timeout":5}` {
+	if b := f.calls[len(f.calls)-1].body; b != `{"command":["sh","-c","x"],"env":["A=1"],"stdin":"in","timeout":5,"user":"agent"}` {
 		t.Fatalf("exec body: %s", b)
 	}
 	if err := c.WriteFile(ctx, "dev", "/a b", []byte("hi"), 0o600); err != nil {

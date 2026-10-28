@@ -161,12 +161,15 @@ type Machine struct {
 	} `json:"network"`
 }
 
-// ExecOptions completa um exec: ambiente, diretório, stdin e prazo em segundos.
+// ExecOptions completa um exec: ambiente, diretório, stdin, prazo em segundos e o usuário do guest (nome ou
+// uid[:gid]; vazio usa o da máquina, senão root) — o servidor já aceitava "user", e sem o campo aqui o SDK não tinha
+// como pedir.
 type ExecOptions struct {
 	Env     []string `json:"env,omitempty"`
 	Workdir string   `json:"workdir,omitempty"`
 	Stdin   string   `json:"stdin,omitempty"`
 	Timeout int      `json:"timeout,omitempty"`
+	User    string   `json:"user,omitempty"`
 }
 
 // ExecResult é o resultado de um comando numa máquina; ExitCode é o do processo.

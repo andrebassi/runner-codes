@@ -246,9 +246,16 @@ func TestRebuildRemovesPreviousImage(t *testing.T) {
 	}
 }
 
-// TestCacheKeyInvalidation: warmup, guest ou imagem diferentes geram chave diferente.
+// TestCacheKeyInvalidation: warmup, guest ou imagem diferentes geram chave diferente; a chave é "<base>-<injeção>", e
+// o guest muda só a injeção (é o que deixa um rc novo reaproveitar a imagem da mesma base).
 func TestCacheKeyInvalidation(t *testing.T) {
 	base := cacheKey("sha256:a", "w", []byte("g"))
+	if g2 := cacheKey("sha256:a", "w", []byte("g2")); g2[:13] != base[:13] || g2 == base {
+		t.Fatalf("guest novo devia manter a base e trocar a injeção: %s %s", base, g2)
+	}
+	if w2 := cacheKey("sha256:a", "w2", []byte("g")); w2[:12] == base[:12] {
+		t.Fatalf("warmup novo devia trocar a base: %s %s", base, w2)
+	}
 	for name, k := range map[string]string{
 		"warmup": cacheKey("sha256:a", "w2", []byte("g")),
 		"guest":  cacheKey("sha256:a", "w", []byte("g2")),
@@ -258,8 +265,8 @@ func TestCacheKeyInvalidation(t *testing.T) {
 			t.Errorf("changing %s did not change the key", name)
 		}
 	}
-	if len(base) != 12 {
-		t.Fatalf("key has %d characters", len(base))
+	if len(base) != 25 || base[12] != '-' {
+		t.Fatalf("key %q: want 12 hex, '-', 12 hex", base)
 	}
 }
 
@@ -431,11 +438,12 @@ func TestHelpers(t *testing.T) {
 
 // fakeShared é o cache compartilhado de mentira: has diz quais chaves estão "no bucket"; put avisa cada upload.
 type fakeShared struct {
-	mu     sync.Mutex
-	has    map[string][]byte
-	gets   []string
-	put    chan string
-	putErr error
+	mu      sync.Mutex
+	has     map[string][]byte
+	gets    []string
+	put     chan string
+	putErr  error
+	findErr error
 }
 
 // Get copia o conteúdo plantado para dst, ou falha como chave ausente.
@@ -448,6 +456,21 @@ func (f *fakeShared) Get(_ context.Context, key, dst string) error {
 		return errors.New("not in the shared cache")
 	}
 	return os.WriteFile(dst, data, 0o644)
+}
+
+// Find devolve a primeira chave plantada com o prefixo (ou a falha plantada).
+func (f *fakeShared) Find(_ context.Context, prefix string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.findErr != nil {
+		return "", f.findErr
+	}
+	for k := range f.has {
+		if strings.HasPrefix(k, prefix) {
+			return k, nil
+		}
+	}
+	return "", errors.New("none")
 }
 
 // Put guarda o que subiu e avisa pelo canal.
@@ -533,4 +556,200 @@ func TestSharedImageCache(t *testing.T) {
 	if !strings.Contains(log3.String(), "upload failed") {
 		t.Fatalf("falha do upload sem log: %q", log3.String())
 	}
+}
+
+// reinjectOK simula as duas VMs: a de build (buildOK) e a de reinjeção, que só confirma no console.
+func reinjectOK(s ports.VMSpec, vm *fakeVM) int {
+	if s.Exec == "/work/reinject.sh" {
+		os.WriteFile(s.Console, []byte("RESULT reinject_ms=5\n"), 0o644)
+		return 0
+	}
+	return buildOK(s, vm)
+}
+
+// TestSharedRebase: um rc novo (outro guest) acha no bucket a imagem da MESMA base e só troca a injeção — baixa a
+// antiga, roda o reinject.sh na VM de build (nunca o build.sh) com o guest novo em /work/inject, e sobe com a chave nova.
+// Reinjeção que falha, ou bucket que não lista, volta a construir inteira como antes.
+func TestSharedRebase(t *testing.T) {
+	img, _ := random.Image(256, 2)
+	ctx := context.Background()
+	digest, _ := img.Digest()
+	oldKey := "python-" + baseKey(digest.String(), pyLang.Warmup) + "-aaaaaaaaaaaa"
+
+	l := &fakeLauncher{handle: reinjectOK}
+	b := newBuilder(t, l, img)
+	sh := &fakeShared{has: map[string][]byte{oldKey: []byte("ext4-da-base")}, put: make(chan string, 1)}
+	b.Shared = sh
+	b.Log = &syncLog{}
+	res, err := b.Build(ctx, pyLang)
+	if err != nil || !res.Cached {
+		t.Fatalf("reaproveitamento: %+v %v", res, err)
+	}
+	for _, spec := range l.specs {
+		if spec.Exec == "/work/build.sh" {
+			t.Fatal("rodou o build.sh: devia só reinjetar")
+		}
+	}
+	last := l.specs[len(l.specs)-1]
+	if last.Exec != "/work/reinject.sh" || last.Args[0] != "/work/python.ext4" {
+		t.Fatalf("VM de reinjeção: %+v", last)
+	}
+	if data, _ := os.ReadFile(res.Path); string(data) != "ext4-da-base" {
+		t.Fatalf("a imagem não é a da base baixada: %q", data)
+	}
+	if g, _ := os.ReadFile(filepath.Join(b.builderRoot(), "work", "inject", "guest")); string(g) != "guest-binary" {
+		t.Fatal("guest novo não foi para /work/inject")
+	}
+	if env, _ := os.ReadFile(filepath.Join(b.builderRoot(), "work", "inject", "env")); len(env) == 0 {
+		t.Fatal("env da imagem não foi para /work/inject")
+	}
+	if up := <-sh.put; up == oldKey || up != strings.TrimSuffix(filepath.Base(res.Path), ".ext4") {
+		t.Fatalf("subiu %q (antiga %q)", up, oldKey)
+	}
+	if _, err := os.Stat(filepath.Join(b.builderRoot(), "work", "python.ext4")); !os.IsNotExist(err) {
+		t.Fatal("o ext4 de trabalho ficou para trás")
+	}
+
+	// Reinjeção que falha: constrói inteira, e o motivo vai para o log.
+	fail := &fakeLauncher{handle: func(s ports.VMSpec, vm *fakeVM) int {
+		if s.Exec == "/work/reinject.sh" {
+			os.WriteFile(s.Console, []byte("reinject: /opt/runner/guest não confere\n"), 0o644)
+			return 1
+		}
+		return buildOK(s, vm)
+	}}
+	b2 := newBuilder(t, fail, img)
+	sh2 := &fakeShared{has: map[string][]byte{oldKey: []byte("x")}, put: make(chan string, 1)}
+	b2.Shared = sh2
+	log2 := &syncLog{}
+	b2.Log = log2
+	if res, err := b2.Build(ctx, pyLang); err != nil || res.Cached {
+		t.Fatalf("falha da reinjeção devia construir: %+v %v", res, err)
+	}
+	<-sh2.put
+	if !strings.Contains(log2.String(), "reuse of "+oldKey+" failed") || fail.specs[len(fail.specs)-1].Exec != "/work/build.sh" {
+		t.Fatalf("sem queda para o build: %q", log2.String())
+	}
+
+	// Download da base que falha (some entre o Find e o Get): constrói.
+	b3 := newBuilder(t, &fakeLauncher{handle: reinjectOK}, img)
+	sh3 := &vanishing{fakeShared{has: map[string][]byte{oldKey: []byte("x")}, put: make(chan string, 1)}}
+	b3.Shared = sh3
+	b3.Log = &syncLog{}
+	if res, err := b3.Build(ctx, pyLang); err != nil || res.Cached {
+		t.Fatalf("base sumida devia construir: %+v %v", res, err)
+	}
+	<-sh3.put
+
+	// Bucket que não lista: constrói como antes.
+	b4 := newBuilder(t, &fakeLauncher{handle: reinjectOK}, img)
+	sh4 := &fakeShared{has: map[string][]byte{}, put: make(chan string, 1), findErr: errors.New("403")}
+	b4.Shared = sh4
+	b4.Log = &syncLog{}
+	if res, err := b4.Build(ctx, pyLang); err != nil || res.Cached {
+		t.Fatalf("sem listagem devia construir: %+v %v", res, err)
+	}
+	<-sh4.put
+}
+
+// vanishing acha a chave no Find mas falha o Get dela (o objeto some entre os dois).
+type vanishing struct{ fakeShared }
+
+// Get falha sempre.
+func (v *vanishing) Get(context.Context, string, string) error { return errors.New("gone") }
+
+// TestSharedRebaseFailures: VM de build que não sobe e diretório de trabalho impossível derrubam a reinjeção E o build
+// (o erro chega a quem pediu); nada fica no lugar da imagem.
+func TestSharedRebaseFailures(t *testing.T) {
+	img, _ := random.Image(64, 1)
+	ctx := context.Background()
+	digest, _ := img.Digest()
+	oldKey := "python-" + baseKey(digest.String(), pyLang.Warmup) + "-bbbbbbbbbbbb"
+
+	// A VM de build não sobe: nem reinjeta nem constrói.
+	l := &fakeLauncher{handle: reinjectOK, fail: errors.New("sem KVM")}
+	b := newBuilder(t, l, img)
+	b.Shared = &fakeShared{has: map[string][]byte{oldKey: []byte("x")}, put: make(chan string, 1)}
+	b.Log = &syncLog{}
+	if _, err := b.Build(ctx, pyLang); err == nil || !strings.Contains(err.Error(), "sem KVM") {
+		t.Fatalf("VM que não sobe: %v", err)
+	}
+
+	// O diretório de trabalho é um arquivo: a reinjeção falha ao preparar, e o build também.
+	b2 := newBuilder(t, &fakeLauncher{handle: reinjectOK}, img)
+	b2.Shared = &fakeShared{has: map[string][]byte{oldKey: []byte("x")}, put: make(chan string, 1)}
+	log2 := &syncLog{}
+	b2.Log = log2
+	if err := b2.EnsureBuilder(ctx); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(filepath.Join(b2.builderRoot(), "work"))
+	os.WriteFile(filepath.Join(b2.builderRoot(), "work"), []byte("não é diretório"), 0o644)
+	if _, err := b2.Build(ctx, pyLang); err == nil {
+		t.Fatal("diretório de trabalho impossível passou")
+	}
+	if !strings.Contains(log2.String(), "reuse of "+oldKey+" failed") {
+		t.Fatalf("falha da reinjeção sem log: %q", log2.String())
+	}
+	if entries, _ := os.ReadDir(b2.imagesDir()); len(entries) != 0 {
+		t.Fatalf("sobrou imagem: %v", entries)
+	}
+}
+
+// TestWriteInjectFailures: destino que não existe (o guest não copia) e arquivo de script que é diretório são erro.
+func TestWriteInjectFailures(t *testing.T) {
+	img, _ := random.Image(64, 1)
+	b := newBuilder(t, &fakeLauncher{handle: reinjectOK}, img)
+	if err := b.writeInject(img, filepath.Join(t.TempDir(), "nao", "existe")); err == nil {
+		t.Fatal("destino inexistente passou")
+	}
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, "start.sh"), 0o755)
+	if err := b.writeInject(img, dir); err == nil {
+		t.Fatal("script que é diretório passou")
+	}
+}
+
+// TestRebaseScriptNotWritten: o reinject.sh que não grava faz a reinjeção desistir e o build inteiro seguir — e dar
+// certo (o build não depende do reinject.sh).
+func TestRebaseScriptNotWritten(t *testing.T) {
+	img, _ := random.Image(64, 1)
+	ctx := context.Background()
+	digest, _ := img.Digest()
+	oldKey := "python-" + baseKey(digest.String(), pyLang.Warmup) + "-cccccccccccc"
+	l := &fakeLauncher{handle: reinjectOK}
+	b := newBuilder(t, l, img)
+	sh := &fakeShared{has: map[string][]byte{oldKey: []byte("x")}, put: make(chan string, 1)}
+	b.Shared = sh
+	b.Log = &syncLog{}
+	if err := b.EnsureBuilder(ctx); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(b.builderRoot(), "work", "reinject.sh"), 0o755)
+	res, err := b.Build(ctx, pyLang)
+	if err != nil || res.Cached || l.specs[len(l.specs)-1].Exec != "/work/build.sh" {
+		t.Fatalf("devia construir inteira: %+v %v", res, err)
+	}
+	<-sh.put
+}
+
+// TestScriptsOnlyChangeInjection: os scripts de arranque (start, shell, machine) vão em /opt/runner pela injeção, então
+// mudar um deles troca SÓ a parte de injeção da chave — a base (camadas + warmup + build.sh) continua a mesma, e o rc
+// reaproveita a imagem em vez de reconstruí-la. O build.sh, ao contrário, muda a base.
+func TestScriptsOnlyChangeInjection(t *testing.T) {
+	base, inj := baseKey("sha256:a", "w"), injectKey([]byte("g"))
+	for name, script := range map[string]*[]byte{"start": &startScript, "shell": &shellScript, "machine": &machineScript} {
+		orig := *script
+		*script = append(append([]byte(nil), orig...), []byte("\n# mudou")...)
+		if baseKey("sha256:a", "w") != base || injectKey([]byte("g")) == inj {
+			t.Errorf("%s.sh: base devia ficar, injeção devia mudar", name)
+		}
+		*script = orig
+	}
+	orig := buildScript
+	buildScript = append(append([]byte(nil), orig...), []byte("\n# mudou")...)
+	if baseKey("sha256:a", "w") == base {
+		t.Error("build.sh novo devia mudar a base")
+	}
+	buildScript = orig
 }

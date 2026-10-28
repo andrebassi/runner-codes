@@ -19,6 +19,8 @@ import (
 type fakeGoogle struct {
 	mu      sync.Mutex
 	objects map[string][]byte
+	// created é a hora de criação de cada objeto (a listagem devolve; Find fica com o mais novo).
+	created map[string]string
 	tokens  int
 	status  map[string]int
 	badTok  bool
@@ -46,6 +48,17 @@ func (f *fakeGoogle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "planted failure")
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Path == "/storage/v1/b/bkt/o" { // listagem por prefixo (Find)
+		prefix := r.URL.Query().Get("prefix")
+		var items []string
+		for name := range f.objects {
+			if strings.HasPrefix(name, prefix) {
+				items = append(items, `{"name":"`+name+`","timeCreated":"`+f.created[name]+`"}`)
+			}
+		}
+		io.WriteString(w, `{"items":[`+strings.Join(items, ",")+`]}`)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet: // /storage/v1/b/<bucket>/o/<objeto>?alt=media
 		name := strings.TrimPrefix(r.URL.Path, "/storage/v1/b/bkt/o/")
@@ -70,7 +83,7 @@ func (f *fakeGoogle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // rig sobe o fake e devolve o Store apontado para ele.
 func rig(t *testing.T) (*Store, *fakeGoogle) {
 	t.Helper()
-	f := &fakeGoogle{objects: map[string][]byte{}, status: map[string]int{}}
+	f := &fakeGoogle{objects: map[string][]byte{}, status: map[string]int{}, created: map[string]string{}}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	s, err := Parse("gs://bkt/rc-images")
@@ -178,7 +191,11 @@ func TestIOFailures(t *testing.T) {
 	if err := s.Put(ctx, "dir", t.TempDir()); err == nil {
 		t.Fatal("origem ilegível sem erro")
 	}
-	if _, ok := f.objects["rc-images/dir.ext4.zst"]; ok && len(f.objects["rc-images/dir.ext4.zst"]) > 0 {
+	// Lido com a trava do fake: o handler do upload abortado pode ainda estar gravando (o -race acusava aqui).
+	f.mu.Lock()
+	half := f.objects["rc-images/dir.ext4.zst"]
+	f.mu.Unlock()
+	if len(half) > 0 {
 		t.Fatal("upload pela metade gravado como objeto completo")
 	}
 	bad := &Store{Bucket: s.Bucket, Prefix: s.Prefix, HTTP: s.HTTP, API: "http://[::1]:namedport", Metadata: s.Metadata}
@@ -207,5 +224,53 @@ func TestParse(t *testing.T) {
 		if _, err := Parse(bad); err == nil {
 			t.Fatalf("%q aceito", bad)
 		}
+	}
+}
+
+// TestFind: entre as chaves com o prefixo, devolve a de criação mais recente (sem o prefixo do bucket nem a extensão);
+// objeto que não é imagem é ignorado; sem nenhuma é ErrNotFound; status ruim e JSON ilegível são erro.
+func TestFind(t *testing.T) {
+	s, f := rig(t)
+	ctx := context.Background()
+	f.objects["rc-images/img-a-base1-old.ext4.zst"] = []byte("x")
+	f.created["rc-images/img-a-base1-old.ext4.zst"] = "2026-10-25T14:21:08Z"
+	f.objects["rc-images/img-a-base1-new.ext4.zst"] = []byte("x")
+	f.created["rc-images/img-a-base1-new.ext4.zst"] = "2026-10-28T04:39:00Z"
+	f.objects["rc-images/img-a-base1-lixo.txt"] = []byte("x")
+	f.created["rc-images/img-a-base1-lixo.txt"] = "2026-10-29T00:00:00Z"
+	f.objects["rc-images/img-a-base2-x.ext4.zst"] = []byte("x")
+	f.created["rc-images/img-a-base2-x.ext4.zst"] = "2026-10-30T00:00:00Z"
+	if k, err := s.Find(ctx, "img-a-base1-"); err != nil || k != "img-a-base1-new" {
+		t.Fatalf("mais nova: %q %v", k, err)
+	}
+	if _, err := s.Find(ctx, "img-b-"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("sem nenhuma: %v", err)
+	}
+	f.status[http.MethodGet] = http.StatusForbidden
+	if _, err := s.Find(ctx, "img-a-"); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("status ruim: %v", err)
+	}
+	delete(f.status, http.MethodGet)
+	f.badTok = true
+	s.token = ""
+	if _, err := s.Find(ctx, "img-a-"); err == nil {
+		t.Fatal("sem token passou")
+	}
+}
+
+// TestFindBadJSON: listagem ilegível é erro, nunca "achei vazio".
+func TestFindBadJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/token") {
+			io.WriteString(w, `{"access_token":"tok","expires_in":3600}`)
+			return
+		}
+		io.WriteString(w, `{nada`)
+	}))
+	t.Cleanup(srv.Close)
+	s, _ := Parse("gs://bkt/rc-images")
+	s.HTTP, s.API, s.Metadata = srv.Client(), srv.URL, srv.URL
+	if _, err := s.Find(context.Background(), "x"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("JSON ilegível: %v", err)
 	}
 }
