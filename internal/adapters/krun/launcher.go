@@ -77,7 +77,7 @@ func (l *Launcher) Start(s Spec) (*Process, error) {
 	// O lado de leitura vira o fd 3 do filho (primeiro de ExtraFiles).
 	cmd := exec.Command(l.Exe, "vmm", "--spec", specPath, "--watch-fd", "3", "--lib", l.LibPath)
 	cmd.ExtraFiles = []*os.File{r}
-	cmd.Env = append(os.Environ(), libPathEnv+"="+l.LibDir)
+	cmd.Env = append(os.Environ(), libPathEnv+"="+l.libDirFor(s))
 	cmd.SysProcAttr = sysProcAttr()
 	cmd.Stderr = l.Stderr
 	if err := cmd.Start(); err != nil {
@@ -114,7 +114,7 @@ func (l *Launcher) StartDetached(s Spec, specPath, logPath string) (int, error) 
 	}
 	defer log.Close()
 	cmd := exec.Command(l.Exe, "vmm", "--spec", specPath, "--lib", l.LibPath)
-	cmd.Env = append(os.Environ(), libPathEnv+"="+l.LibDir)
+	cmd.Env = append(os.Environ(), libPathEnv+"="+l.libDirFor(s))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout, cmd.Stderr = log, log
 	var watchRead *os.File
@@ -198,4 +198,16 @@ func (p *Process) Kill() {
 func (p *Process) cleanup() {
 	p.watch.Close()
 	os.Remove(p.specPath)
+}
+
+// libDirFor é o caminho de bibliotecas do processo vmm de uma VM: o diretório da libkrunfw própria dela (KrunfwDir)
+// na frente do da libkrun do servidor. O dlopen da libkrunfw é pelo nome, então o primeiro diretório decide o kernel.
+func (l *Launcher) libDirFor(s Spec) string {
+	if s.KrunfwDir == "" {
+		return l.LibDir
+	}
+	if l.LibDir == "" {
+		return s.KrunfwDir
+	}
+	return s.KrunfwDir + string(os.PathListSeparator) + l.LibDir
 }

@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"syscall"
+	"time"
 
 	"runner.codes/internal/domain"
 	"runner.codes/internal/protocol"
@@ -42,9 +43,14 @@ type VMSpec struct {
 	MemoryMiB   uint32     `json:"memory_mib"`
 	// RootDisk é um ext4 montado read-only como /. Usado pelas VMs de job.
 	RootDisk string `json:"root_disk,omitempty"`
-	// RootDir é um diretório compartilhado por virtiofs como /. Só a VM de build usa,
-	// porque virtiofs não impede o guest de alcançar o resto do host (doc da libkrun).
+	// RootDir é um diretório compartilhado por virtiofs como /. Usam a VM de build e a máquina Android (o rootfs do
+	// Redroid é um diretório, e o /init dele não passa pelo machine.sh). O virtiofs não impede o guest de alcançar
+	// o resto do host (doc da libkrun): o diretório é exclusivo da máquina.
 	RootDir string `json:"root_dir,omitempty"`
+	// KrunfwDir é o diretório de uma libkrunfw própria da VM (o kernel do Android, com binder), posto na frente do
+	// caminho de bibliotecas do processo vmm: a libkrun abre a libkrunfw pelo nome, e o primeiro diretório vence.
+	// Vazio usa a do servidor. Só o launcher lê; não vai para o arquivo da spec.
+	KrunfwDir string `json:"-"`
 	// DataDisk é o ext4 gravável de uma máquina persistente, visto como /dev/vdb no guest
 	// (machine.sh monta o overlay sobre a imagem com ele). Só com RootDisk.
 	DataDisk    string `json:"data_disk,omitempty"`
@@ -283,4 +289,17 @@ const SuspendSignal = syscall.SIGUSR2
 // ImageStore diz onde está o ext4 pronto de uma linguagem.
 type ImageStore interface {
 	ImagePath(language string) (string, bool)
+}
+
+// ADB fala com o adbd de uma máquina Android pela porta que o gateway dela publica no host (internal/adapters/adb).
+type ADB interface {
+	// Exec roda um serviço do adbd ("exec:<cmd>" com a saída binária intacta) e devolve tudo o que ele escreveu.
+	Exec(ctx context.Context, addr, service string) ([]byte, error)
+	// Shell roda um comando no shell do Android e devolve stdout e stderr juntos.
+	Shell(ctx context.Context, addr, cmd string) (string, error)
+	// WaitBoot espera sys.boot_completed=1, tentando a cada poll até o ctx acabar.
+	WaitBoot(ctx context.Context, addr string, poll time.Duration) error
+	// Interactive liga um shell com PTY (shell v2) a in/out até o programa sair, repassando cada resize; devolve o
+	// código de saída. cmd vazio é o shell de login.
+	Interactive(ctx context.Context, addr, cmd string, size Winsize, in io.Reader, out io.Writer, resize <-chan Winsize) (int, error)
 }

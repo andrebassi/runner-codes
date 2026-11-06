@@ -66,12 +66,14 @@ func (r Reader) Read() (domain.Host, error) {
 	h.DiskTotalMiB = int64(st.Blocks * bs >> 20)
 	// Bavail, não Bfree: o que sobra para quem não é root (o reservado do ext4 não conta como livre).
 	h.DiskFreeMiB = int64(st.Bavail * bs >> 20)
-	kvm := r.KVM
-	if kvm == "" {
-		kvm = "/dev/kvm"
+	// KVM responde "este host liga microVM?". Caminho dado (os testes) mede o arquivo; sem caminho, cada
+	// sistema mede o seu acelerador (hypervisor: /dev/kvm no Linux, Hypervisor.framework no macOS).
+	if r.KVM != "" {
+		_, err = os.Stat(r.KVM)
+		h.KVM = err == nil
+	} else {
+		h.KVM = hypervisor()
 	}
-	_, err = os.Stat(kvm)
-	h.KVM = err == nil
 	return h, nil
 }
 

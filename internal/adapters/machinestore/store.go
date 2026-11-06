@@ -57,9 +57,12 @@ func (s *Store) Create(m domain.Machine, diskTemplate string) error {
 			return domain.ErrMachineExists(m.Name)
 		}
 	}
-	if err := s.clone(diskTemplate, filepath.Join(dir, DiskFile)); err != nil {
-		os.RemoveAll(dir)
-		return fmt.Errorf("clone machine disk: %w", err)
+	// Sem modelo, sem disco: a máquina Android roda de um rootfs em diretório (o /data dela mora nele).
+	if diskTemplate != "" {
+		if err := s.clone(diskTemplate, filepath.Join(dir, DiskFile)); err != nil {
+			os.RemoveAll(dir)
+			return fmt.Errorf("clone machine disk: %w", err)
+		}
 	}
 	raw, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(filepath.Join(dir, recordFile), raw, 0o600); err != nil {

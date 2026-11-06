@@ -60,6 +60,10 @@ func TestReadMissing(t *testing.T) {
 		t.Fatalf("ausentes: %+v %v", h, err)
 	}
 	fresh, err := Reader{Dir: filepath.Join(dir, "ainda", "não", "existe")}.Read()
+	// Sem caminho de KVM, quem responde é o acelerador do sistema (no Mac, kern.hv_support; no Linux, /dev/kvm).
+	if fresh.KVM != hypervisor() {
+		t.Errorf("KVM padrão %v, acelerador do sistema %v", fresh.KVM, hypervisor())
+	}
 	if err != nil || fresh.DiskTotalMiB <= 0 || fresh.DiskFreeMiB <= 0 {
 		t.Fatalf("diretório ainda não criado: %+v %v", fresh, err)
 	}

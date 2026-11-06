@@ -403,6 +403,11 @@ func Override(base, flags domain.Machine, set func(key string) bool) domain.Mach
 		}
 		base.Display = &d
 	}
+	if flags.Android != nil {
+		// --android vence o arquivo (o runner.code ainda não declara Android; a flag é o único caminho).
+		a := *flags.Android
+		base.Android = &a
+	}
 	if set("volume") {
 		// Como o env: a flag acrescenta ao que o arquivo declarou.
 		base.Mounts = append(append([]domain.Mount{}, base.Mounts...), flags.Mounts...)

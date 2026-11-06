@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runner.codes/internal/adapters/krun"
+	"runtime"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -18,10 +20,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"runner.codes/internal/adapters/adb"
+	"runner.codes/internal/adapters/androidfs"
 	"runner.codes/internal/adapters/guestproto"
 	"runner.codes/internal/adapters/hostfs"
 	"runner.codes/internal/adapters/machinestore"
 	"runner.codes/internal/adapters/netgw"
+	"runner.codes/internal/adapters/oci"
 	"runner.codes/internal/app"
 	"runner.codes/internal/credca"
 	"runner.codes/internal/domain"
@@ -55,6 +60,28 @@ func (d *deps) newMachines() *app.Machines {
 		// do NixOS do worker define as duas; num Mac de desenvolvimento ficam vazias e nada muda.
 		EgressProxy: os.Getenv("RC_EGRESS_PROXY"),
 		EgressCA:    os.Getenv("RC_EGRESS_CA"),
+		Android:     androidSupport(d.builder.CacheDir),
+	}
+}
+
+// androidSupport liga as máquinas Android quando RUNNER_ANDROID_KRUNFW aponta o diretório da libkrunfw com binder (o
+// pacote libkrunfw-android do worker). Sem ela, o servidor recusa Android com o motivo: o kernel de sempre não tem
+// binder, e o /init do Android não passaria do primeiro serviço.
+func androidSupport(cacheDir string) app.AndroidSupport {
+	dir := os.Getenv("RUNNER_ANDROID_KRUNFW")
+	if dir == "" {
+		return app.AndroidSupport{}
+	}
+	rootfs := &androidfs.Rootfs{CacheDir: cacheDir, Arch: runtime.GOARCH, Fetch: androidfs.Fetcher(oci.RemoteFetcher)}
+	// O enlace é o do gateway do rc (netgw): o rootfs configura a vnet0 do Android com ele, já que lá dentro não há o
+	// agente do rc para fazer isso.
+	link := androidfs.Net{Guest: netip.PrefixFrom(netgw.GuestIP, netgw.PrefixLen), Gateway: netgw.GatewayIP, ADBPort: domain.ADBPort}
+	return app.AndroidSupport{
+		Rootfs: func(ctx context.Context, image, machineDir string) (string, error) {
+			return rootfs.Prepare(ctx, image, machineDir, link)
+		},
+		KrunfwDir: dir,
+		ADB:       &adb.Client{},
 	}
 }
 

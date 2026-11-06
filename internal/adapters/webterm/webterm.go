@@ -153,6 +153,23 @@ func (s *Session) unsubscribe(ch chan []byte) {
 	}
 }
 
+// ServeStream, ServeInput e ServeResize são as três rotas de uma sessão para quem monta o próprio roteador (o rc
+// serve, atrás do token dele): a mesma SSE da tela, o teclado e o tamanho da janela que a página do web-terminal usa.
+func (s *Session) ServeStream(w http.ResponseWriter, r *http.Request) { s.stream(w, r) }
+
+// ServeInput escreve o corpo no PTY (teclado e colagem); 410 depois que o programa saiu.
+func (s *Session) ServeInput(w http.ResponseWriter, r *http.Request) { s.input(w, r) }
+
+// ServeResize repassa o tamanho da janela ({"rows":..,"cols":..}) ao PTY.
+func (s *Session) ServeResize(w http.ResponseWriter, r *http.Request) { s.setSize(w, r) }
+
+// Viewers conta as telas conectadas agora: quem guarda sessões usa para soltar a que ninguém olha.
+func (s *Session) Viewers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.subs)
+}
+
 // exitCode lê o código de saída já gravado (só depois de Done).
 func (s *Session) exitCode() int {
 	s.mu.Lock()

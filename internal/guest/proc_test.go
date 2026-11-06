@@ -94,12 +94,24 @@ func TestProcSignal(t *testing.T) {
 func TestProcTTY(t *testing.T) {
 	c := procClient(t, Job{Argv: []string{"sh", "-c", `test -t 1 && echo IS-TTY; stty size; read l; stty size`}, TTY: true, Rows: 30, Cols: 100})
 	defer c.Close()
-	time.Sleep(300 * time.Millisecond)
+	// O resize só sai depois de o primeiro `stty size` aparecer: com um sleep fixo, sob carga o shell ainda não tinha
+	// medido quando o resize chegava, e os dois tamanhos saíam 40x120 (gate do runner.codes, 06/11/2026).
+	var first strings.Builder
+	for !strings.Contains(first.String(), "30 100") {
+		var ev protocol.Event
+		if err := protocol.ReadFrame(c, &ev); err != nil {
+			t.Fatalf("read antes do resize: %v (%q)", err, first.String())
+		}
+		if ev.Type == protocol.EventOutput {
+			first.Write(ev.Bytes)
+		}
+	}
 	protocol.WriteFrame(c, protocol.Event{Type: protocol.EventResize, Rows: 40, Cols: 120})
 	protocol.WriteFrame(c, protocol.Event{Type: protocol.EventEOF}) // ignorado com TTY
 	protocol.WriteFrame(c, protocol.Event{Type: protocol.EventInput, Bytes: []byte("x\n")})
-	_, _, tty, code := procCollect(t, c)
-	if code != 0 || !strings.Contains(tty, "IS-TTY") || !strings.Contains(tty, "30 100") || !strings.Contains(tty, "40 120") {
+	_, _, rest, code := procCollect(t, c)
+	tty := first.String() + rest
+	if code != 0 || !strings.Contains(tty, "IS-TTY") || !strings.Contains(tty, "30 100") || !strings.Contains(rest, "40 120") {
 		t.Fatalf("code=%d tty=%q", code, tty)
 	}
 }

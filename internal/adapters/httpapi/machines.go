@@ -68,6 +68,12 @@ const goldenHeader = "X-RC-Golden"
 // snapshotName casa nome de snapshot do GCE: minúscula, dígito e hífen, até 63, começando por letra.
 var snapshotName = regexp.MustCompile(`^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
+// AndroidCapable é o serviço de máquinas que sabe dizer se liga Android (app.Machines). Opcional: quem não
+// implementa (o fake dos testes) responde android=false no GET /api/v1/host.
+type AndroidCapable interface {
+	AndroidReady() bool
+}
+
 // PersistentService é o que o serviço de máquinas oferece quando o host guarda cada máquina num disco próprio
 // (app.Machines com Persist): soltar o disco para outro host e o estado da preempção. Opcional — o fake dos testes
 // e o rc sem o recurso não implementam, e aí a rota responde 501 e o host diz persistent_disks=false.
@@ -122,6 +128,8 @@ type CreateMachineRequest struct {
 	// RunnerCode é o texto de um runner.code inteiro; os campos acima que vierem preenchidos
 	// vencem o arquivo, como as flags na CLI.
 	RunnerCode string `json:"runner_code"`
+	// Android faz da máquina um Android (Redroid) com esta tela; exige image (o rootfs do Redroid).
+	Android *domain.Android `json:"android"`
 }
 
 // machine converte o corpo na máquina pedida: o runner.code (se veio) é a base, e todo
@@ -175,6 +183,14 @@ func (r CreateMachineRequest) machine() (domain.Machine, error) {
 	}
 	if m.Stack == "" && m.Image == "" {
 		return m, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: "stack or image is required"}}
+	}
+	if r.Android != nil {
+		// A mesma conferência do --android da CLI: tela e densidade nos limites que o Redroid desenha.
+		if err := r.Android.Validate(); err != nil {
+			return m, domain.ValidationError{Err: domain.MachineError{Code: domain.CodeConfig, Msg: err.Error()}}
+		}
+		a := *r.Android
+		m.Android = &a
 	}
 	return m, nil
 }
@@ -244,6 +260,8 @@ func (s *Server) machineRoutes(v1 *gin.RouterGroup) {
 	g.POST("/:name/golden", s.publishGolden)
 	g.POST("/:name/adopt", s.adoptMachine)
 	g.Any("/:name/display/*path", s.display)
+	s.androidRoutes(g)
+	s.terminalRoutes(g)
 }
 
 // machineError responde o erro com o status HTTP do código estável.

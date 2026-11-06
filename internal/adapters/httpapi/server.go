@@ -12,6 +12,7 @@ import (
 	"runner.codes/internal/adapters/screenctl"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -77,6 +78,9 @@ type Server struct {
 	EgressAPI string
 	// EgressClient fala com a EgressAPI; nil usa um cliente com prazo curto (o proxy está no mesmo host).
 	EgressClient *http.Client
+	// terms são as sessões de terminal abertas pelas rotas /terminal (criadas na primeira, terminal.go).
+	terms     *terminals
+	termsOnce sync.Once
 }
 
 // FileRequest é um arquivo no corpo da requisição.
@@ -210,6 +214,9 @@ func (s *Server) host(c *gin.Context) {
 		if p, ok := s.Machines.(PersistentService); ok {
 			h.PersistentDisks = p.HasPersistentDisks()
 			h.Preempting, h.Drained = p.Preemption()
+		}
+		if a, ok := s.Machines.(AndroidCapable); ok {
+			h.Android = a.AndroidReady()
 		}
 	}
 	c.JSON(http.StatusOK, h)

@@ -51,6 +51,8 @@ type Machines struct {
 	Launcher ports.DetachedLauncher
 	Procs    ports.Processes
 	Guest    ports.GuestClient
+	// Android são as peças para ligar máquina Android (rootfs, kernel com binder, ADB); zerado recusa Android.
+	Android AndroidSupport
 	// CanSuspend diz que a libkrun deste host sabe suspender e restaurar (o fork do superbot): o Start passa a
 	// restaurar o snapshot que a máquina tiver, e o Suspend fica disponível. Falso: só boot e desligamento.
 	CanSuspend bool
@@ -269,7 +271,13 @@ func (m *Machines) CreateFrom(ctx context.Context, mc domain.Machine, disk strin
 		return mc, err
 	}
 	tpl := disk
-	if tpl == "" {
+	if mc.IsAndroid() {
+		// O Android roda de um rootfs em diretório (preparado no start), sem o disco ext4 das máquinas comuns.
+		if !m.Android.ready() {
+			return mc, errNoAndroid
+		}
+		tpl = ""
+	} else if tpl == "" {
 		// O modelo de disco usa o mesmo diretório de trabalho e a mesma VM de build das imagens: mesma trava. Seis
 		// criações juntas num host novo disputavam o rename do mesmo arquivo ("move disk template: rename … no such
 		// file", medido no 2º teste de 25 desktops, 25/10/2026).
@@ -416,6 +424,9 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 	if st.State == StateRunning {
 		return st, domain.ErrMachineState(name, "is already running")
 	}
+	if st.IsAndroid() {
+		return m.startAndroid(ctx, st, tied)
+	}
 	image, ok := m.Images.ImagePath(st.Stack)
 	if !ok && st.Image != "" {
 		// Máquina de imagem cujo ext4 não está neste host: chegou de outro host pelo disco próprio (adotada antes de
@@ -454,18 +465,7 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		spec.Mounts = append(spec.Mounts, ports.VMMount{Tag: mountTag(i), HostPath: mt.Host, ReadOnly: mt.ReadOnly})
 	}
 	if st.Network.Attached() {
-		os.Remove(filepath.Join(dir, machineEgressSocket))
-		netw := st.Network
-		netw.Credentials, _ = bindingSources(st.Machine)
-		spec.Net = &ports.VMNet{Network: netw, DenialsLog: filepath.Join(dir, machineDenials),
-			ControlSocket: filepath.Join(dir, machineEgressSocket), Machine: name,
-			EgressProxy: m.EgressProxy, EgressCA: m.EgressCA}
-		if st.Network.Name != "" {
-			spec.Net.FabricDir = m.fabricDir(st.Network.Name)
-		}
-		if len(st.Network.Credentials) > 0 {
-			spec.Net.CACert, spec.Net.CAKey = filepath.Join(dir, machineCredCACert), filepath.Join(dir, machineCredCAKey)
-		}
+		spec.Net = m.vmNet(st.Machine, dir, st.Network)
 	}
 	if st.SSHAgent {
 		sock := os.Getenv("SSH_AUTH_SOCK")
@@ -590,6 +590,31 @@ func (m *Machines) start(ctx context.Context, name string, tied bool) (MachineSt
 		return st, err
 	}
 	return m.Status(name)
+}
+
+// vmNet monta a rede da VM atrás do gateway do processo vmm: a política de saída, as portas (netw, que o Android
+// recebe com a porta do ADB a mais), o log de recusas, o socket de troca de política, o proxy de saída e, com
+// credenciais, a CA da máquina.
+func (m *Machines) vmNet(mc domain.Machine, dir string, netw domain.Network) *ports.VMNet {
+	os.Remove(filepath.Join(dir, machineEgressSocket))
+	netw.Credentials, _ = bindingSources(mc)
+	n := &ports.VMNet{Network: netw, DenialsLog: filepath.Join(dir, machineDenials),
+		ControlSocket: filepath.Join(dir, machineEgressSocket), Machine: mc.Name,
+		EgressProxy: m.EgressProxy, EgressCA: m.EgressCA}
+	if mc.IsAndroid() {
+		// O Android sai direto, sem o proxy de saída: o proxy abre o TLS com a CA da frota, que o Android não tem na
+		// loja de confiança (a do sistema mora no APEX do conscrypt, só leitura) — todo HTTPS do aparelho morria e a tela
+		// mostrava "sem internet" (medido em 06/11/2026). Ele também não leva credencial para trocar nem página de
+		// bloqueio. O custo: o registro de requests do admin não cobre o Android.
+		n.EgressProxy, n.EgressCA = "", ""
+	}
+	if mc.Network.Name != "" {
+		n.FabricDir = m.fabricDir(mc.Network.Name)
+	}
+	if len(mc.Network.Credentials) > 0 {
+		n.CACert, n.CAKey = filepath.Join(dir, machineCredCACert), filepath.Join(dir, machineCredCAKey)
+	}
+	return n
 }
 
 // MachineDockerSocket é o nome do socket do Docker no diretório da máquina (docker_socket).
@@ -748,8 +773,12 @@ func (m *Machines) Stop(ctx context.Context, name string, timeout time.Duration)
 		sctx, cancel := context.WithTimeout(ctx, wait)
 		// Erro aqui (guest travado, conexão caiu quando o processo saiu) não importa: o que
 		// decide é o processo terminar, conferido abaixo.
-		m.Guest.Run(sctx, filepath.Join(m.Store.Dir(name), machineSocket), protocol.Job{TraceID: "stop", Op: protocol.OpShutdown,
-			Signal: sig, Timeout: int(timeout / time.Second)})
+		if st.IsAndroid() {
+			m.stopAndroid(sctx, name)
+		} else {
+			m.Guest.Run(sctx, filepath.Join(m.Store.Dir(name), machineSocket), protocol.Job{TraceID: "stop", Op: protocol.OpShutdown,
+				Signal: sig, Timeout: int(timeout / time.Second)})
+		}
 		cancel()
 		for end := time.Now().Add(wait); time.Now().Before(end) && m.Procs.Alive(st.PID); {
 			time.Sleep(20 * time.Millisecond)
@@ -766,6 +795,9 @@ func (m *Machines) Stop(ctx context.Context, name string, timeout time.Duration)
 // no host que já a tem é instantâneo); com stack, confere que ela existe no catálogo, tem ext4 e aceita o pedido de
 // GPU. Vale para o create e para a adoção de um disco vindo de outro host.
 func (m *Machines) ensureImage(ctx context.Context, mc domain.Machine) error {
+	if mc.IsAndroid() {
+		return nil // o rootfs do Android é preparado no start (internal/adapters/androidfs), não é um ext4
+	}
 	if mc.Image != "" {
 		// Imagem qualquer: a GPU é responsabilidade de quem escolheu a imagem (precisa do
 		// Mesa com Venus); o ext4 sai do mesmo build das stacks, sem warmup.
@@ -1011,6 +1043,9 @@ type ShellRequest struct {
 // Shell liga um terminal (PTY no guest) a in/out até o programa sair, repassando cada
 // resize; devolve o código de saída do programa.
 func (m *Machines) Shell(ctx context.Context, name string, req ShellRequest, in io.Reader, out io.Writer, resize <-chan ports.Winsize) (int, error) {
+	if mc, err := m.Store.Load(name); err == nil && mc.IsAndroid() {
+		return m.androidPTY(ctx, name, req, in, out, resize)
+	}
 	sock, err := m.running(name)
 	if err != nil {
 		return 0, err

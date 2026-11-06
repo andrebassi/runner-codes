@@ -34,6 +34,13 @@ func ReadSpec(path string) (Spec, error) {
 // entrega o processo à libkrun. Só volta em erro; no sucesso a libkrun chama exit()
 // com o código do workload quando a VM desliga.
 func RunVMM(api API, s Spec, watchdog io.Reader) error {
+	// Antes de tudo: o limite vale para os descritores que o virtio-fs abre durante a vida inteira da VM. Falhar aqui
+	// não impede a VM (a maioria vive bem com o limite de antes); só vai para o log.
+	if before, after, err := raiseNofile(); err != nil {
+		fmt.Fprintf(os.Stderr, "vmm: RLIMIT_NOFILE ficou em %d: %v\n", before, err)
+	} else if after != before {
+		fmt.Fprintf(os.Stderr, "vmm: RLIMIT_NOFILE %d -> %d\n", before, after)
+	}
 	if watchdog != nil {
 		// O pai segura o lado de escrita do pipe e nunca escreve: EOF só chega quando
 		// ele morre (ou fecha de propósito no Kill). No macOS é o único aviso de morte do pai.

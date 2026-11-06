@@ -11,7 +11,10 @@ type Host struct {
 	DiskTotalMiB int64 `json:"disk_total_mib"`
 	DiskFreeMiB  int64 `json:"disk_free_mib"`
 	// KVM diz se /dev/kvm existe: sem ele nenhuma máquina liga, por mais livre que o resto esteja.
-	KVM      bool `json:"kvm"`
+	KVM bool `json:"kvm"`
+	// Android diz se este rc liga máquina Android (tem a libkrunfw com binder, o rootfs e o ADB): quem agenda manda
+	// Android só para servidor que responde true.
+	Android  bool `json:"android"`
 	Machines int  `json:"machines"`
 	Running  int  `json:"running"`
 	// CPU do host: núcleos, carga de 1 min e os ticks acumulados desde o boot (linha "cpu" do

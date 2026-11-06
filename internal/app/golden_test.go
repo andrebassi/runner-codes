@@ -251,11 +251,43 @@ func TestGoldenMismatch(t *testing.T) {
 		func(m *domain.Machine) { m.GPU = true },
 		func(m *domain.Machine) { m.DiskGiB = 8 },
 		func(m *domain.Machine) { m.Network.Credentials = []domain.Credential{{Name: "x"}} },
+		func(m *domain.Machine) { m.Android = &domain.Android{Width: 720, Height: 1280, DPI: 320} },
 	} {
 		w := base
 		tc(&w)
 		if goldenMismatch(base, w) == "" {
 			t.Errorf("diferença não vista: %+v", w)
 		}
+	}
+}
+
+// TestAndroidGolden: o Android é dourado de disco — publica desligado, sem memória suspensa, e a máquina nova nasce do
+// snapshot sem exigir o snapshot de memória (o Start boota, já com o rootfs e os apps otimizados). Tela diferente não
+// serve: ela é parâmetro do boot.
+func TestAndroidGolden(t *testing.T) {
+	ctx := context.Background()
+	m, _, g := goldenFixture(t)
+	screen := domain.Android{Width: 720, Height: 1280, DPI: 320}
+	phone := func(name string, a domain.Android) domain.Machine {
+		return domain.Machine{Name: name, Image: "redroid/redroid:14", Stack: ImageStackName("redroid/redroid:14"), CPUs: 2, MemoryMiB: 3072, Android: &a}.WithDefaults()
+	}
+	g.gold["android-v1"] = goldenDisk{rec: phone("amold", screen)}
+	req := phone("p1", screen)
+	req.Stack = ""
+	out, err := m.CreateFromGolden(ctx, req, "android-v1")
+	if err != nil || out.Name != "p1" || !out.IsAndroid() || m.hasSnapshot("p1") {
+		t.Fatalf("criar do dourado: %+v %v", out, err)
+	}
+	other := phone("p2", domain.Android{Width: 1080, Height: 1920, DPI: 420})
+	other.Stack = ""
+	if _, err := m.CreateFromGolden(ctx, other, "android-v1"); !errors.Is(err, ErrNoGolden) {
+		t.Fatalf("tela diferente aceita: %v", err)
+	}
+	// Publicar: o Android desligado sem memória suspensa vira dourado; o Linux desligado nas mesmas condições, não.
+	if err := m.PublishGolden(ctx, "p1", "android-v2"); err != nil {
+		t.Fatal(err)
+	}
+	if g.taken[len(g.taken)-1] != "p1->android-v2" {
+		t.Fatalf("tirados: %v", g.taken)
 	}
 }

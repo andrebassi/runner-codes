@@ -322,6 +322,19 @@ func TestMounts(t *testing.T) {
 	}
 }
 
+// TestOverrideKeepsAndroid trava o defeito medido em 06/11/2026: o --android sumia na junção com o runner.code, e a
+// máquina chegava ao create como Linux comum (construindo o ext4 da imagem do Redroid).
+func TestOverrideKeepsAndroid(t *testing.T) {
+	a := domain.DefaultAndroid
+	got := Override(domain.Machine{Name: "x"}, domain.Machine{Android: &a}, func(string) bool { return false })
+	if got.Android == nil || *got.Android != a {
+		t.Fatalf("android perdido: %+v", got.Android)
+	}
+	if o := Override(domain.Machine{Android: &a}, domain.Machine{}, func(string) bool { return false }); o.Android == nil {
+		t.Fatal("android do arquivo apagado por flag ausente")
+	}
+}
+
 // TestOverride: só a flag passada vence o arquivo (zero explícito inclusive); env soma;
 // stack e image se excluem; o workload da CLI (depois do --) substitui o do arquivo.
 func TestOverride(t *testing.T) {

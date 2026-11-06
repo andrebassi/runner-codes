@@ -96,7 +96,13 @@ type Machine struct {
 	Network Network `json:"network,omitempty"`
 	// Display é a tela da máquina, vista no navegador (exige GPU); nil sem tela.
 	Display *Display `json:"display,omitempty"`
+	// Android faz da máquina um Android (Redroid) em vez de um Linux comum; nil é a máquina de sempre.
+	Android *Android `json:"android,omitempty"`
 }
+
+// IsAndroid diz se a máquina é um Android: o start, a rede e a conversa com o convidado seguem outro caminho (ADB em
+// vez do agente do rc).
+func (m Machine) IsAndroid() bool { return m.Android != nil }
 
 // Display é a saída de vídeo de uma máquina: tamanho e a porta do visualizador no
 // 127.0.0.1 do host.
@@ -417,6 +423,9 @@ func (m Machine) Validate() error {
 	}
 	if err == nil && m.Display != nil && !m.GPU {
 		err = errors.New("display needs gpu = true (the screen is a virtio-gpu output)")
+	}
+	if err == nil {
+		err = validateAndroid(m)
 	}
 	if err == nil {
 		for _, e := range m.Env {

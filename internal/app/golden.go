@@ -106,7 +106,9 @@ func (m *Machines) CreateFromGolden(ctx context.Context, mc domain.Machine, snap
 	if reason := goldenMismatch(gold, mc); reason != "" {
 		return mc, fmt.Errorf("%w: %s does not fit: %s", ErrNoGolden, snapshot, reason)
 	}
-	if !m.hasSnapshot(mc.Name) {
+	// O Android é dourado de disco: a memória não viaja (o rootfs por virtio-fs não restaura), o Start seguinte boota —
+	// rápido, porque o rootfs e os apps já otimizados (dexopt) vieram no disco.
+	if !mc.IsAndroid() && !m.hasSnapshot(mc.Name) {
 		return mc, fmt.Errorf("%w: %s holds no suspended machine", ErrNoGolden, snapshot)
 	}
 	for i, c := range mc.Network.Credentials {
@@ -142,6 +144,11 @@ func goldenMismatch(gold, want domain.Machine) string {
 		return "GPU differs"
 	case gold.DiskGiB != want.DiskGiB:
 		return fmt.Sprintf("disk %d GiB, want %d", gold.DiskGiB, want.DiskGiB)
+	case gold.IsAndroid() != want.IsAndroid():
+		return "android differs"
+	case gold.IsAndroid() && *gold.Android != *want.Android:
+		// A tela é do boot do Android (androidboot.redroid_*): o dourado de outra tela bootaria com a dele.
+		return fmt.Sprintf("android screen %+v, want %+v", *gold.Android, *want.Android)
 	}
 	names := func(m domain.Machine) []string {
 		var out []string
@@ -169,7 +176,9 @@ func (m *Machines) PublishGolden(ctx context.Context, name, snapshot string) err
 	if err != nil {
 		return err
 	}
-	if st.State != StateStopped || !m.hasSnapshot(name) {
+	// Android publica desligado (dourado de disco, ver CreateFromGolden); o resto, suspenso.
+	disk := st.Machine.IsAndroid() && st.State == StateStopped
+	if !disk && (st.State != StateStopped || !m.hasSnapshot(name)) {
 		return domain.ErrMachineState(name, "is not suspended; suspend it first")
 	}
 	dir := m.Store.Dir(name)

@@ -140,6 +140,16 @@ type MachineSpec struct {
 	Egress      *Egress  `json:"egress,omitempty"`
 	Network     string   `json:"network,omitempty"`
 	RunnerCode  string   `json:"runner_code,omitempty"`
+	// Android faz da máquina um Android (Redroid) com esta tela; Image é o rootfs do Redroid. Só liga em rc com
+	// Host.Android.
+	Android *Android `json:"android,omitempty"`
+}
+
+// Android é a tela de uma máquina Android: largura e altura em pixels e a densidade (dpi).
+type Android struct {
+	Width  uint32 `json:"width"`
+	Height uint32 `json:"height"`
+	DPI    uint32 `json:"dpi"`
 }
 
 // Machine é o estado de uma máquina como a API devolve. Network traz o IP na rede nomeada.
@@ -154,7 +164,10 @@ type Machine struct {
 	CreatedAt time.Time `json:"created_at"`
 	State     string    `json:"state"`
 	PID       int       `json:"pid"`
-	Network   struct {
+	// Android é a tela da máquina Android (nil numa máquina comum): quem a lista sabe que lá dentro não há o agente do
+	// rc (exec, arquivos), só o ADB.
+	Android *Android `json:"android,omitempty"`
+	Network struct {
 		Enabled bool   `json:"enabled"`
 		Name    string `json:"name"`
 		Address string `json:"address"`
@@ -334,8 +347,10 @@ type Host struct {
 	DiskTotalMiB    int64 `json:"disk_total_mib"`
 	DiskFreeMiB     int64 `json:"disk_free_mib"`
 	KVM             bool  `json:"kvm"`
-	Machines        int   `json:"machines"`
-	Running         int   `json:"running"`
+	// Android diz se o rc liga máquina Android (kernel com binder, rootfs e ADB).
+	Android  bool `json:"android"`
+	Machines int  `json:"machines"`
+	Running  int  `json:"running"`
 	// CPU do host: ticks acumulados (a % sai da diferença entre duas leituras), núcleos e carga.
 	Cores         int     `json:"cores"`
 	Load1         float64 `json:"load1"`

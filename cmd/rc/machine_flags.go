@@ -33,6 +33,7 @@ type machineFlags struct {
 	// diskFrom é o disco de partida do pack (--from de uma máquina empacotada).
 	diskFrom string
 	display  string
+	android  string
 	dport    uint16
 	dtitle   string
 	// exposeSock e mountSock são as pontes de socket (--expose-socket, --mount-socket).
@@ -80,6 +81,7 @@ func addMachineFlags(f *pflag.FlagSet, defName string) *machineFlags {
 	f.StringArrayVar(&mf.creds, "credential", nil, "credential the machine uses without reading it: NAME=ENV_VAR@HOST[,HOST...][:body][:set-header=HEADER] (repeatable; the value comes from ENV_VAR when the machine starts)")
 	f.StringVar(&mc.Network.Name, "network", "", "named network: machines in it reach each other by IP and <name>.<network>.internal")
 	f.StringVar(&mf.display, "display", "", "screen WIDTHxHEIGHT, viewed in the browser (needs --gpu)")
+	f.StringVar(&mf.android, "android", "", "make it an Android (Redroid) machine with screen WIDTHxHEIGHT[@DPI], e.g. 720x1280@320 (needs --image)")
 	f.Uint16Var(&mf.dport, "display-port", domain.DefaultDisplayPort, "port of the screen viewer on 127.0.0.1")
 	f.StringVar(&mf.dtitle, "display-title", "", "name shown on the screen viewer's bar and tab (default runner.codes)")
 	f.StringArrayVar(&mf.exposeSock, "expose-socket", nil, "GUEST[:HOST]: a unix socket the workload listens on, reachable on the host at HOST (default: its name in rc machine data-dir) (repeatable)")
@@ -169,6 +171,13 @@ func (mf *machineFlags) build(flags *pflag.FlagSet, workload []string) (domain.M
 	} else if mf.dtitle != "" {
 		return mc, "", errors.New("--display-title needs --display")
 	}
+	if mf.android != "" {
+		a, err := domain.ParseAndroid(mf.android)
+		if err != nil {
+			return mc, "", err
+		}
+		mc.Android = &a
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return mc, "", err
@@ -220,7 +229,8 @@ func (mf *machineFlags) build(flags *pflag.FlagSet, workload []string) (domain.M
 	if mc.Stack == "" && mc.Image == "" {
 		return mc, "", errors.New("set --stack or --image (or write them in a runner.code)")
 	}
-	if mc.Image != "" && !strings.HasPrefix(mc.Image, packRef) {
+	// O Android não constrói ext4: o rootfs é extraído no primeiro start (a mensagem mentiria aqui).
+	if mc.Image != "" && !strings.HasPrefix(mc.Image, packRef) && !mc.IsAndroid() {
 		fmt.Fprintf(os.Stderr, "preparing image %s (built on first use)...\n", mc.Image)
 	}
 	return mc, file, nil
